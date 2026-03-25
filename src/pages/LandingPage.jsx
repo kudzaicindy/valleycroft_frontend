@@ -105,30 +105,30 @@ export default function LandingPage() {
   const aboutStrip = [
     { title: 'BnB Stays', desc: 'Comfortable farm accommodation', img: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=400&q=80' },
     { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400&q=80' },
-    { title: 'Working Farm', desc: 'Authentic agro-tourism experiences', img: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=400&q=80' },
+    { title: 'Working Farm', desc: 'Authentic agro-tourism experiences', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
     { title: 'South Africa', desc: 'In the heart of the countryside', img: 'https://images.unsplash.com/photo-1527004013197-933c4bb611b3?w=400&q=80' },
   ];
 
   const offerings = [
-    { title: 'BnB Farm Stay', desc: 'Wake up to valley views. Cozy rooms, farm breakfast, and genuine hospitality.', img: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&q=80', cta: 'View Rooms', scrollToRooms: true },
-    { title: 'Events & Functions', desc: 'Weddings, corporate days, and private celebrations in a stunning farm setting.', img: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80', cta: 'Enquire', href: '#book' },
-    { title: 'Agro-Tourism', desc: 'Farm walks, seasonal activities, and a taste of country life.', img: 'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=600&q=80', cta: 'Learn More', href: '#about' },
+    { title: 'BnB Farm Stay', desc: 'Wake up to valley views. Cozy rooms, farm breakfast, and genuine hospitality.', img: '/PHOTO-2026-03-24-23-07-59.jpg', cta: 'View Rooms', scrollToRooms: true },
+    { title: 'Events & Functions', desc: 'Weddings, corporate days, and private celebrations in a stunning farm setting.', img: '/PHOTO-2026-03-24-23-07-59.jpg', cta: 'Enquire', href: '#book' },
+    { title: 'Agro-Tourism', desc: 'Farm walks, seasonal activities, and a taste of country life.', img: '/PHOTO-2026-03-24-23-07-59.jpg', cta: 'Learn More', href: '#about' },
   ];
 
   const rooms = [
-    { tag: 'Popular', avail: 'yes', name: 'Harvest Suite', desc: 'Spacious room with valley views, en-suite and farm breakfast.', amenities: ['En-suite', 'Farm View', 'Breakfast'], price: 'R 1,100', sub: 'per night', img: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&q=80', isEvent: false },
-    { tag: 'Cosy', avail: 'yes', name: 'Meadow Room', desc: 'Quiet room overlooking the meadow. Perfect for a peaceful stay.', amenities: ['En-suite', 'Garden View', 'WiFi'], price: 'R 950', sub: 'per night', img: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80', isEvent: false },
-    { tag: 'Family', avail: 'yes', name: 'Orchard Cottage', desc: 'Self-contained cottage with kitchenette, ideal for families.', amenities: ['Kitchenette', 'Private Entrance', 'Braai'], price: 'R 1,650', sub: 'per night', img: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600&q=80', isEvent: false },
-    { tag: 'Premium', avail: 'yes', name: 'Farmhand Loft', desc: 'Loft suite with exposed beams and reading nook.', amenities: ['En-suite', 'Loft', 'Mountain View'], price: 'R 1,400', sub: 'per night', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&q=80', isEvent: false },
-    { tag: 'Bright', avail: 'yes', name: 'Sunflower Room', desc: 'Sun-filled room with garden access and sitting area.', amenities: ['En-suite', 'Garden Access', 'AC'], price: 'R 1,050', sub: 'per night', img: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600&q=80', isEvent: false },
-    { tag: 'Venue', avail: 'yes', name: 'Valley Croft Barn', desc: 'Event venue for weddings, functions and retreats. Catering & coordination available.', amenities: ['Up to 200', 'Catering', 'Overnight options'], price: 'From R 28,000', sub: 'full day hire', img: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80', isEvent: true },
+    { tag: 'Popular', avail: 'yes', name: 'Harvest Suite', desc: 'Spacious room with valley views, en-suite and farm breakfast.', amenities: ['En-suite', 'Farm View', 'Breakfast'], price: 'R 1,100', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
+    { tag: 'Cosy', avail: 'yes', name: 'Meadow Room', desc: 'Quiet room overlooking the meadow. Perfect for a peaceful stay.', amenities: ['En-suite', 'Garden View', 'WiFi'], price: 'R 950', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
+    { tag: 'Family', avail: 'yes', name: 'Orchard Cottage', desc: 'Self-contained cottage with kitchenette, ideal for families.', amenities: ['Kitchenette', 'Private Entrance', 'Braai'], price: 'R 1,650', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
+    { tag: 'Premium', avail: 'yes', name: 'Farmhand Loft', desc: 'Loft suite with exposed beams and reading nook.', amenities: ['En-suite', 'Loft', 'Mountain View'], price: 'R 1,400', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
+    { tag: 'Bright', avail: 'yes', name: 'Sunflower Room', desc: 'Sun-filled room with garden access and sitting area.', amenities: ['En-suite', 'Garden Access', 'AC'], price: 'R 1,050', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
+    { tag: 'Venue', avail: 'yes', name: 'Valley Croft Barn', desc: 'Event venue for weddings, functions and retreats. Catering & coordination available.', amenities: ['Up to 200', 'Catering', 'Overnight options'], price: 'From R 28,000', sub: 'full day hire', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: true },
   ];
 
   const experienceItems = [
-    { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=500&q=80' },
-    { title: 'Nature & Wildlife', desc: 'Birdlife, gardens and the rhythm of the seasons.', img: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=500&q=80' },
-    { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&q=80' },
-    { title: 'Premium Events', desc: 'Weddings, corporate days and celebrations in style.', img: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=500&q=80' },
+    { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
+    { title: 'Nature & Wildlife', desc: 'Birdlife, gardens and the rhythm of the seasons.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
+    { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
+    { title: 'Premium Events', desc: 'Weddings, corporate days and celebrations in style.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
   ];
 
   const events = [
