@@ -64,7 +64,8 @@ nav {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
+  /* Must be above modal backdrops (z-index: 1000) so the mobile drawer is visible */
+  z-index: 1105;
   padding: 0 48px;
   height: var(--landing-nav-h);
   display: flex;

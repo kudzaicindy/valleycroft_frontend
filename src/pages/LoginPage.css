@@ -33,6 +33,25 @@
   background: rgba(45, 80, 22, 0.15);
 }
 
+.login-back {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2d5016;
+  text-decoration: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(216, 227, 207, 1);
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(6px);
+}
+
+.login-back:hover {
+  background: rgba(238, 244, 233, 0.85);
+}
+
 .login-card {
   width: 100%;
   max-width: 64rem;

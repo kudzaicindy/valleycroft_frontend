@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { login as apiLogin } from '@/api/auth';
 import { useState } from 'react';
@@ -70,6 +70,10 @@ export default function LoginPage() {
     <div className="login-page relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#f4f7f2] via-[#f8faf7] to-[#e9f0e4] px-4 py-8">
       <div className="login-page__blob login-page__blob--top pointer-events-none absolute -top-28 -left-20 h-72 w-72 rounded-full bg-[#6b8b52]/20 blur-3xl" />
       <div className="login-page__blob login-page__blob--bottom pointer-events-none absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-[#2d5016]/15 blur-3xl" />
+
+      <Link to="/" className="login-back">
+        Back to home
+      </Link>
 
       <div className="relative mx-auto flex w-full max-w-5xl shrink-0 items-center justify-center">
         <div className="login-card grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-[#d8e3cf] bg-white shadow-[0_16px_50px_rgba(28,53,16,0.16)] lg:grid-cols-2">
