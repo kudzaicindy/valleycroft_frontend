@@ -3,13 +3,13 @@ import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { createGuestBooking } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 import './BookingPage.css';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function fmtDate(d) {
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return formatDateDayMonthYear(d);
 }
 
 /** YYYY-MM-DD in local time (avoids timezone shift from toISOString) */

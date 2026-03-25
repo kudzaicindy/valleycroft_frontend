@@ -1,3 +1,7 @@
+import { formatMonthYear } from '@/utils/formatDate';
+
+const DEMO_LAST_REPORT = new Date(2026, 2, 1);
+
 export default function ReportsPage() {
   const reports = [
     { icon: 'fas fa-calendar-week', name: 'Weekly Summary', desc: 'Bookings, income, expenses & staff attendance for the current week.', color: 'var(--forest)' },
@@ -22,7 +26,7 @@ export default function ReportsPage() {
             <div className="report-icon" style={{ background: `${r.color}20` }}><i className={r.icon} style={{ color: r.color }} /></div>
             <div className="report-name">{r.name}</div>
             <div className="report-desc">{r.desc}</div>
-            <div className="report-meta"><div className="report-date">Last: Mar 2026</div><button type="button" className="btn btn-primary btn-sm"><i className="fas fa-download" /> Download</button></div>
+            <div className="report-meta"><div className="report-date">Last: {formatMonthYear(DEMO_LAST_REPORT)}</div><button type="button" className="btn btn-primary btn-sm"><i className="fas fa-download" /> Download</button></div>
           </div>
         ))}
       </div>

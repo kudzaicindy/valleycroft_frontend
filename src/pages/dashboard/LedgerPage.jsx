@@ -7,6 +7,7 @@ import {
   getJournalEntries,
 } from '@/api/accounting';
 import { getTransactions } from '@/api/finance';
+import { flattenJournalEntriesToLines, journalApiMeta } from '@/utils/journalEntriesNormalize';
 import LedgerReportsBanner from '@/components/dashboard/LedgerReportsBanner';
 import { MONTH_SHORT, defaultReportYear, endOfMonthDate, yearOptions, yearRange } from '@/utils/financePeriods';
 import { cashflowSectionRows, cashflowStatementMetrics, groupBalanceSheetItems, normalizeBalanceSheetRows, plMetrics, rowAmount, rowLabel } from '@/utils/financeStatementHelpers';
@@ -22,20 +23,6 @@ function money(n) {
   const num = Number(n);
   if (n == null || Number.isNaN(num) || num === 0) return '-';
   return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function normalizeJournalList(data) {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.lines)) return data.lines;
-  if (Array.isArray(data.entries)) return data.entries;
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.journals)) return data.journals;
-  if (Array.isArray(data.results)) return data.results;
-  if (Array.isArray(data.rows)) return data.rows;
-  if (Array.isArray(data.data)) return data.data;
-  if (data.entry && Array.isArray(data.entry.lines)) return data.entry.lines;
-  return [];
 }
 
 function isNotFound(err) {
@@ -125,7 +112,7 @@ export default function LedgerPage() {
   const cfFinancingRows = cashflowSectionRows(cfQuery.data, 'financing');
   const bsItems = useMemo(() => normalizeBalanceSheetRows(bsQuery.data), [bsQuery.data]);
   const bsGroups = groupBalanceSheetItems(bsItems);
-  const journals = normalizeJournalList(journalQuery.data);
+  const journals = flattenJournalEntriesToLines(journalQuery.data);
   const fallbackTransactions = useMemo(() => {
     const rows = Array.isArray(transactionsQuery.data)
       ? transactionsQuery.data
@@ -133,7 +120,7 @@ export default function LedgerPage() {
     return rows.filter((r) => r?.journalEntryId);
   }, [transactionsQuery.data]);
   const journalRows = journals.length > 0 ? journals : fallbackTransactions;
-  const journalMeta = journalQuery.data?.meta ?? journalQuery.data?.pagination ?? {};
+  const journalMeta = journalApiMeta(journalQuery.data);
 
   function ApiError({ query, label }) {
     if (!query.isError) return null;
@@ -380,9 +367,9 @@ export default function LedgerPage() {
                 {!journalQuery.isLoading &&
                   journalRows.map((j, i) => (
                     <tr key={j._id ?? j.id ?? i}>
-                      <td>{j.date ?? j.postedAt?.slice?.(0, 10) ?? '—'}</td>
+                      <td>{j.date ?? j.entryDate ?? j.postedAt?.slice?.(0, 10) ?? '—'}</td>
                       <td>{j.reference ?? j.ref ?? j.entryNumber ?? j.journalEntryId ?? '—'}</td>
-                      <td>{j.description ?? j.memo ?? j.narration ?? '—'}</td>
+                      <td>{j.description ?? j.memo ?? j.narration ?? j._entryDescription ?? '—'}</td>
                       <td className="num">{j.debit != null || j.debitAmount != null || j.totalDebit != null ? money(j.debit ?? j.debitAmount ?? j.totalDebit) : ''}</td>
                       <td className="num">{j.credit != null || j.creditAmount != null || j.totalCredit != null ? money(j.credit ?? j.creditAmount ?? j.totalCredit) : ''}</td>
                     </tr>

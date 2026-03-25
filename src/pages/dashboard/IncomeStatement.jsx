@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { getIncomeStatement } from '@/api/finance';
 import FinanceLegacyReportsBanner from '@/components/dashboard/FinanceLegacyReportsBanner';
+import StatementAmountCell from '@/components/dashboard/StatementAmountCell';
+import StatementTransactionsModal from '@/components/dashboard/StatementTransactionsModal';
 import { MONTH_SHORT, defaultReportYear, monthRange, yearOptions, yearRange } from '@/utils/financePeriods';
 import { incomeStatementMetrics } from '@/utils/financeStatementHelpers';
+import { mergedMonthRange, statementKeyToTransactionCategory } from '@/utils/statementDrilldown';
 
 function money(n) {
   const num = Number(n);
@@ -45,6 +48,7 @@ export default function IncomeStatement() {
   const [quarter, setQuarter] = useState('all');
   const [basis, setBasis] = useState('accrual');
   const [entity, setEntity] = useState('all');
+  const [drill, setDrill] = useState(null);
   const years = useMemo(() => yearOptions({ back: 8, forward: 1 }), []);
 
   const annualRange = useMemo(() => yearRange(year), [year]);
@@ -90,6 +94,8 @@ export default function IncomeStatement() {
   const hasAnyRevenue = visibleMonths.some((mi) => monthHasData[mi]);
   const hasAnyExpense = visibleMonths.some((mi) => monthHasData[mi]);
   const hasAnyNet = visibleMonths.some((mi) => monthHasData[mi]);
+  const merged = useMemo(() => mergedMonthRange(year, visibleMonths), [year, visibleMonths]);
+  const quarterLabel = QUARTERS.find((q) => q.value === quarter)?.label ?? '';
 
   return (
     <div className="finance-statement-page acct-ui-page">
@@ -130,6 +136,19 @@ export default function IncomeStatement() {
       <div className="acct-ui-meta">Year: {year} · Basis: {basis[0].toUpperCase() + basis.slice(1)} · Entity: All Entities</div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
 
+      <StatementTransactionsModal
+        open={!!drill}
+        onClose={() => setDrill(null)}
+        title={drill?.title ?? ''}
+        subtitle={drill?.subtitle}
+        start={drill?.start ?? ''}
+        end={drill?.end ?? ''}
+        category={drill?.category ?? null}
+        type={drill?.type ?? null}
+        statementAmount={drill?.statementAmount ?? null}
+        sumMode={drill?.sumMode ?? 'abs'}
+      />
+
       <div className="card finance-stmt-card acct-ui-table-card">
         <div className="card-body card-body--no-pad">
           <table className="acct-ui-table">
@@ -151,22 +170,122 @@ export default function IncomeStatement() {
                     const rows = incomeRowsByMonth[mi];
                     const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
                     const v = match ? rowAmount(match) : null;
-                    return <td key={mi} className="num">{loading ? '…' : (monthHasData[mi] && v != null ? money(v) : '')}</td>;
+                    const cat = statementKeyToTransactionCategory(k);
+                    const { start, end } = monthRange(year, mi);
+                    return (
+                      <StatementAmountCell
+                        key={mi}
+                        className=""
+                        loading={loading}
+                        hasData={monthHasData[mi]}
+                        rawValue={v}
+                        display={monthHasData[mi] && v != null ? money(v) : ''}
+                        onDrill={() =>
+                          setDrill({
+                            title: `Income statement — ${rowLabelMap[k] || k}`,
+                            subtitle: `${MONTH_SHORT[mi]} ${year}`,
+                            start,
+                            end,
+                            category: cat,
+                            type: 'income',
+                            statementAmount: v != null ? Number(v) : null,
+                            sumMode: 'abs',
+                          })
+                        }
+                      />
+                    );
                   })}
-                  <td className="num pos">
-                    {loading ? '…' : money(visibleMonths.reduce((s, mi) => {
+                  <StatementAmountCell
+                    className="pos"
+                    loading={loading}
+                    hasData={hasAnyRevenue}
+                    rawValue={visibleMonths.reduce((s, mi) => {
                       const rows = incomeRowsByMonth[mi];
                       const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
                       return s + (match ? rowAmount(match) : 0);
-                    }, 0))}
-                  </td>
+                    }, 0)}
+                    display={money(
+                      visibleMonths.reduce((s, mi) => {
+                        const rows = incomeRowsByMonth[mi];
+                        const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
+                        return s + (match ? rowAmount(match) : 0);
+                      }, 0)
+                    )}
+                    onDrill={
+                      merged
+                        ? () => {
+                            const totalVal = visibleMonths.reduce((s, mi) => {
+                              const rows = incomeRowsByMonth[mi];
+                              const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
+                              return s + (match ? rowAmount(match) : 0);
+                            }, 0);
+                            setDrill({
+                              title: `Income statement — ${rowLabelMap[k] || k}`,
+                              subtitle: `Total · ${quarterLabel} ${year}`,
+                              start: merged.start,
+                              end: merged.end,
+                              category: statementKeyToTransactionCategory(k),
+                              type: 'income',
+                              statementAmount: totalVal,
+                              sumMode: 'abs',
+                            });
+                          }
+                        : undefined
+                    }
+                  />
                 </tr>
               ))}
               <tr className="acct-ui-total-row">
                 <td><strong>Total revenue</strong></td>
                 <td />
-                {visibleMonths.map((mi) => <td key={mi} className="num"><strong>{loading ? '…' : (monthHasData[mi] ? money(cols[mi].revenue) : '')}</strong></td>)}
-                <td className="num pos"><strong>{loading ? '…' : (hasAnyRevenue ? money(revenueTotal) : '')}</strong></td>
+                {visibleMonths.map((mi) => {
+                  const v = cols[mi].revenue;
+                  const { start, end } = monthRange(year, mi);
+                  return (
+                    <StatementAmountCell
+                      key={mi}
+                      className=""
+                      loading={loading}
+                      hasData={monthHasData[mi]}
+                      rawValue={v}
+                      display={loading ? '…' : <strong>{monthHasData[mi] ? money(v) : ''}</strong>}
+                      onDrill={() =>
+                        setDrill({
+                          title: 'Total revenue',
+                          subtitle: `${MONTH_SHORT[mi]} ${year}`,
+                          start,
+                          end,
+                          category: null,
+                          type: 'income',
+                          statementAmount: v,
+                          sumMode: 'abs',
+                        })
+                      }
+                    />
+                  );
+                })}
+                <StatementAmountCell
+                  className="pos"
+                  loading={loading}
+                  hasData={hasAnyRevenue}
+                  rawValue={revenueTotal}
+                  display={loading ? '…' : <strong>{hasAnyRevenue ? money(revenueTotal) : ''}</strong>}
+                  onDrill={
+                    merged
+                      ? () =>
+                          setDrill({
+                            title: 'Total revenue',
+                            subtitle: `Total · ${quarterLabel} ${year}`,
+                            start: merged.start,
+                            end: merged.end,
+                            category: null,
+                            type: 'income',
+                            statementAmount: revenueTotal,
+                            sumMode: 'abs',
+                          })
+                      : undefined
+                  }
+                />
               </tr>
               <tr className="acct-ui-section acct-ui-section--neg"><td colSpan={visibleMonths.length + 3}>Expense accounts</td></tr>
               {expenseKeys.map((k) => (
@@ -177,31 +296,174 @@ export default function IncomeStatement() {
                     const rows = expenseRowsByMonth[mi];
                     const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
                     const v = match ? rowAmount(match) : null;
-                    return <td key={mi} className="num">{loading ? '…' : (monthHasData[mi] && v != null ? money(v) : '')}</td>;
+                    const cat = statementKeyToTransactionCategory(k);
+                    const { start, end } = monthRange(year, mi);
+                    return (
+                      <StatementAmountCell
+                        key={mi}
+                        className=""
+                        loading={loading}
+                        hasData={monthHasData[mi]}
+                        rawValue={v}
+                        display={monthHasData[mi] && v != null ? money(v) : ''}
+                        onDrill={() =>
+                          setDrill({
+                            title: `Income statement — ${rowLabelMap[k] || k}`,
+                            subtitle: `${MONTH_SHORT[mi]} ${year}`,
+                            start,
+                            end,
+                            category: cat,
+                            type: 'expense',
+                            statementAmount: v != null ? Number(v) : null,
+                            sumMode: 'abs',
+                          })
+                        }
+                      />
+                    );
                   })}
-                  <td className="num neg">
-                    {loading ? '…' : money(visibleMonths.reduce((s, mi) => {
+                  <StatementAmountCell
+                    className="neg"
+                    loading={loading}
+                    hasData={hasAnyExpense}
+                    rawValue={visibleMonths.reduce((s, mi) => {
                       const rows = expenseRowsByMonth[mi];
                       const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
                       return s + (match ? rowAmount(match) : 0);
-                    }, 0))}
-                  </td>
+                    }, 0)}
+                    display={money(
+                      visibleMonths.reduce((s, mi) => {
+                        const rows = expenseRowsByMonth[mi];
+                        const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
+                        return s + (match ? rowAmount(match) : 0);
+                      }, 0)
+                    )}
+                    onDrill={
+                      merged
+                        ? () => {
+                            const totalVal = visibleMonths.reduce((s, mi) => {
+                              const rows = expenseRowsByMonth[mi];
+                              const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
+                              return s + (match ? rowAmount(match) : 0);
+                            }, 0);
+                            setDrill({
+                              title: `Income statement — ${rowLabelMap[k] || k}`,
+                              subtitle: `Total · ${quarterLabel} ${year}`,
+                              start: merged.start,
+                              end: merged.end,
+                              category: statementKeyToTransactionCategory(k),
+                              type: 'expense',
+                              statementAmount: totalVal,
+                              sumMode: 'abs',
+                            });
+                          }
+                        : undefined
+                    }
+                  />
                 </tr>
               ))}
               <tr className="acct-ui-total-row">
                 <td><strong>Total expenses</strong></td>
                 <td />
-                {visibleMonths.map((mi) => <td key={mi} className="num"><strong>{loading ? '…' : (monthHasData[mi] ? money(cols[mi].expense) : '')}</strong></td>)}
-                <td className="num neg"><strong>{loading ? '…' : (hasAnyExpense ? money(expenseTotal) : '')}</strong></td>
+                {visibleMonths.map((mi) => {
+                  const v = cols[mi].expense;
+                  const { start, end } = monthRange(year, mi);
+                  return (
+                    <StatementAmountCell
+                      key={mi}
+                      className=""
+                      loading={loading}
+                      hasData={monthHasData[mi]}
+                      rawValue={v}
+                      display={loading ? '…' : <strong>{monthHasData[mi] ? money(v) : ''}</strong>}
+                      onDrill={() =>
+                        setDrill({
+                          title: 'Total expenses',
+                          subtitle: `${MONTH_SHORT[mi]} ${year}`,
+                          start,
+                          end,
+                          category: null,
+                          type: 'expense',
+                          statementAmount: v,
+                          sumMode: 'abs',
+                        })
+                      }
+                    />
+                  );
+                })}
+                <StatementAmountCell
+                  className="neg"
+                  loading={loading}
+                  hasData={hasAnyExpense}
+                  rawValue={expenseTotal}
+                  display={loading ? '…' : <strong>{hasAnyExpense ? money(expenseTotal) : ''}</strong>}
+                  onDrill={
+                    merged
+                      ? () =>
+                          setDrill({
+                            title: 'Total expenses',
+                            subtitle: `Total · ${quarterLabel} ${year}`,
+                            start: merged.start,
+                            end: merged.end,
+                            category: null,
+                            type: 'expense',
+                            statementAmount: expenseTotal,
+                            sumMode: 'abs',
+                          })
+                      : undefined
+                  }
+                />
               </tr>
               <tr className="acct-ui-total-row">
                 <td><strong>Net income / (loss)</strong></td>
                 <td />
                 {visibleMonths.map((mi) => {
                   const v = cols[mi].net;
-                  return <td key={mi} className={`num ${v >= 0 ? 'pos' : 'neg'}`}>{loading ? '…' : (monthHasData[mi] ? money(v) : '')}</td>;
+                  const { start, end } = monthRange(year, mi);
+                  return (
+                    <StatementAmountCell
+                      key={mi}
+                      className={v >= 0 ? 'pos' : 'neg'}
+                      loading={loading}
+                      hasData={monthHasData[mi]}
+                      rawValue={v}
+                      display={loading ? '…' : monthHasData[mi] ? money(v) : ''}
+                      onDrill={() =>
+                        setDrill({
+                          title: 'Net income / (loss)',
+                          subtitle: `${MONTH_SHORT[mi]} ${year} · all transactions in period`,
+                          start,
+                          end,
+                          category: null,
+                          type: null,
+                          statementAmount: v,
+                          sumMode: 'signed',
+                        })
+                      }
+                    />
+                  );
                 })}
-                <td className={`num ${netTotal >= 0 ? 'pos' : 'neg'}`}><strong>{loading ? '…' : (hasAnyNet ? money(netTotal) : '')}</strong></td>
+                <StatementAmountCell
+                  className={netTotal >= 0 ? 'pos' : 'neg'}
+                  loading={loading}
+                  hasData={hasAnyNet}
+                  rawValue={netTotal}
+                  display={loading ? '…' : <strong>{hasAnyNet ? money(netTotal) : ''}</strong>}
+                  onDrill={
+                    merged
+                      ? () =>
+                          setDrill({
+                            title: 'Net income / (loss)',
+                            subtitle: `Total · ${quarterLabel} ${year} · all transactions in period`,
+                            start: merged.start,
+                            end: merged.end,
+                            category: null,
+                            type: null,
+                            statementAmount: netTotal,
+                            sumMode: 'signed',
+                          })
+                      : undefined
+                  }
+                />
               </tr>
             </tbody>
           </table>

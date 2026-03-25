@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { trackGuestBooking } from '@/api/guestBookings';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 import './BookingPage.css';
 
 export default function BookingTrackPage() {
@@ -109,11 +110,11 @@ export default function BookingTrackPage() {
                 </div>
                 <div className="review-row">
                   <div className="rv-label">Check-in</div>
-                  <div className="rv-val">{result.checkIn ? new Date(result.checkIn).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div>
+                  <div className="rv-val">{result.checkIn ? formatDateDayMonthYear(result.checkIn) : '—'}</div>
                 </div>
                 <div className="review-row">
                   <div className="rv-label">Check-out</div>
-                  <div className="rv-val">{result.checkOut ? new Date(result.checkOut).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div>
+                  <div className="rv-val">{result.checkOut ? formatDateDayMonthYear(result.checkOut) : '—'}</div>
                 </div>
                 <div className="review-row">
                   <div className="rv-label">Total</div>

@@ -46,6 +46,7 @@ export const dashboardNavConfig = {
         label: 'Transactions & Pay',
         items: [
           { icon: 'fas fa-exchange-alt', label: 'Transactions', path: 'transactions' },
+          { icon: 'fas fa-hand-holding-usd', label: 'Booking payments', path: 'booking-payments' },
           { icon: 'fas fa-money-bill-wave', label: 'Salary', path: 'salary' },
         ],
       },
@@ -73,7 +74,10 @@ export const dashboardNavConfig = {
       },
       {
         label: 'Accounting (ledger)',
-        items: [{ icon: 'fas fa-book', label: 'Ledger', path: 'ledger' }],
+        items: [
+          { icon: 'fas fa-list-alt', label: 'Chart of accounts', path: 'chart-of-accounts' },
+          { icon: 'fas fa-book', label: 'Ledger', path: 'ledger' },
+        ],
       },
       { label: 'Audit', items: [{ icon: 'fas fa-history', label: 'Audit Trail', path: 'audit' }] },
     ],
@@ -102,7 +106,10 @@ export const dashboardNavConfig = {
       },
       {
         label: 'Accounting (ledger)',
-        items: [{ icon: 'fas fa-book', label: 'Ledger', path: 'ledger' }],
+        items: [
+          { icon: 'fas fa-list-alt', label: 'Chart of accounts', path: 'chart-of-accounts' },
+          { icon: 'fas fa-book', label: 'Ledger', path: 'ledger' },
+        ],
       },
       {
         label: 'Parties & People',
@@ -165,6 +172,7 @@ const pageTitlesByRole = {
     'income-statement': "Income Statement",
     'balance-sheet': "Balance Sheet",
     ledger: "Ledger",
+    'chart-of-accounts': "Chart of accounts",
     audit: "Audit Trail",
   },
   ceo: {
@@ -175,6 +183,7 @@ const pageTitlesByRole = {
     'income-statement': "Income Statement",
     'balance-sheet': "Balance Sheet",
     ledger: "Ledger",
+    'chart-of-accounts': "Chart of accounts",
     debtors: "Debtors",
     suppliers: "Suppliers",
     staff: "Staff",
@@ -204,6 +213,7 @@ export const pageDescriptions = {
   finance: {
     dashboard: "Income vs expense summary, month-to-date totals",
     transactions: "Add income/expense, view and filter all entries",
+    'booking-payments': "Record guest payments for confirmed bookings as finance transactions",
     salary: "Record salary payments, filter by employee or month",
     suppliers: "Supplier list, add payment, payment history per supplier",
     debtors: "Outstanding debtors, mark partial/paid, aging summary",
@@ -213,6 +223,7 @@ export const pageDescriptions = {
     'income-statement': "Income statement broken down by revenue stream",
     'balance-sheet': "Balance sheet view",
     ledger: "Ledger operating summary, balance sheet, cash flow, journals",
+    'chart-of-accounts': "GL accounts and transaction activity per account",
     audit: "Audit trail filtered to finance-relevant actions",
   },
   ceo: {
@@ -223,6 +234,7 @@ export const pageDescriptions = {
     'income-statement': "Income statement by period",
     'balance-sheet': "Balance sheet snapshot",
     ledger: "Ledger reports and journal entries from /api/accounting",
+    'chart-of-accounts': "GL accounts and activity (read-only)",
     debtors: "Debtors summary with aging",
     suppliers: "Supplier payment summary",
     staff: "Read-only staff profiles and work logs",

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getRooms, getRoom, getRoomBookings, updateRoom } from '@/api/rooms';
 import { getGuestBookings } from '@/api/guestBookings';
 import { parseLocalDate } from '@/utils/availability';
+import { formatDateDayMonthYear, formatDateWeekdayDayMonthYear, formatMonthYear } from '@/utils/formatDate';
 
 const ROOM_STATUSES = [
   { value: 'available', label: 'Available' },
@@ -45,9 +46,7 @@ function getRoomImage(room) {
 }
 
 function fmtDate(val) {
-  if (!val) return '—';
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateDayMonthYear(val);
 }
 
 function fmtNum(n) {
@@ -55,13 +54,7 @@ function fmtNum(n) {
 }
 
 function fmtOverviewDate() {
-  const now = new Date();
-  return now.toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return formatDateWeekdayDayMonthYear(new Date());
 }
 
 /** Today at midnight (local) for comparison. */
@@ -593,7 +586,7 @@ export default function RoomsPage() {
                       <i className="fas fa-chevron-left" />
                     </button>
                     <span className="rooms-events-cal-label">
-                      {calendarMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                      {formatMonthYear(calendarMonth)}
                     </span>
                     <button type="button" className="btn btn-outline btn-sm" onClick={() => shiftCalendarMonth(1)} aria-label="Next month">
                       <i className="fas fa-chevron-right" />

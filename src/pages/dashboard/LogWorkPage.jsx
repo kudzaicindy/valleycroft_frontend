@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { createWorklog, getTasksByEmployee } from '@/api/staff';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 
 const LOG_TYPE_HOURS = 'hours';
 const LOG_TYPE_INTERVAL = 'interval';
@@ -37,7 +38,7 @@ export default function LogWorkPage() {
   const assignedTasks = Array.isArray(tasksData) ? tasksData : (tasksData?.data ?? tasksData?.tasks ?? []);
   const assignmentLabel = (a) => {
     const labels = Array.isArray(a.tasksAssigned) && a.tasksAssigned.length ? a.tasksAssigned.join(', ') : (a.title ?? a.name ?? 'Task');
-    const due = a.dueDate ? ` (due ${new Date(a.dueDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })})` : '';
+    const due = a.dueDate ? ` (due ${formatDateDayMonthYear(a.dueDate)})` : '';
     return `${labels || 'Task'}${due}`;
   };
 

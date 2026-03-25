@@ -81,11 +81,17 @@ export function cashflowStatementMetrics(data) {
   if (!d || typeof d !== 'object') {
     return { operating: 0, investing: 0, financing: 0, netChange: 0, openingCash: 0, closingCash: 0 };
   }
+  const inflowT = d.cash_inflow?.total;
+  const outflowT = d.cash_outflow?.total;
+  const operatingFromCashIO =
+    inflowT != null && outflowT != null
+      ? (Number(inflowT) || 0) - (Number(outflowT) || 0)
+      : null;
   const operating = Number(
     d.operating?.total ??
     d.operating_activities?.total ??
     d.operating_activities?.net ??
-    0
+    (operatingFromCashIO != null ? operatingFromCashIO : 0)
   ) || 0;
   const investing = Number(
     d.investing?.total ??
@@ -161,14 +167,43 @@ function normalizeCashflowRows(value) {
   return [];
 }
 
+/** Per-account balances: `cash_balance_by_account`, `cash_accounts.breakdown`, etc. */
+function cashAccountRowsFromApi(d) {
+  if (!d || typeof d !== 'object') return [];
+  const out = [];
+  const seen = new Set();
+  function addFromMap(map) {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+    for (const [k, v] of Object.entries(map)) {
+      if (k === 'total' || !v || typeof v !== 'object' || Array.isArray(v)) continue;
+      const code = String(v.accountCode ?? v.account_code ?? k).trim();
+      const bal = Number(v.balance ?? v.amount ?? v.value ?? 0);
+      if (!Number.isFinite(bal)) continue;
+      const label = v.accountName ?? v.account_name ?? code;
+      const key = `cashAcc_${code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ key, label: String(label || code), amount: bal });
+    }
+  }
+  addFromMap(d.cash_balance_by_account);
+  const nested =
+    d.cash_accounts?.breakdown ?? d.cash_accounts?.accounts ?? d.cash_accounts?.by_account;
+  if (nested && typeof nested === 'object') addFromMap(nested);
+  return out;
+}
+
 export function cashflowDetailedSections(data) {
   const d = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
   const metrics = cashflowStatementMetrics(d);
+  const skipOperatingAggRows =
+    (Array.isArray(d?.cash_inflow?.categories) && d.cash_inflow.categories.length > 0) ||
+    (Array.isArray(d?.cash_outflow?.categories) && d.cash_outflow.categories.length > 0);
   const operating = normalizeCashflowRows(
     d?.operating?.lines ??
     d?.operating ??
     d?.operating_activities?.lines ??
-    d?.operating_activities ??
+    (!skipOperatingAggRows ? d?.operating_activities : null) ??
     d?.detailed_breakdown?.income?.categories
   );
   const cashInByCategory = Array.isArray(d?.byCategory?.cashIn)
@@ -185,7 +220,27 @@ export function cashflowDetailedSections(data) {
       amount: -(Math.abs(Number(r.total ?? r.amount ?? 0) || 0)),
     }))
     : [];
-  const operatingMerged = [...operating, ...cashInByCategory, ...cashOutByCategory];
+  const cashInflowCategories = Array.isArray(d?.cash_inflow?.categories)
+    ? d.cash_inflow.categories.map((r) => ({
+        key: `cashIn_${r.category ?? r._id ?? 'other'}`,
+        label: toTitleFromKey(r.category ?? r._id ?? 'cash in'),
+        amount: Number(r.total ?? r.amount ?? 0) || 0,
+      }))
+    : [];
+  const cashOutflowCategories = Array.isArray(d?.cash_outflow?.categories)
+    ? d.cash_outflow.categories.map((r) => ({
+        key: `cashOut_${r.category ?? r._id ?? 'other'}`,
+        label: toTitleFromKey(r.category ?? r._id ?? 'cash out'),
+        amount: -(Math.abs(Number(r.total ?? r.amount ?? 0) || 0)),
+      }))
+    : [];
+  const operatingMerged = [
+    ...operating,
+    ...cashInByCategory,
+    ...cashOutByCategory,
+    ...cashInflowCategories,
+    ...cashOutflowCategories,
+  ];
   const operatingIncome = operatingMerged.filter((r) => r.amount >= 0);
   const operatingExpense = operatingMerged.filter((r) => r.amount < 0);
   const investing = normalizeCashflowRows(
@@ -200,13 +255,15 @@ export function cashflowDetailedSections(data) {
     d?.financing_activities?.lines ??
     d?.financing_activities
   );
-  const cashAccounts = normalizeCashflowRows(
-    d?.cashAndCashEquivalents ??
-    d?.cashAndCashEquivalent ??
-    d?.cashAccounts ??
-    d?.cashBalances ??
-    d?.cash_balance_by_account
-  );
+  const cashAccounts = [
+    ...normalizeCashflowRows(
+      d?.cashAndCashEquivalents ??
+      d?.cashAndCashEquivalent ??
+      d?.cashAccounts ??
+      d?.cashBalances
+    ),
+    ...cashAccountRowsFromApi(d),
+  ];
   // Keep summary totals and detailed line arrays side by side without key collisions.
   return {
     ...metrics,

@@ -6,7 +6,9 @@ import { getBookings, getBooking, updateBooking, createBooking } from '@/api/boo
 import { getGuestBookings, updateGuestBooking } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
+import { listFromSuccessEnvelope, metaFromSuccessEnvelope } from '@/utils/apiEnvelope';
 import { getOccupiedRoomDayKeys } from '@/utils/availability';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { getApiErrorHint, looksLikeLedgerPostError } from '@/utils/apiError';
 import RoomBookingCalendarModal from '@/components/dashboard/RoomBookingCalendarModal';
 
@@ -52,9 +54,7 @@ function statusBadge(s) {
 }
 
 function fmtDate(val) {
-  if (!val) return '—';
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateDayMonthYear(val);
 }
 
 function fmtNum(n) {
@@ -255,7 +255,7 @@ export default function BookingsPage() {
     enabled: activeTab === 'list',
   });
 
-  const rawList = Array.isArray(data) ? data : (data?.data ?? []);
+  const rawList = useMemo(() => listFromSuccessEnvelope(data), [data]);
   const list = useMemo(() => {
     if (!search.trim()) return rawList;
     const q = search.trim().toLowerCase();
@@ -268,7 +268,7 @@ export default function BookingsPage() {
     );
   }, [rawList, search]);
 
-  const meta = data?.meta ?? {};
+  const meta = metaFromSuccessEnvelope(data);
   const totalCount = meta.total ?? list.length;
 
   const { data: selectedBooking, isLoading: loadingDetail } = useQuery({
@@ -1117,8 +1117,7 @@ export default function BookingsPage() {
                       return (
                         <th key={d.toISOString()} className={`availability-day-col ${isToday ? 'today' : ''}`}>
                           <span className="availability-day-weekday">{d.toLocaleDateString('en-ZA', { weekday: 'short' })}</span>
-                          <span className="availability-day-num">{d.getDate()}</span>
-                          <span className="availability-day-month">{d.toLocaleDateString('en-ZA', { month: 'short' })}</span>
+                          <span className="availability-day-dmy">{formatDateDayMonthYear(d)}</span>
                           {isToday && <span className="availability-day-today">Today</span>}
                         </th>
                       );
@@ -1171,8 +1170,8 @@ export default function BookingsPage() {
                           const guests = bookedByKey.get(key) || [];
                           const isToday = d.toDateString() === todayDateString;
                           const tooltip = booked
-                            ? `${name} · ${d.toLocaleDateString('en-ZA')} · Booked${guests.length ? ` by ${guests.map((g) => g.guestName).join(', ')}` : ''}`
-                            : `${name} · ${d.toLocaleDateString('en-ZA')} · Available`;
+                            ? `${name} · ${formatDateDayMonthYear(d)} · Booked${guests.length ? ` by ${guests.map((g) => g.guestName).join(', ')}` : ''}`
+                            : `${name} · ${formatDateDayMonthYear(d)} · Available`;
                           return (
                             <td
                               key={key}

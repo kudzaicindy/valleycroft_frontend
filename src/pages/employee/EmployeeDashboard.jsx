@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { formatDateWeekdayDayMonthYear } from '@/utils/formatDate';
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -12,7 +13,7 @@ export default function EmployeeDashboard() {
   const { user } = useAuth();
   const firstName = (user && (user.name || user.firstName || user.email || '').split(/\s+/)[0]) || 'there';
   const today = new Date();
-  const dayLabel = today.toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' });
+  const dayLabel = formatDateWeekdayDayMonthYear(today);
 
   return (
     <div className="employee-dashboard">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getMyWorklogs } from '@/api/staff';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 
 const LIMIT = 20;
 
@@ -21,10 +22,8 @@ function formatTime(log) {
   return '—';
 }
 
-function formatDate(val) {
-  if (!val) return '—';
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+function formatWorklogDate(val) {
+  return formatDateDayMonthYear(val);
 }
 
 export default function MyLogsPage() {
@@ -63,10 +62,10 @@ export default function MyLogsPage() {
                 {!isLoading && list.length === 0 && <tr><td colSpan={5}>No logs yet</td></tr>}
                 {!isLoading && list.map((log) => (
                   <tr key={log._id}>
-                    <td>{formatDate(log.workDate ?? log.work_date ?? log.date ?? log.createdAt)}</td>
+                    <td>{formatWorklogDate(log.workDate ?? log.work_date ?? log.date ?? log.createdAt)}</td>
                     <td>{log.period || 'daily'}</td>
                     <td>{formatTime(log)}</td>
-                    <td>{formatDate(log.createdAt ?? log.created_at)}</td>
+                    <td>{formatWorklogDate(log.createdAt ?? log.created_at)}</td>
                     <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.workDone ?? log.work_done ?? '—'}</td>
                   </tr>
                 ))}

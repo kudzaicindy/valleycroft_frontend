@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTransactions,
@@ -10,13 +11,25 @@ import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel } from '@/consta
 import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
-import { newIdempotencyKey, isTransactionLedgerPosted } from '@/utils/transactionLedgerUi';
+import { parseLocalDate } from '@/utils/availability';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
+import { newIdempotencyKey, isTransactionLedgerPosted, getTransactionRowDebitCreditNet } from '@/utils/transactionLedgerUi';
+import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 
 const LIMIT = 20;
 
 function moneyOrBlank(n) {
   if (n == null || Number.isNaN(Number(n))) return '';
   return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
+}
+
+/** Table display: day + full month + year (API may send YYYY-MM-DD or ISO). */
+function formatTransactionTableDate(val) {
+  if (val == null || val === '') return '—';
+  const parsed = parseLocalDate(val);
+  if (parsed) return formatDateDayMonthYear(parsed);
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? String(val) : formatDateDayMonthYear(d);
 }
 
 const emptyForm = () => ({
@@ -33,6 +46,11 @@ const emptyForm = () => ({
 
 export default function TransactionsPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const qpStart = searchParams.get('start') || '';
+  const qpEnd = searchParams.get('end') || '';
+  const qpCategory = searchParams.get('category') || '';
+  const qpType = searchParams.get('type') || '';
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -40,10 +58,23 @@ export default function TransactionsPage() {
   const [saveError, setSaveError] = useState(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['transactions', page],
-    queryFn: () => getTransactions({ page, limit: LIMIT }),
+    queryKey: ['transactions', page, qpStart, qpEnd, qpCategory],
+    queryFn: async () => {
+      const res = await getTransactions({
+        page,
+        limit: LIMIT,
+        ...(qpStart ? { start: qpStart } : {}),
+        ...(qpEnd ? { end: qpEnd } : {}),
+        ...(qpCategory ? { category: qpCategory } : {}),
+      });
+      return normalizeTransactionsFetchResult(res);
+    },
   });
-  const list = Array.isArray(data) ? data : (data?.data ?? data?.transactions ?? []);
+  const listRaw = data?.list ?? [];
+  const list = useMemo(() => {
+    if (!qpType) return listRaw;
+    return listRaw.filter((t) => (t.type || '') === qpType);
+  }, [listRaw, qpType]);
   const meta = data?.meta ?? {};
 
   const openAdd = useCallback(() => {
@@ -385,17 +416,11 @@ export default function TransactionsPage() {
                     const jid = t.journalEntryId;
                     const posted = isTransactionLedgerPosted(t);
                     const refundLike = t.category === 'refund';
-                    const rowDebit = refundLike
-                      ? t.debit ?? t.amount
-                      : t.debit ?? (t.type === 'expense' ? t.amount : 0);
-                    const rowCredit = refundLike
-                      ? t.credit ?? t.amount
-                      : t.credit ?? (t.type === 'income' ? t.amount : 0);
-                    const rowNet = t.net ?? ((Number(rowCredit) || 0) - (Number(rowDebit) || 0));
+                    const { rowDebit, rowCredit, rowNet } = getTransactionRowDebitCreditNet(t);
                     const runningNet = t.netBalance ?? ((Number(t.creditBalance) || 0) - (Number(t.debitBalance) || 0));
                     return (
                       <tr key={id || JSON.stringify(t)}>
-                        <td>{t.date || '—'}</td>
+                        <td>{formatTransactionTableDate(t.date)}</td>
                         <td>
                           <span
                             className={

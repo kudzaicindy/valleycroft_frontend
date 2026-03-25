@@ -4,6 +4,7 @@ import './LandingPage.css';
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [navOpen, setNavOpen] = useState(false);
   const [bookingType, setBookingType] = useState('bnb');
   const [modalOpen, setModalOpen] = useState(false);
   const [bookingContext, setBookingContext] = useState({ name: '', type: 'room' });
@@ -29,6 +30,8 @@ export default function LandingPage() {
   };
 
   const closeModal = () => setModalOpen(false);
+
+  const closeNav = () => setNavOpen(false);
 
   const scrollToRooms = () => {
     roomsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -68,6 +71,20 @@ export default function LandingPage() {
     checkIn.addEventListener('change', onChange);
     return () => checkIn.removeEventListener('change', onChange);
   }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('landing-nav-open', navOpen);
+    return () => document.body.classList.remove('landing-nav-open');
+  }, [navOpen]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
 
   useEffect(() => {
     const obs = new IntersectionObserver(
@@ -122,15 +139,15 @@ export default function LandingPage() {
   ];
 
   const testimonials = [
-    { stars: '★★★★★', text: '"An absolutely magical experience. The Loft Suite was breathtaking — we woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: 'February 2026 · Loft Suite', avatarBg: 'var(--forest)' },
-    { stars: '★★★★★', text: '"We hosted our company strategy day here and it was perfect. The team was relaxed, focused, and inspired by the environment. We\'ll be back every quarter."', author: 'LV', name: 'Lerato van Wyk', date: 'January 2026 · Corporate Event', avatarBg: 'var(--gold)' },
-    { stars: '★★★★★', text: '"Our wedding was beyond anything we could have dreamed of. The staff were incredible and every detail was handled perfectly. Our guests still talk about it."', author: 'TM', name: 'Thabo & Mercy', date: 'December 2025 · Wedding', avatarBg: 'var(--sage)' },
+    { stars: '★★★★★', text: '"An absolutely magical experience. The Loft Suite was breathtaking — we woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Loft Suite', avatarBg: 'var(--forest)' },
+    { stars: '★★★★★', text: '"We hosted our company strategy day here and it was perfect. The team was relaxed, focused, and inspired by the environment. We\'ll be back every quarter."', author: 'LV', name: 'Lerato van Wyk', date: '18 January 2026 · Corporate Event', avatarBg: 'var(--gold)' },
+    { stars: '★★★★★', text: '"Our wedding was beyond anything we could have dreamed of. The staff were incredible and every detail was handled perfectly. Our guests still talk about it."', author: 'TM', name: 'Thabo & Mercy', date: '12 December 2025 · Wedding', avatarBg: 'var(--sage)' },
   ];
 
   return (
     <>
-      <nav>
-        <a href="#" className="nav-brand">
+      <nav className={navOpen ? 'nav-is-open' : ''} aria-label="Primary">
+        <a href="#" className="nav-brand" onClick={closeNav}>
           <div className="nav-icon"><i className="fas fa-leaf" /></div>
           <div>
             <div className="nav-name">ValleyCroft</div>
@@ -147,6 +164,55 @@ export default function LandingPage() {
           <Link to="/login" className="btn-nav btn-outline-nav"><i className="fas fa-sign-in-alt" style={{ fontSize: '11px' }} /> Login</Link>
           <Link to="/booking-track" className="btn-nav btn-outline-nav"><i className="fas fa-search" style={{ fontSize: '11px' }} /> Track Booking</Link>
           <Link to="/booking" className="btn-nav btn-gold-nav"><i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book Now</Link>
+        </div>
+        <button
+          type="button"
+          className="nav-menu-toggle"
+          aria-expanded={navOpen}
+          aria-controls="landing-nav-drawer"
+          aria-label={navOpen ? 'Close menu' : 'Open menu'}
+          onClick={() => setNavOpen((o) => !o)}
+        >
+          <i className={navOpen ? 'fas fa-times' : 'fas fa-bars'} aria-hidden />
+        </button>
+        <div
+          className={`nav-drawer-backdrop ${navOpen ? 'open' : ''}`}
+          onClick={closeNav}
+          role="presentation"
+        />
+        <div
+          id="landing-nav-drawer"
+          className={`nav-drawer ${navOpen ? 'open' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+        >
+          <a href="#accommodation" className="nav-drawer-link" onClick={closeNav}>
+            Accommodation
+          </a>
+          <a href="#events" className="nav-drawer-link" onClick={closeNav}>
+            Events &amp; Venues
+          </a>
+          <a href="#about" className="nav-drawer-link" onClick={closeNav}>
+            About the Farm
+          </a>
+          <a href="#contact" className="nav-drawer-link" onClick={closeNav}>
+            Contact
+          </a>
+          <a href="#track" className="nav-drawer-link" onClick={closeNav}>
+            Track booking
+          </a>
+          <div className="nav-drawer-actions">
+            <Link to="/login" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
+              <i className="fas fa-sign-in-alt" style={{ fontSize: '11px' }} /> Login
+            </Link>
+            <Link to="/booking-track" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
+              <i className="fas fa-search" style={{ fontSize: '11px' }} /> Track booking
+            </Link>
+            <Link to="/booking" className="btn-nav btn-gold-nav nav-drawer-btn" onClick={closeNav}>
+              <i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book now
+            </Link>
+          </div>
         </div>
       </nav>
 

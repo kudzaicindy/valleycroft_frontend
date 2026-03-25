@@ -2,11 +2,10 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getRoomBookings } from '@/api/rooms';
 import { parseLocalDate } from '@/utils/availability';
+import { formatDateDayMonthYear, formatMonthYear } from '@/utils/formatDate';
 
 function fmtDate(val) {
-  if (!val) return '—';
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateDayMonthYear(val);
 }
 
 function sameDay(a, b) {
@@ -144,7 +143,7 @@ export default function RoomBookingCalendarModal({ roomId, roomTitle, guestBooki
                 <i className="fas fa-chevron-left" />
               </button>
               <span className="rooms-events-cal-label">
-                {calendarMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                {formatMonthYear(calendarMonth)}
               </span>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => shiftCalendarMonth(1)} aria-label="Next month">
                 <i className="fas fa-chevron-right" />

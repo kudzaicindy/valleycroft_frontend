@@ -10,6 +10,7 @@ import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
 import { newIdempotencyKey, isTransactionLedgerPosted } from '@/utils/transactionLedgerUi';
+import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 
 const LIMIT = 20;
 
@@ -47,10 +48,13 @@ export default function RefundsPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', 'refunds', page],
-    queryFn: () => getTransactions({ page, limit: LIMIT, category: 'refund' }),
+    queryFn: async () => {
+      const res = await getTransactions({ page, limit: LIMIT, category: 'refund' });
+      return normalizeTransactionsFetchResult(res);
+    },
   });
 
-  const listRaw = Array.isArray(data) ? data : (data?.data ?? data?.transactions ?? []);
+  const listRaw = data?.list ?? [];
   const list = listRaw.filter((t) => t.category === 'refund');
   const meta = data?.meta ?? {};
 

@@ -17,6 +17,21 @@ export function getTransactions(params) {
   return axiosInstance.get('/api/finance/transactions', { params: params || {} });
 }
 
+/** Rolled-up KPIs: income/expense MTD, debtors, bookings snapshot, activity, etc. */
+export function getFinanceDashboard(params) {
+  return axiosInstance.get('/api/finance/dashboard', { params: params || {} });
+}
+
+/** Transaction rows in ledger-style columns (when you need GL-shaped rows from finance). */
+export function getTransactionsLedgerFormat(params) {
+  return axiosInstance.get('/api/finance/transactions-ledger-format', { params: params || {} });
+}
+
+/** Discovery: statement URL patterns for building a reports menu. */
+export function getStatementsCatalog() {
+  return axiosInstance.get('/api/statements/catalog');
+}
+
 /**
  * Create a transaction. Do not send `journalEntryId` — the API sets it when the ledger posts.
  * Body: type, category, description, amount, debitAccount, creditAccount, date?, reference?, booking?

@@ -1,13 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getEmployees, getWorklogs, getTasksByEmployee, createTasks } from '@/api/staff';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 
 const LIMIT = 50;
 
 function fmtDate(val) {
-  if (!val) return '—';
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateDayMonthYear(val);
 }
 
 function empName(emp) {

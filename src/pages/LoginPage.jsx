@@ -5,6 +5,7 @@ import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { login as apiLogin } from '@/api/auth';
 import { useState } from 'react';
+import './LoginPage.css';
 
 const ROLE_HOME = { admin: '/admin/dashboard', ceo: '/ceo/dashboard', finance: '/finance/dashboard', employee: '/employee/dashboard' };
 
@@ -66,13 +67,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-[#f4f7f2] via-[#f8faf7] to-[#e9f0e4] px-4 py-8">
-      <div className="pointer-events-none absolute -top-28 -left-20 h-72 w-72 rounded-full bg-[#6b8b52]/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-[#2d5016]/15 blur-3xl" />
+    <div className="login-page relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#f4f7f2] via-[#f8faf7] to-[#e9f0e4] px-4 py-8">
+      <div className="login-page__blob login-page__blob--top pointer-events-none absolute -top-28 -left-20 h-72 w-72 rounded-full bg-[#6b8b52]/20 blur-3xl" />
+      <div className="login-page__blob login-page__blob--bottom pointer-events-none absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-[#2d5016]/15 blur-3xl" />
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center">
-        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-[#d8e3cf] bg-white shadow-[0_16px_50px_rgba(28,53,16,0.16)] lg:grid-cols-2">
-          <section className="hidden bg-gradient-to-br from-[#244015] to-[#385f21] p-10 text-white lg:flex lg:flex-col lg:justify-between">
+      <div className="relative mx-auto flex w-full max-w-5xl shrink-0 items-center justify-center">
+        <div className="login-card grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-[#d8e3cf] bg-white shadow-[0_16px_50px_rgba(28,53,16,0.16)] lg:grid-cols-2">
+          <section className="login-hero hidden bg-gradient-to-br from-[#244015] to-[#385f21] p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div>
               <p className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90">
                 ValleyCroft
@@ -91,7 +92,7 @@ export default function LoginPage() {
             </div>
           </section>
 
-          <section className="p-6 sm:p-10">
+          <section className="login-panel p-6 sm:p-10">
             <div className="mx-auto w-full max-w-sm">
               <h2 className="text-2xl font-semibold text-[#1f3220]">Welcome back</h2>
               <p className="mt-1 text-sm text-[#607163]">
@@ -107,7 +108,7 @@ export default function LoginPage() {
                     id="email"
                     type="email"
                     autoComplete="email"
-                    className="w-full rounded-xl border border-[#cfdbca] bg-white px-3.5 py-2.5 text-sm text-[#1f3220] shadow-sm transition focus:border-[#2f5a1f] focus:outline-none focus:ring-2 focus:ring-[#7ea06c]/25"
+                    className="login-field w-full rounded-xl border border-[#cfdbca] bg-white px-3.5 py-2.5 text-sm text-[#1f3220] shadow-sm transition focus:border-[#2f5a1f] focus:outline-none focus:ring-2 focus:ring-[#7ea06c]/25"
                     placeholder="you@valleycroft.com"
                     {...register('email')}
                   />
@@ -125,14 +126,14 @@ export default function LoginPage() {
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="current-password"
-                      className="w-full rounded-xl border border-[#cfdbca] bg-white px-3.5 py-2.5 pr-20 text-sm text-[#1f3220] shadow-sm transition focus:border-[#2f5a1f] focus:outline-none focus:ring-2 focus:ring-[#7ea06c]/25"
+                      className="login-field w-full rounded-xl border border-[#cfdbca] bg-white px-3.5 py-2.5 pr-20 text-sm text-[#1f3220] shadow-sm transition focus:border-[#2f5a1f] focus:outline-none focus:ring-2 focus:ring-[#7ea06c]/25"
                       placeholder="Enter your password"
                       {...register('password')}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-semibold text-[#2f5a1f] hover:bg-[#eef4e9]"
+                      className="login-toggle absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-semibold text-[#2f5a1f] hover:bg-[#eef4e9]"
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? 'Hide' : 'Show'}
@@ -150,7 +151,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full rounded-xl bg-[#2d5016] py-2.5 text-sm font-semibold text-white transition hover:bg-[#234111] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="login-submit w-full rounded-xl bg-[#2d5016] py-2.5 text-sm font-semibold text-white transition hover:bg-[#234111] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting ? 'Signing in…' : 'Sign in'}
                 </button>

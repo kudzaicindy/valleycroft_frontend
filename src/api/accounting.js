@@ -1,5 +1,38 @@
 import { axiosInstance } from './axiosInstance';
 
+async function getWithAliases(paths, params) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.get(path, { params: params || {} });
+    } catch (err) {
+      if (err?.response?.status !== 404) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No matching accounts route found.');
+}
+
+/**
+ * Chart of accounts — prefers `/api/accounting/accounts`, falls back to legacy finance routes.
+ */
+export function getAccounts(params) {
+  return getWithAliases(
+    ['/api/accounting/accounts', '/api/finance/accounts', '/api/finance/chart-of-accounts'],
+    params
+  );
+}
+
+/** `POST /api/accounting/accounts` — name, type, subType, normalBalance, code | autoCode, optional opening fields. */
+export function createAccount(body) {
+  return axiosInstance.post('/api/accounting/accounts', body);
+}
+
+/** `PUT /api/accounting/accounts/:id` — opening fields, name, isActive, parentCode (not code). */
+export function updateAccount(accountId, body) {
+  return axiosInstance.put(`/api/accounting/accounts/${accountId}`, body);
+}
+
 /**
  * Ledger / double-entry accounting API (`/api/accounting`).
  * Paths follow common REST shapes; align with your backend ACCOUNTING.md if names differ.

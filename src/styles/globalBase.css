@@ -1,0 +1,60 @@
+/* Shared global theme for all pages (LandingPage.css subset) */
+:root {
+  --forest: #2D5016;
+  --forest-d: #1e3610;
+  --forest-l: #3d6b1e;
+  --olive: #5C7A2A;
+  --sage: #8FA85A;
+  --sage-l: #b5c98a;
+  --gold: #B8892A;
+  --gold-l: #d4a84b;
+  --gold-pale: #f0d89a;
+  --khaki: #C8B882;
+  --cream: #F5F0E8;
+  --linen: #EDE8DC;
+  --linen-d: #d8d2c4;
+  --white: #FDFBF7;
+  --text: #1C2B0E;
+  --text-mid: #3D4F2A;
+  --text-muted: #7A8B6A;
+  --red: #C0392B;
+  --shadow: 0 4px 24px rgba(45, 80, 22, 0.12);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--white);
+  color: var(--text);
+  overflow-x: hidden;
+  margin: 0;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+
+input, select, textarea {
+  font-family: 'DM Sans', sans-serif;
+}
+

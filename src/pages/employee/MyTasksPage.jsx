@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getTasksByEmployee } from '@/api/staff';
+import { formatDateDayMonthYear } from '@/utils/formatDate';
 
 function fmtDate(val) {
-  if (!val) return '—';
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDateDayMonthYear(val);
 }
 
 export default function MyTasksPage() {

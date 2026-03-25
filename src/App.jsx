@@ -22,6 +22,7 @@ const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
 const CeoLayout = lazy(() => import('@/pages/ceo/CeoLayout'));
 const CeoDashboard = lazy(() => import('@/pages/ceo/CeoDashboard'));
 const FinanceLayout = lazy(() => import('@/pages/finance/FinanceLayout'));
+const FinanceDashboard = lazy(() => import('@/pages/finance/FinanceDashboard'));
 const EmployeeLayout = lazy(() => import('@/pages/employee/EmployeeLayout'));
 const EmployeeDashboard = lazy(() => import('@/pages/employee/EmployeeDashboard'));
 const EmployeeLogsPlaceholder = lazy(() => import('@/pages/employee/EmployeeLogsPlaceholder'));
@@ -40,6 +41,8 @@ const RoomsPage = lazy(() => import('@/pages/dashboard/RoomsPage'));
 const SalaryPage = lazy(() => import('@/pages/dashboard/SalaryPage'));
 const AuditPage = lazy(() => import('@/pages/dashboard/AuditPage'));
 const TransactionsPage = lazy(() => import('@/pages/dashboard/TransactionsPage'));
+const BookingPaymentsPage = lazy(() => import('@/pages/dashboard/BookingPaymentsPage'));
+const ChartOfAccountsPage = lazy(() => import('@/pages/dashboard/ChartOfAccountsPage'));
 const DebtorsPage = lazy(() => import('@/pages/dashboard/DebtorsPage'));
 const SuppliersPage = lazy(() => import('@/pages/dashboard/SuppliersPage'));
 const InvoicesPage = lazy(() => import('@/pages/dashboard/InvoicesPage'));
@@ -107,6 +110,7 @@ function App() {
                 <Route path="income-statement" element={<IncomeStatement />} />
                 <Route path="balance-sheet" element={<BalanceSheet />} />
                 <Route path="ledger" element={<LedgerPage />} />
+                <Route path="chart-of-accounts" element={<ChartOfAccountsPage />} />
                 <Route path="pl" element={<Navigate to="ledger" replace />} />
                 <Route path="debtors" element={<DebtorsPage />} />
                 <Route path="suppliers" element={<SuppliersPage />} />
@@ -125,8 +129,9 @@ function App() {
                 }
               >
                 <Route index element={<Navigate to="dashboard" replace />} />
-                <Route path="dashboard" element={<FinancePage />} />
+                <Route path="dashboard" element={<FinanceDashboard />} />
                 <Route path="transactions" element={<TransactionsPage />} />
+                <Route path="booking-payments" element={<BookingPaymentsPage />} />
                 <Route path="salary" element={<SalaryPage />} />
                 <Route path="suppliers" element={<SuppliersPage />} />
                 <Route path="debtors" element={<DebtorsPage />} />
@@ -136,6 +141,7 @@ function App() {
                 <Route path="income-statement" element={<IncomeStatement />} />
                 <Route path="balance-sheet" element={<BalanceSheet />} />
                 <Route path="ledger" element={<LedgerPage />} />
+                <Route path="chart-of-accounts" element={<ChartOfAccountsPage />} />
                 <Route path="pl" element={<Navigate to="ledger" replace />} />
                 <Route path="audit" element={<AuditPage />} />
               </Route>
