@@ -59,7 +59,8 @@ export default function LoginPage() {
         typeof msg === 'string' &&
         (msg.toLowerCase().includes('network error') || msg.toLowerCase().includes('failed to fetch'));
       if (networkDown) {
-        setError('Cannot reach API server at VITE_API_URL (currently http://localhost:5000). Start backend server or update your .env VITE_API_URL.');
+        const apiUrl = import.meta.env.VITE_API_URL || 'https://valleycroft-backend.onrender.com';
+        setError(`Cannot reach API server. Current VITE_API_URL is not reachable: ${apiUrl}`);
       } else {
         setError(typeof msg === 'string' ? msg : 'Login failed');
       }

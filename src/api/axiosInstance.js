@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Vite exposes env vars at build time via `import.meta.env.*`.
+// On Vercel builds, if `VITE_API_URL` isn't configured, we should not fall back
+// to localhost because the browser can't reach your developer machine.
+const DEFAULT_API_URL = 'https://valleycroft-backend.onrender.com';
+const baseURL = import.meta.env.VITE_API_URL || DEFAULT_API_URL;
 
 export const axiosInstance = axios.create({
   baseURL,
