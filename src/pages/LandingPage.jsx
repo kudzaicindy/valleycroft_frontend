@@ -421,7 +421,7 @@ export default function LandingPage() {
             <p style={{ fontSize: 15, color: 'rgba(255,255,255,.65)', maxWidth: 540, lineHeight: 1.7 }}>From intimate garden gatherings to grand celebrations — ValleyCroft&apos;s venues offer unmatched beauty in the heart of South Africa&apos;s countryside.</p>
           </div>
           <div className="events-grid">
-            {events.map((event) => (
+            {events.slice(0, 3).map((event) => (
               <div key={event.name} className="event-card" data-animate>
                 <div className="event-icon">{event.icon}</div>
                 <div className="event-name">{event.name}</div>
@@ -463,13 +463,35 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <div className="cta-banner">
-        <div className="cta-inner">
-          <h2 className="cta-heading">Ready to escape to the farm?</h2>
-          <p className="cta-desc">Book your stay or enquire about your next event.</p>
-          <div className="cta-buttons">
-            <Link to="/booking" className="btn-cta btn-cta-primary"><i className="fas fa-calendar-check" /> Book Your Stay</Link>
-            <a href="#book" className="btn-cta btn-cta-secondary">Enquire</a>
+      <div className="cta-track-row">
+        <div className="cta-banner">
+          <div className="cta-inner">
+            <h2 className="cta-heading">Ready to escape to the farm?</h2>
+            <p className="cta-desc">Book your stay or enquire about your next event.</p>
+            <div className="cta-buttons">
+              <Link to="/booking" className="btn-cta btn-cta-primary"><i className="fas fa-calendar-check" /> Book Your Stay</Link>
+              <a href="#book" className="btn-cta btn-cta-secondary">Enquire</a>
+            </div>
+          </div>
+        </div>
+
+        <div className="track-banner" id="track">
+          <div className="track-inner">
+            <div className="track-left">
+              <h3 className="track-title">Track Your Booking</h3>
+              <p className="track-desc">Enter your booking reference number and email address to view your reservation status, make changes, or download your confirmation.</p>
+            </div>
+            <div className="track-form">
+              <div className="track-input-wrap">
+                <div className="track-label">Booking Reference</div>
+                <input type="text" className="track-input" ref={trackRefRef} placeholder="e.g. VC-2026-089" />
+              </div>
+              <div className="track-input-wrap">
+                <div className="track-label">Your Email</div>
+                <input type="email" className="track-input" ref={trackEmailRef} placeholder="you@email.com" />
+              </div>
+              <button type="button" className="btn-track" onClick={trackBooking}><i className="fas fa-search" /> Track Booking</button>
+            </div>
           </div>
         </div>
       </div>
@@ -485,26 +507,6 @@ export default function LandingPage() {
           </p>
           <Link to="/booking" className="btn-modal-primary">Continue to booking</Link>
           <p className="modal-contact">Or contact us: <a href="mailto:stay@valleycroft.com">stay@valleycroft.com</a> · <a href="tel:+27112345678">+27 11 234 5678</a></p>
-        </div>
-      </div>
-
-      <div className="track-banner" id="track">
-        <div className="track-inner">
-          <div className="track-left">
-            <h3 className="track-title">Track Your Booking</h3>
-            <p className="track-desc">Enter your booking reference number and email address to view your reservation status, make changes, or download your confirmation.</p>
-          </div>
-          <div className="track-form">
-            <div className="track-input-wrap">
-              <div className="track-label">Booking Reference</div>
-              <input type="text" className="track-input" ref={trackRefRef} placeholder="e.g. VC-2026-089" />
-            </div>
-            <div className="track-input-wrap">
-              <div className="track-label">Your Email</div>
-              <input type="email" className="track-input" ref={trackEmailRef} placeholder="you@email.com" />
-            </div>
-            <button type="button" className="btn-track" onClick={trackBooking}><i className="fas fa-search" /> Track Booking</button>
-          </div>
         </div>
       </div>
 
