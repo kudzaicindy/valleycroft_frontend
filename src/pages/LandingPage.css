@@ -844,6 +844,36 @@ body.landing-nav-open {
   text-transform: uppercase;
 }
 
+.room-tag--popular {
+  background: rgba(184, 137, 42, 0.95);
+  color: var(--forest-d);
+}
+
+.room-tag--cosy {
+  background: rgba(143, 168, 90, 0.95);
+  color: var(--white);
+}
+
+.room-tag--family {
+  background: rgba(45, 80, 22, 0.95);
+  color: var(--gold-l);
+}
+
+.room-tag--premium {
+  background: rgba(240, 216, 154, 0.92);
+  color: var(--forest-d);
+}
+
+.room-tag--bright {
+  background: rgba(92, 122, 42, 0.95);
+  color: var(--white);
+}
+
+.room-tag--venue {
+  background: rgba(30, 54, 16, 0.95);
+  color: var(--gold-l);
+}
+
 .room-avail {
   position: absolute;
   top: 14px;

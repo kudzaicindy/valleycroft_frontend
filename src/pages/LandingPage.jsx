@@ -175,46 +175,46 @@ export default function LandingPage() {
         >
           <i className={navOpen ? 'fas fa-times' : 'fas fa-bars'} aria-hidden />
         </button>
-        <div
-          className={`nav-drawer-backdrop ${navOpen ? 'open' : ''}`}
-          onClick={closeNav}
-          role="presentation"
-        />
-        <div
-          id="landing-nav-drawer"
-          className={`nav-drawer ${navOpen ? 'open' : ''}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Site menu"
-        >
-          <a href="#accommodation" className="nav-drawer-link" onClick={closeNav}>
-            Accommodation
-          </a>
-          <a href="#events" className="nav-drawer-link" onClick={closeNav}>
-            Events &amp; Venues
-          </a>
-          <a href="#about" className="nav-drawer-link" onClick={closeNav}>
-            About the Farm
-          </a>
-          <a href="#contact" className="nav-drawer-link" onClick={closeNav}>
-            Contact
-          </a>
-          <a href="#track" className="nav-drawer-link" onClick={closeNav}>
-            Track booking
-          </a>
-          <div className="nav-drawer-actions">
-            <Link to="/login" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
-              <i className="fas fa-sign-in-alt" style={{ fontSize: '11px' }} /> Login
-            </Link>
-            <Link to="/booking-track" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
-              <i className="fas fa-search" style={{ fontSize: '11px' }} /> Track booking
-            </Link>
-            <Link to="/booking" className="btn-nav btn-gold-nav nav-drawer-btn" onClick={closeNav}>
-              <i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book now
-            </Link>
-          </div>
-        </div>
       </nav>
+      <div
+        className={`nav-drawer-backdrop ${navOpen ? 'open' : ''}`}
+        onClick={closeNav}
+        role="presentation"
+      />
+      <div
+        id="landing-nav-drawer"
+        className={`nav-drawer ${navOpen ? 'open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Site menu"
+      >
+        <a href="#accommodation" className="nav-drawer-link" onClick={closeNav}>
+          Accommodation
+        </a>
+        <a href="#events" className="nav-drawer-link" onClick={closeNav}>
+          Events &amp; Venues
+        </a>
+        <a href="#about" className="nav-drawer-link" onClick={closeNav}>
+          About the Farm
+        </a>
+        <a href="#contact" className="nav-drawer-link" onClick={closeNav}>
+          Contact
+        </a>
+        <a href="#track" className="nav-drawer-link" onClick={closeNav}>
+          Track booking
+        </a>
+        <div className="nav-drawer-actions">
+          <Link to="/login" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
+            <i className="fas fa-sign-in-alt" style={{ fontSize: '11px' }} /> Login
+          </Link>
+          <Link to="/booking-track" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
+            <i className="fas fa-search" style={{ fontSize: '11px' }} /> Track booking
+          </Link>
+          <Link to="/booking" className="btn-nav btn-gold-nav nav-drawer-btn" onClick={closeNav}>
+            <i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book now
+          </Link>
+        </div>
+      </div>
 
       <section className="hero">
         <div className="hero-bg" />
@@ -363,7 +363,7 @@ export default function LandingPage() {
           {rooms.map((room) => (
             <div key={room.name} className="room-card-pub" data-animate>
               <div className="room-img" style={{ backgroundImage: `url(${room.img})` }}>
-                <div className="room-tag">{room.tag}</div>
+                <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
                 <div className={`room-avail ${room.avail}`}>{room.avail === 'yes' ? 'Available' : room.availText}</div>
               </div>
               <div className="room-info">
