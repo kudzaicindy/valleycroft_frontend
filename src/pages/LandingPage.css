@@ -1845,8 +1845,8 @@ footer {
   /* Stop horizontal swipe; use vertical stacking on small phones */
   .offerings-grid {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
     overflow-x: visible;
     padding-bottom: 0;
   }
@@ -1856,6 +1856,7 @@ footer {
     min-width: 0;
     scroll-snap-align: unset;
     width: 100%;
+    min-height: 0;
   }
 
   .offering-bg::after {
@@ -1868,33 +1869,33 @@ footer {
   }
 
   .offerings-grid .offering-content {
-    padding: 22px 16px;
+    padding: 16px 10px;
   }
 
   .offerings-grid .offering-title {
-    font-size: 22px;
-    margin-bottom: 6px;
+    font-size: 18px;
+    margin-bottom: 4px;
   }
 
   .offerings-grid .offering-desc {
-    font-size: 13px;
+    font-size: 11px;
     color: rgba(255, 255, 255, 0.92);
-    line-height: 1.35;
-    margin-bottom: 12px;
+    line-height: 1.25;
+    margin-bottom: 8px;
   }
 
   .offerings-grid .btn-offering {
     width: 100%;
     justify-content: center;
-    padding: 12px 14px;
-    font-size: 12px;
-    border-radius: 12px;
+    padding: 10px 10px;
+    font-size: 11px;
+    border-radius: 10px;
   }
 
   .quick-actions-grid {
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
     overflow-x: visible;
     padding-bottom: 0;
   }
@@ -1909,7 +1910,7 @@ footer {
   .quick-actions-grid .quick-action-card {
     flex: initial;
     min-width: 0;
-    padding: 24px 16px;
+    padding: 16px 10px;
     border-radius: 16px;
   }
   .experience-grid .experience-card {
@@ -1922,7 +1923,7 @@ footer {
   .offerings-grid .offering-card {
     flex: initial;
     min-width: 0;
-    min-height: 220px;
+    min-height: 0;
   }
   .rooms-grid .room-card-pub,
   .rooms-grid-wide .room-card-pub {
@@ -1956,15 +1957,16 @@ footer {
     border-radius: 10px;
   }
   .quick-action-card i {
-    font-size: 26px;
-    margin-bottom: 12px;
+    font-size: 22px;
+    margin-bottom: 10px;
   }
   .quick-action-card h3 {
-    font-size: 18px;
-    margin-bottom: 6px;
+    font-size: 16px;
+    margin-bottom: 4px;
   }
   .quick-action-card p {
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.35;
   }
   .hero-headline {
     font-size: clamp(32px, 11vw, 48px);
