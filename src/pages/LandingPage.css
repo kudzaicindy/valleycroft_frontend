@@ -1753,7 +1753,17 @@ footer {
     border-radius: 14px;
   }
   .qb-row {
-    grid-template-columns: 1fr;
+    /* Keep two fields per row on small phones */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .qb-group {
+    min-width: 0;
+    margin-bottom: 12px;
+  }
+  .qb-input {
+    padding: 10px 10px;
+    font-size: 12px;
   }
   .qb-type-btn {
     font-size: 11px;
