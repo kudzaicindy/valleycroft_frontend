@@ -132,12 +132,6 @@
   white-space: nowrap;
 }
 
-.booking-type-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 /* STEPS BAR */
 .steps-bar {
   background: var(--white);
@@ -346,19 +340,22 @@
   padding-right: 32px;
 }
 
-/* DATES */
-.dates-row {
+/* Step 1: check-in + check-out in one row; adults + children + room type in the next */
+.booking-dates-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .date-box {
+  min-width: 0;
   background: var(--cream);
   border: 1.5px solid var(--linen-d);
-  border-radius: 10px;
-  padding: 14px 16px;
+  border-radius: 8px;
+  padding: 8px 8px;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
@@ -374,24 +371,26 @@
 }
 
 .date-box-label {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.55px;
   color: var(--text-muted);
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 
 .date-box-val {
   font-family: "Cormorant Garamond", serif;
-  font-size: 21px;
+  font-size: clamp(15px, 2.8vw, 18px);
   font-weight: 700;
   color: var(--text);
+  line-height: 1.15;
 }
 
 .date-box-day {
-  font-size: 11px;
+  font-size: 9px;
   color: var(--text-muted);
+  line-height: 1.2;
 }
 
 .date-box input[type="date"] {
@@ -413,21 +412,28 @@
 .nights-tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: rgba(45, 80, 22, 0.08);
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 12px;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--forest);
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
-.guests-row {
+.booking-guests-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.booking-guests-row .form-group {
+  margin-bottom: 0;
+  min-width: 0;
 }
 
 .divider {
@@ -641,12 +647,31 @@
   border-radius: 20px;
 }
 
-/* TYPE CARDS (step 1) */
+/* TYPE CARDS (step 1 — what are you booking?) */
+.booking-type-field {
+  margin-bottom: 14px;
+}
+
+.booking-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.type-card-emoji {
+  font-size: 20px;
+  line-height: 1;
+  margin-bottom: 3px;
+}
+
 .type-card {
   border: 1.5px solid var(--linen-d);
   background: var(--white);
-  border-radius: 11px;
-  padding: 14px;
+  border-radius: 8px;
+  padding: 8px 8px;
+  min-width: 0;
   cursor: pointer;
   text-align: center;
   transition: all 0.2s;
@@ -662,15 +687,19 @@
 }
 
 .type-card-title {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text);
+  line-height: 1.2;
 }
 
 .type-card-sub {
-  font-size: 11px;
+  font-size: 9px;
   color: var(--text-muted);
-  margin-top: 3px;
+  margin-top: 2px;
+  line-height: 1.3;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 /* REQUEST CHIPS */
@@ -1079,13 +1108,34 @@
   }
 
   .booking-page .form-row,
-  .booking-page .form-row-3,
-  .guests-row {
+  .booking-page .form-row-3 {
     grid-template-columns: 1fr;
   }
 
-  .dates-row {
-    grid-template-columns: 1fr 1fr;
+  /* Step 3 guest details: keep two fields per row (override single-column form-row above) */
+  .booking-page .guest-details-panel .form-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+
+  .booking-page .guest-details-panel .form-row .form-group {
+    min-width: 0;
+  }
+
+  .booking-dates-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .booking-guests-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .booking-guests-row .form-group {
+    min-width: 0;
   }
 
   .booking-header {
@@ -1127,6 +1177,15 @@
 
   .summary-card {
     position: static;
+  }
+
+  /* Review step: show booking summary above the review panel on narrow screens */
+  .booking-body--review .booking-sidebar {
+    order: -1;
+  }
+
+  .booking-body--review .booking-main {
+    order: 0;
   }
 }
 
@@ -1237,20 +1296,57 @@
     gap: 8px;
   }
 
+  /* Keep BnB / Event side by side; stay compact on narrow screens */
   .booking-type-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .type-card-emoji {
+    font-size: 17px;
+    margin-bottom: 2px;
   }
 
   .type-card {
-    padding: 16px 12px;
+    padding: 7px 6px;
+  }
+
+  .type-card-title {
+    font-size: 10px;
+  }
+
+  .type-card-sub {
+    font-size: 8px;
+    line-height: 1.3;
+  }
+
+  .booking-dates-row {
+    gap: 6px;
   }
 
   .date-box {
-    padding: 12px 12px;
+    padding: 7px 6px;
+    border-radius: 8px;
+  }
+
+  .date-box-label {
+    font-size: 7px;
+    letter-spacing: 0.4px;
+    margin-bottom: 2px;
   }
 
   .date-box-val {
-    font-size: clamp(17px, 4.5vw, 21px);
+    font-size: clamp(14px, 3.8vw, 17px);
+  }
+
+  .date-box-day {
+    font-size: 8px;
+  }
+
+  .nights-tag {
+    padding: 5px 10px;
+    font-size: 10px;
+    margin-bottom: 12px;
   }
 
   .room-info {
@@ -1326,12 +1422,72 @@
     min-width: 0;
   }
 
-  .dates-row {
-    grid-template-columns: 1fr;
+  .booking-type-grid {
+    gap: 5px;
   }
 
-  .guests-row {
-    gap: 10px;
+  .type-card {
+    padding: 6px 5px;
+    border-radius: 7px;
+  }
+
+  .type-card-emoji {
+    font-size: 16px;
+    margin-bottom: 2px;
+  }
+
+  .type-card-title {
+    font-size: 9px;
+  }
+
+  .type-card-sub {
+    font-size: 8px;
+  }
+
+  .booking-dates-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+
+  .date-box {
+    padding: 6px 5px;
+    border-radius: 7px;
+  }
+
+  .date-box-label {
+    font-size: 7px;
+    letter-spacing: 0.35px;
+  }
+
+  .date-box-val {
+    font-size: clamp(13px, 4vw, 16px);
+  }
+
+  .date-box-day {
+    font-size: 8px;
+  }
+
+  .nights-tag {
+    font-size: 10px;
+    padding: 4px 9px;
+    margin-bottom: 10px;
+  }
+
+  .booking-guests-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .booking-guests-row .form-label {
+    font-size: 9px;
+    letter-spacing: 0.6px;
+    margin-bottom: 4px;
+  }
+
+  .booking-guests-row .form-control {
+    padding: 9px 8px;
+    padding-right: 28px;
   }
 
   .booking-body {

@@ -328,7 +328,7 @@ export default function BookingPage() {
         </div>
       </div>
 
-      <div className="booking-body">
+      <div className={`booking-body${step === 4 ? ' booking-body--review' : ''}`}>
         <div className="booking-main">
           {/* STEP 1 */}
           <div className={`page-section ${step === 1 ? 'active' : ''}`} id="step-1">
@@ -339,15 +339,15 @@ export default function BookingPage() {
                 </div>
               </div>
               <div className="panel-body">
-                <div className="form-group" style={{ marginBottom: 20 }}>
+                <div className="form-group booking-type-field">
                   <div className="form-label">What are you booking?</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="booking-type-grid">
                     <button
                       type="button"
                       className={`type-card ${bookingType === 'bnb' ? 'active' : ''}`}
                       onClick={() => setBookingType('bnb')}
                     >
-                      <div style={{ fontSize: 28, marginBottom: 6 }}>🏡</div>
+                      <div className="type-card-emoji" aria-hidden>🏡</div>
                       <div className="type-card-title">BnB Accommodation</div>
                       <div className="type-card-sub">Overnight stay in our farm rooms</div>
                     </button>
@@ -356,13 +356,13 @@ export default function BookingPage() {
                       className={`type-card ${bookingType === 'event' ? 'active' : ''}`}
                       onClick={() => setBookingType('event')}
                     >
-                      <div style={{ fontSize: 28, marginBottom: 6 }}>🎉</div>
+                      <div className="type-card-emoji" aria-hidden>🎉</div>
                       <div className="type-card-title">Event Venue</div>
                       <div className="type-card-sub">Weddings, corporate, celebrations</div>
                     </button>
                   </div>
                 </div>
-                <div className="dates-row">
+                <div className="booking-dates-row">
                   <div className={`date-box ${step === 1 ? 'active' : ''}`}>
                     <div className="date-box-label">Check-in Date</div>
                     <div className="date-box-val">{fmtDate(checkin)}</div>
@@ -399,7 +399,7 @@ export default function BookingPage() {
                 <div className="nights-tag">
                   <i className="fas fa-moon" /> {nights} nights selected
                 </div>
-                <div className="guests-row">
+                <div className="booking-guests-row">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <div className="form-label">Adults</div>
                     <select
@@ -407,10 +407,14 @@ export default function BookingPage() {
                       value={adults}
                       onChange={(e) => setAdults(Number(e.target.value))}
                     >
-                      <option value={1}>1 Adult</option>
-                      <option value={2}>2 Adults</option>
-                      <option value={3}>3 Adults</option>
-                      <option value={4}>4 Adults</option>
+                      {Array.from({ length: 15 }, (_, i) => {
+                        const n = i + 1;
+                        return (
+                          <option key={n} value={n}>
+                            {n} Adult{n > 1 ? 's' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -577,7 +581,7 @@ export default function BookingPage() {
                   <div className="step-badge">3</div> Your Details
                 </div>
               </div>
-              <div className="panel-body">
+              <div className="panel-body guest-details-panel">
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
                     Lead Guest Information
