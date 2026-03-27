@@ -164,3 +164,102 @@
   opacity: 0.6;
 }
 
+@media (max-width: 640px) {
+  .login-page {
+    justify-content: center;
+    padding: 4.25rem 0.9rem 1.25rem !important;
+  }
+
+  .login-back {
+    top: 0.75rem;
+    left: 0.75rem;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.625rem;
+  }
+
+  .login-card {
+    border-radius: 0.875rem;
+    max-width: 30rem;
+    box-shadow: 0 12px 36px rgba(28, 53, 16, 0.14) !important;
+  }
+
+  .login-panel {
+    padding: 1.25rem 1.1rem;
+  }
+
+  .login-panel h2 {
+    font-size: 1.4rem;
+    line-height: 1.2;
+  }
+
+  .login-panel p {
+    font-size: 0.84rem;
+  }
+
+  .login-panel form {
+    margin-top: 1.1rem;
+    gap: 0.95rem;
+  }
+
+  .login-panel label {
+    margin-bottom: 0.35rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  .login-field {
+    padding: 0.66rem 0.8rem;
+    padding-right: 4rem;
+    font-size: 0.84rem;
+  }
+
+  .login-toggle {
+    right: 0.35rem;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.6875rem;
+  }
+
+  .login-submit {
+    padding: 0.68rem 0;
+    font-size: 0.86rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .login-page {
+    padding: 4rem 0.7rem 1rem !important;
+  }
+
+  .login-back {
+    top: 0.6rem;
+    left: 0.6rem;
+    font-size: 0.72rem;
+    padding: 0.35rem 0.55rem;
+  }
+
+  .login-card {
+    border-radius: 0.8rem;
+  }
+
+  .login-panel {
+    padding: 1.05rem 0.95rem;
+  }
+
+  .login-panel h2 {
+    font-size: 1.3rem;
+  }
+
+  .login-panel p {
+    font-size: 0.8rem;
+  }
+
+  .login-field {
+    font-size: 0.8rem;
+    padding-right: 3.6rem;
+  }
+
+  .login-submit {
+    font-size: 0.82rem;
+  }
+}
+

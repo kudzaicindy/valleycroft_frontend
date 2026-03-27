@@ -36,59 +36,57 @@ function formatNum(n) {
   return n.toLocaleString('en-ZA');
 }
 
+const HOUSE1_IMAGES = [
+  '/house%201living%20room.jpeg',
+  '/house%201living%20room%202.jpeg',
+  '/house%201bed%201.jpeg',
+  '/house%201%20bed%202.jpeg',
+  '/house%201%20bathroom.jpeg',
+];
+
+const HOUSE2_IMAGES = [
+  '/house%202%20living.jpeg',
+  '/house%202%20living%202.jpeg',
+  '/house%202%20living%203.jpeg',
+  '/house%202%20bath%201.jpeg',
+  '/house%202%20bath%202.jpeg',
+];
+
+const HOUSE3_IMAGES = [
+  '/house%203%20living.jpeg',
+  '/house%203%20bed%201.jpeg',
+  '/house%203%20bed%202.jpeg',
+  '/house%203%20kitchen.jpeg',
+  '/house%203%20bath.jpeg',
+];
+
 const ROOMS = [
   {
-    id: 'standard',
-    price: 950,
-    name: 'Standard Room',
-    desc: 'Clean, comfortable farm room with countryside views. Perfect for solo travellers or couples wanting a relaxed stay.',
-    tags: ['En-suite', 'TV', 'Kettle', 'WiFi', '2 Guests Max'],
+    id: 'house-1',
+    price: 1920,
+    name: 'Willow Cottage',
+    desc: 'Two-bedroom cottage on the farm — living spaces, bedrooms and bathroom. Ideal for small families or two couples.',
+    tags: ['2 Bedrooms', 'Full bathroom', 'Farm breakfast', 'WiFi'],
     avail: true,
-    images: [
-      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&q=80',
-      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80',
-      'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600&q=80',
-    ],
+    images: HOUSE1_IMAGES,
   },
   {
-    id: 'garden',
-    price: 1200,
-    name: 'Garden View Room',
-    desc: 'Wake up to sweeping valley garden views. Cozy interiors with local timber accents, crisp linen, and morning birdsong.',
-    tags: ['En-suite', 'Smart TV', 'Kettle', 'Garden View', 'AC', '2 Guests'],
+    id: 'house-2',
+    price: 1280,
+    name: 'Garden Nook',
+    desc: 'One-bedroom hideaway — quiet and comfortable for solo travellers or couples.',
+    tags: ['1 Bedroom', 'Countryside', 'WiFi'],
     avail: true,
-    images: [
-      'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80',
-      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&q=80',
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&q=80',
-    ],
+    images: HOUSE2_IMAGES,
   },
   {
-    id: 'loft',
-    price: 1800,
-    name: 'Loft Suite',
-    desc: 'Two-level farmhouse suite with exposed beams, private loft bedroom, and a sun-drenched reading nook overlooking the valley.',
-    tags: ['En-suite', 'Smart TV', 'Mountain View', 'AC', '3 Guests'],
-    avail: true,
-    images: [
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&q=80',
-      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600&q=80',
-      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&q=80',
-    ],
-  },
-  {
-    id: 'heritage',
+    id: 'house-3',
     price: 3200,
-    name: 'Farm Heritage Suite',
-    desc: 'Our most exclusive suite — a full heritage farmhouse with private stoep, outdoor braai area, and panoramic 360-degree farm views.',
-    tags: ['Clawfoot Tub', 'Fireplace', 'Private Stoep', 'Braai', '4 Guests'],
+    name: 'The Blue House',
+    desc: 'Spacious three-bedroom home — our signature blue house — with room for larger groups.',
+    tags: ['3 Bedrooms', 'Blue House', 'Groups', 'WiFi'],
     avail: true,
-    onlyOneLeft: true,
-    images: [
-      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600&q=80',
-      'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600&q=80',
-      'https://images.unsplash.com/photo-1519710164239-da123dc03ef4?w=600&q=80',
-    ],
+    images: HOUSE3_IMAGES,
   },
 ];
 
@@ -432,10 +430,9 @@ export default function BookingPage() {
                     <div className="form-label">Room Type</div>
                     <select className="form-control">
                       <option>Any Available</option>
-                      <option>Garden View</option>
-                      <option>Loft Suite</option>
-                      <option>Heritage Suite</option>
-                      <option>Standard</option>
+                      <option>Willow Cottage (2 bed)</option>
+                      <option>Garden Nook (1 bed)</option>
+                      <option>The Blue House (3 bed)</option>
                     </select>
                   </div>
                 </div>

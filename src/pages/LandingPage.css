@@ -413,12 +413,13 @@ body.landing-nav-open {
   font-size: 13px;
 }
 
-/* QUICK BOOKING CARD */
+/* QUICK BOOKING CARD — beside hero on desktop; centred below on sm (≤768px) */
 .quick-book {
   background: var(--white);
   border-radius: 18px;
   padding: 28px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
 }
 
 .qb-title {
@@ -602,93 +603,57 @@ body.landing-nav-open {
   color: var(--text-muted);
 }
 
-/* OFFERINGS */
-.offerings-section {
-  padding-top: 48px;
+/* EXPERIENCE — What to expect */
+.experience-section {
+  padding: 80px 48px;
+  background: var(--cream);
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-.offerings-grid {
+.experience-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
-  margin-top: 32px;
+  margin-top: 40px;
 }
 
-.offering-card {
+.experience-card {
   border-radius: 16px;
   overflow: hidden;
-  position: relative;
-  min-height: 280px;
-  display: flex;
-  align-items: flex-end;
-  transition: transform 0.3s;
+  background: var(--white);
+  box-shadow: var(--shadow);
+  transition: all 0.3s;
 }
 
-.offering-card:hover {
+.experience-card:hover {
   transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(45, 80, 22, 0.12);
 }
 
-.offering-bg {
-  position: absolute;
-  inset: 0;
+.experience-img {
+  height: 160px;
   background-size: cover;
   background-position: center;
 }
 
-.offering-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  /* Ensure text stays readable on top of varying images */
-  background: linear-gradient(
-    to top,
-    rgba(30, 54, 16, 0.97) 0%,
-    rgba(30, 54, 16, 0.88) 35%,
-    transparent 70%
-  );
+.experience-content {
+  padding: 20px;
 }
 
-.offering-content {
-  position: relative;
-  z-index: 1;
-  padding: 28px 24px;
-  width: 100%;
-}
-
-.offering-title {
+.experience-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--white);
-  margin-bottom: 8px;
+  color: var(--forest-d);
+  margin-bottom: 6px;
 }
 
-.offering-desc {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.8);
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-
-.btn-offering {
-  display: inline-flex;
-  align-items: center;
-  padding: 10px 20px;
-  background: var(--gold);
-  color: var(--white);
-  border: none;
-  border-radius: 9px;
+.experience-desc {
   font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-decoration: none;
-  font-family: inherit;
-}
-
-.btn-offering:hover {
-  background: var(--gold-l);
-  box-shadow: 0 4px 14px rgba(184, 137, 42, 0.4);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* QUICK ACTIONS #book */
@@ -815,8 +780,102 @@ body.landing-nav-open {
   overflow: hidden;
 }
 
+/* In-card photo carousel (swipe / scroll / dots) */
+.room-img--carousel {
+  padding: 0;
+}
+
+.room-img-track {
+  display: flex;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.room-img-track::-webkit-scrollbar {
+  display: none;
+}
+
+.room-img-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  min-height: 190px;
+  scroll-snap-align: start;
+  background-size: cover;
+  background-position: center;
+  background-color: #c8d8a0;
+}
+
+.room-img-floating {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.room-img-floating .room-wishlist {
+  pointer-events: auto;
+}
+
+.room-carousel-dots {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  z-index: 3;
+  pointer-events: auto;
+  padding: 0 12px;
+}
+
+.room-carousel-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.room-carousel-dot.is-active {
+  background: var(--white);
+  transform: scale(1.2);
+}
+
+.room-gallery-strip {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+  background: rgba(245, 246, 243, 0.95);
+  border-bottom: 1px solid rgba(45, 80, 22, 0.08);
+}
+
+.room-gallery-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  background: #ddd center/cover no-repeat;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
 .rooms-grid-wide {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .room-img-inner {
@@ -903,7 +962,15 @@ body.landing-nav-open {
   font-size: 20px;
   font-weight: 700;
   color: var(--forest-d);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+.room-beds {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-mid);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
 }
 
 .room-desc {
@@ -985,59 +1052,6 @@ body.landing-nav-open {
 .btn-view-all-rooms:hover {
   box-shadow: 0 4px 18px rgba(45, 80, 22, 0.35);
   transform: translateY(-1px);
-}
-
-/* EXPERIENCE SECTION */
-.experience-section {
-  padding: 80px 48px;
-  background: var(--cream);
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.experience-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-  margin-top: 40px;
-}
-
-.experience-card {
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--white);
-  box-shadow: var(--shadow);
-  transition: all 0.3s;
-}
-
-.experience-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(45, 80, 22, 0.12);
-}
-
-.experience-img {
-  height: 160px;
-  background-size: cover;
-  background-position: center;
-}
-
-.experience-content {
-  padding: 20px;
-}
-
-.experience-title {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--forest-d);
-  margin-bottom: 6px;
-}
-
-.experience-desc {
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin: 0;
 }
 
 /* BOOKING MODAL */
@@ -1359,7 +1373,12 @@ body.landing-nav-open {
 .testi-avatar {
   width: 40px;
   height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+  aspect-ratio: 1;
   border-radius: 50%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1472,13 +1491,15 @@ footer {
 /* TRACK BOOKING BANNER */
 .cta-track-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
 }
 
 .cta-track-row > .cta-banner,
 .cta-track-row > .track-banner {
   padding-left: 0;
   padding-right: 0;
+  min-width: 0;
 }
 
 .cta-track-row .cta-inner,
@@ -1499,6 +1520,11 @@ footer {
 .cta-track-row .track-banner {
   border-top: 0;
   border-left: 2px solid var(--linen-d);
+}
+
+/* Narrow halves: don’t enforce 200px min on fields; allow track button to wrap */
+.cta-track-row .track-input-wrap {
+  min-width: 0;
 }
 
 .track-banner {
@@ -1592,6 +1618,21 @@ footer {
   box-shadow: 0 4px 14px rgba(45, 80, 22, 0.3);
 }
 
+/* Mobile bottom nav (enabled in ≤768px media query) */
+.landing-m-bottom-nav {
+  display: none;
+}
+
+.landing-m-accom-head {
+  display: none;
+}
+
+.room-guest-badge,
+.room-meta-line,
+.room-wishlist {
+  display: none;
+}
+
 /* SCROLL ANIMATIONS */
 [data-animate] {
   opacity: 0;
@@ -1621,28 +1662,23 @@ footer {
     font-size: 12px;
   }
   .hero-content {
-    grid-template-columns: 1fr;
-    padding: 100px 32px 60px;
-  }
-  .quick-book {
-    max-width: 100%;
+    grid-template-columns: 1fr minmax(300px, 440px);
+    gap: 40px;
+    padding: 100px 32px 56px;
   }
   .about-strip {
     grid-template-columns: repeat(2, 1fr);
     gap: 24px;
     padding: 0 32px 32px;
   }
-  .offerings-grid {
-    grid-template-columns: 1fr;
+  .experience-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
   .quick-actions-grid {
     grid-template-columns: 1fr;
   }
   .rooms-grid,
   .rooms-grid-wide {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .experience-grid {
     grid-template-columns: repeat(2, 1fr);
   }
   .events-grid {
@@ -1658,6 +1694,18 @@ footer {
   .quick-actions,
   .cta-banner {
     padding: 48px 32px;
+  }
+
+  .cta-track-row {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  }
+
+  .cta-track-row .cta-inner,
+  .cta-track-row .track-inner {
+    padding: 0 28px;
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 
@@ -1690,22 +1738,341 @@ footer {
 }
 
 @media (max-width: 768px) {
+  .landing-main {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .landing-m-bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    padding: 8px 2px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--white);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+    justify-content: space-around;
+    align-items: stretch;
+  }
+
+  .landing-m-bottom-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 4px 2px;
+    border: none;
+    background: none;
+    font-size: 10px;
+    font-weight: 600;
+    color: #888;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .landing-m-bottom-item i {
+    font-size: 18px;
+  }
+
+  .landing-m-bottom-item--active {
+    color: #c7375a;
+  }
+
+  footer {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .section-center--accom {
+    display: none;
+  }
+
+  .landing-m-accom-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 12px;
+    max-width: 100%;
+  }
+
+  .landing-m-accom-title {
+    margin: 0;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--forest-d);
+  }
+
+  .landing-m-accom-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--linen-d);
+    color: var(--forest-d);
+    text-decoration: none;
+    font-size: 13px;
+    background: var(--white);
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .hero {
+    min-height: 0;
+  }
+
+  .hero-bg {
+    opacity: 0.32;
+  }
+
+  .hero-desc,
+  .hero-trust {
+    display: none;
+  }
+
+  /* CTA + track: stack on sm — full width per card so copy + form aren’t squeezed */
   .cta-track-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .cta-track-row .cta-inner,
   .cta-track-row .track-inner {
-    padding: 0 24px;
+    padding: 0 20px;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .cta-track-row .cta-banner,
+  .cta-track-row .track-banner {
+    padding-top: 40px;
+    padding-bottom: 40px;
   }
 
   .cta-track-row .track-banner {
-    border-left-width: 1px;
+    border-left: none;
+    border-top: 2px solid var(--linen-d);
   }
+
+  .cta-track-row .track-left {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .cta-track-row .track-inner {
+    gap: 20px;
+    align-items: stretch;
+  }
+
+  .cta-track-row .cta-inner {
+    word-break: break-word;
+  }
+
+  .cta-track-row .cta-heading {
+    font-size: clamp(26px, 7vw, 36px);
+    line-height: 1.2;
+    margin-bottom: 12px;
+  }
+
+  .cta-track-row .cta-desc {
+    font-size: 15px;
+    line-height: 1.5;
+    margin-bottom: 22px;
+  }
+
+  .cta-track-row .cta-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .cta-track-row .btn-cta {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+
+  .cta-track-row .track-title {
+    font-size: clamp(22px, 5.5vw, 28px);
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+
+  .cta-track-row .track-desc {
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0 0 6px;
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+  }
+
+  .cta-track-row .track-label {
+    letter-spacing: 0.5px;
+    font-size: 11px;
+  }
+
+  .cta-track-row .track-input {
+    box-sizing: border-box;
+    min-width: 0;
+    font-size: 15px;
+    padding: 12px 14px;
+  }
+
+  .cta-track-row .btn-track {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
+    padding: 13px 20px;
+    font-size: 14px;
+  }
+
   .hero-content {
-    padding: 90px 16px 40px;
-    gap: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 18px 16px 26px;
+    gap: 22px;
   }
+  .hero-text {
+    min-width: 0;
+  }
+  .quick-book {
+    min-width: 0;
+    width: 100%;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .room-carousel-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  .room-guest-badge {
+    display: block;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(255, 255, 255, 0.94);
+    color: #222;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    z-index: 2;
+  }
+
+  .room-card-pub .room-tag--popular {
+    display: none;
+  }
+
+  .room-avail {
+    display: none;
+  }
+
+  .room-wishlist {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    z-index: 2;
+    color: #222;
+  }
+
+  .room-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: #717171;
+    margin-bottom: 6px;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .room-meta-price {
+    font-weight: 600;
+    color: var(--forest-d);
+  }
+
+  .room-meta-sep {
+    opacity: 0.45;
+  }
+
+  .room-meta-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .room-meta-rating i {
+    font-size: 11px;
+    color: var(--forest);
+  }
+
+  .room-footer > div:first-child {
+    display: none;
+  }
+
+  .room-footer {
+    border-top: none;
+    padding-top: 4px;
+  }
+
+  .room-gallery-strip {
+    display: none;
+  }
+
+  .room-desc,
+  .room-amenities {
+    display: none;
+  }
+
+  .room-name {
+    font-size: 15px;
+    margin-bottom: 2px;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .room-beds {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
   .about-strip {
     display: flex;
     flex-wrap: nowrap;
@@ -1743,14 +2110,39 @@ footer {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
+    scroll-padding-inline: 16px;
     grid-template-columns: none;
     padding-bottom: 4px;
   }
+  /* Trailing space so last card can scroll in with same edge peek as the first */
+  .rooms-grid-wide::after,
+  .experience-grid::after,
+  .quick-actions-grid::after {
+    content: '';
+    flex-shrink: 0;
+    width: 16px;
+  }
   .rooms-grid .room-card-pub,
   .rooms-grid-wide .room-card-pub {
-    flex: 0 0 240px;
-    min-width: 240px;
+    flex: 0 0 min(calc(100vw - 60px), 300px);
+    max-width: 300px;
     scroll-snap-align: start;
+  }
+  .rooms-grid-wide {
+    padding-left: 16px;
+    padding-right: 0;
+  }
+  #accommodation.section {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  #accommodation .rooms-grid-wide {
+    margin-left: 0;
+    margin-right: 0;
+    max-width: none;
+  }
+  .room-img {
+    height: 216px;
   }
   .testi-grid {
     grid-template-columns: 1fr;
@@ -1816,22 +2208,6 @@ footer {
   .testi-date {
     font-size: 10px;
   }
-  .offerings-grid {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 12px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
-    grid-template-columns: none;
-    padding-bottom: 4px;
-  }
-  .offerings-grid .offering-card {
-    flex: 0 0 240px;
-    min-width: 240px;
-    min-height: 220px;
-    scroll-snap-align: start;
-  }
   .experience-grid {
     display: flex;
     flex-wrap: nowrap;
@@ -1839,12 +2215,20 @@ footer {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
+    scroll-padding-inline: 24px;
     grid-template-columns: none;
     padding-bottom: 4px;
+    margin-left: -24px;
+    margin-right: -24px;
+    padding-left: 24px;
+    padding-right: 0;
+    width: calc(100% + 48px);
+    max-width: none;
+    box-sizing: border-box;
   }
   .experience-grid .experience-card {
-    flex: 0 0 240px;
-    min-width: 240px;
+    flex: 0 0 min(calc(100vw - 64px), 300px);
+    max-width: 300px;
     scroll-snap-align: start;
   }
   .section {
@@ -1869,12 +2253,20 @@ footer {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
+    scroll-padding-inline: 24px;
     grid-template-columns: none;
     padding-bottom: 4px;
+    margin-left: -24px;
+    margin-right: -24px;
+    padding-left: 24px;
+    padding-right: 0;
+    width: calc(100% + 48px);
+    max-width: none;
+    box-sizing: border-box;
   }
   .quick-actions-grid .quick-action-card {
-    flex: 0 0 240px;
-    min-width: 240px;
+    flex: 0 0 min(calc(100vw - 64px), 300px);
+    max-width: 300px;
     scroll-snap-align: start;
     padding: 22px 16px;
   }
@@ -1947,122 +2339,115 @@ footer {
 }
 
 @media (max-width: 480px) {
-  .cta-track-row {
-    grid-template-columns: 1fr 1fr;
+  .hero-content {
+    gap: 22px;
+    padding: 86px 12px 34px;
   }
-
-  .cta-track-row .cta-inner,
-  .cta-track-row .track-inner {
-    padding: 0 12px;
+  .qb-title {
+    font-size: 16px;
   }
-
-  .cta-track-row .cta-banner {
-    padding: 32px 0;
-  }
-
-  .cta-track-row .track-banner {
-    padding: 32px 0;
-  }
-
-  .cta-track-row .cta-heading {
-    font-size: 20px;
+  .qb-sub {
+    font-size: 10px;
     margin-bottom: 8px;
   }
-
-  .cta-track-row .cta-desc {
-    font-size: 12px;
-    margin-bottom: 14px;
+  /* inherits stacked .cta-track-row from sm; tighten for narrow phones */
+  .cta-track-row .cta-inner,
+  .cta-track-row .track-inner {
+    padding: 0 16px;
   }
 
-  .cta-track-row .btn-cta {
-    width: 100%;
-    justify-content: center;
-    padding: 10px 10px;
-    font-size: 11px;
-    border-radius: 10px;
+  .cta-track-row .cta-banner,
+  .cta-track-row .track-banner {
+    padding-top: 32px;
+    padding-bottom: 32px;
   }
 
   .cta-track-row .cta-buttons {
-    gap: 10px;
+    max-width: 100%;
+  }
+
+  .cta-track-row .cta-heading {
+    font-size: clamp(22px, 6.5vw, 30px);
+  }
+
+  .cta-track-row .cta-desc {
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+
+  .cta-track-row .btn-cta {
+    padding: 9px 12px;
+    font-size: 12px;
+    border-radius: 9px;
   }
 
   .cta-track-row .track-title {
-    font-size: 18px;
-    margin-bottom: 6px;
+    font-size: clamp(20px, 5vw, 24px);
   }
 
   .cta-track-row .track-desc {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .cta-track-row .track-input-wrap {
     min-width: 0;
   }
 
-  .cta-track-row .track-label {
-    font-size: 10px;
+  .cta-track-row .track-input {
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
   }
 
-  .cta-track-row .track-input {
-    padding: 9px 10px;
-    font-size: 11px;
+  .cta-track-row .track-label {
+    font-size: 9px;
+    margin-bottom: 3px;
   }
 
   .cta-track-row .btn-track {
-    width: 100%;
-    justify-content: center;
-    padding: 10px 10px;
+    padding: 9px 12px;
     font-size: 11px;
-    border-radius: 10px;
+    border-radius: 8px;
   }
-  /* Stop horizontal swipe; use vertical stacking on small phones */
-  .offerings-grid {
+  /* Stop horizontal swipe; use 2×2 grid on small phones */
+  .experience-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     overflow-x: visible;
     padding-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    width: 100%;
+    scroll-padding-inline: unset;
+  }
+  .experience-grid::after {
+    display: none;
   }
 
-  .offerings-grid .offering-card {
+  .experience-grid .experience-card {
     flex: initial;
     min-width: 0;
     scroll-snap-align: unset;
     width: 100%;
-    min-height: 0;
+    max-width: none;
   }
 
-  .offering-bg::after {
-    background: linear-gradient(
-      to top,
-      rgba(30, 54, 16, 0.99) 0%,
-      rgba(30, 54, 16, 0.92) 35%,
-      transparent 70%
-    );
-  }
-
-  .offerings-grid .offering-content {
+  .experience-content {
     padding: 16px 10px;
   }
 
-  .offerings-grid .offering-title {
-    font-size: 18px;
+  .experience-title {
+    font-size: 16px;
     margin-bottom: 4px;
   }
 
-  .offerings-grid .offering-desc {
+  .experience-desc {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.92);
+    color: var(--text-mid);
     line-height: 1.25;
-    margin-bottom: 8px;
-  }
-
-  .offerings-grid .btn-offering {
-    width: 100%;
-    justify-content: center;
-    padding: 10px 10px;
-    font-size: 11px;
-    border-radius: 10px;
   }
 
   .quick-actions-grid {
@@ -2071,6 +2456,15 @@ footer {
     gap: 10px;
     overflow-x: visible;
     padding-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    width: 100%;
+    scroll-padding-inline: unset;
+  }
+  .quick-actions-grid::after {
+    display: none;
   }
 
   .quick-actions-grid .quick-action-card {
@@ -2086,25 +2480,15 @@ footer {
     padding: 16px 10px;
     border-radius: 16px;
   }
-  .experience-grid .experience-card {
-    flex: 0 0 210px;
-    min-width: 210px;
-  }
   .experience-img {
-    height: 140px;
-  }
-  .offerings-grid .offering-card {
-    flex: initial;
-    min-width: 0;
-    min-height: 0;
+    height: 120px;
   }
   .rooms-grid .room-card-pub,
   .rooms-grid-wide .room-card-pub {
-    flex: 0 0 210px;
-    min-width: 210px;
+    flex: 0 0 min(calc(100vw - 56px), 300px);
   }
   .room-img {
-    height: 160px;
+    height: 200px;
   }
   .room-info {
     padding: 14px;
@@ -2169,14 +2553,15 @@ footer {
     max-width: 100%;
     padding: 16px 12px;
     border-radius: 12px;
+    overflow: hidden;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
   }
   .qb-row {
-    /* Keep two fields per row on small phones */
+    /* Keep date + select rows as two equal fields */
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 14px; /* more separation between check-in / check-out */
-    row-gap: 10px;
-    margin-bottom: 8px;
+    column-gap: 10px;
+    row-gap: 6px;
+    margin-bottom: 6px;
   }
   .qb-group {
     min-width: 0;
@@ -2186,16 +2571,42 @@ footer {
     flex-direction: column;
   }
   .qb-input {
-    padding: 9px 10px;
-    font-size: 11px;
+    min-width: 0;
+    width: 100%;
+    padding: 8px 8px;
+    font-size: 10.5px;
+  }
+  .qb-input[type='date'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    font-size: 10.5px;
+    padding-right: 6px;
   }
 
   .qb-label {
-    margin-bottom: 8px;
+    margin-bottom: 5px;
+    font-size: 9px;
+    letter-spacing: 0.7px;
   }
   .qb-type-btn {
-    font-size: 11px;
-    padding: 8px 4px;
+    font-size: 10px;
+    padding: 7px 4px;
+  }
+  .qb-type-btn i {
+    font-size: 14px;
+    margin-bottom: 2px;
+  }
+  .btn-book-now {
+    padding: 10px;
+    font-size: 12px;
+  }
+  .qb-track-link {
+    margin-top: 8px;
+    font-size: 10px;
   }
   .features-strip {
     padding: 16px 16px;
@@ -2209,9 +2620,6 @@ footer {
     min-width: 0;
   }
   .section {
-    padding: 48px 16px;
-  }
-  .experience-section {
     padding: 48px 16px;
   }
   .events-section,
@@ -2326,8 +2734,8 @@ footer {
   .section-heading {
     font-size: clamp(28px, 8vw, 40px);
   }
-  .offering-card {
-    min-height: 240px;
+  .experience-section {
+    padding: 48px 16px;
   }
   .room-footer {
     flex-direction: column;

@@ -2,6 +2,92 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import './LandingPage.css';
 
+/** Public folder filenames with spaces — URL-encoded for img src */
+const HOUSE1_IMAGE_PATHS = [
+  '/house%201living%20room.jpeg',
+  '/house%201living%20room%202.jpeg',
+  '/house%201bed%201.jpeg',
+  '/house%201%20bed%202.jpeg',
+  '/house%201%20bathroom.jpeg',
+];
+
+const HOUSE2_IMAGE_PATHS = [
+  '/house%202%20living.jpeg',
+  '/house%202%20living%202.jpeg',
+  '/house%202%20living%203.jpeg',
+  '/house%202%20bath%201.jpeg',
+  '/house%202%20bath%202.jpeg',
+];
+
+const HOUSE3_IMAGE_PATHS = [
+  '/house%203%20living.jpeg',
+  '/house%203%20bed%201.jpeg',
+  '/house%203%20bed%202.jpeg',
+  '/house%203%20kitchen.jpeg',
+  '/house%203%20bath.jpeg',
+];
+
+function RoomCardImageCarousel({ images, roomName, overlay }) {
+  const trackRef = useRef(null);
+  const [active, setActive] = useState(0);
+  const slides = images?.length ? images : [];
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || slides.length <= 1) return;
+    const onScroll = () => {
+      const w = el.clientWidth;
+      if (w <= 0) return;
+      const i = Math.round(el.scrollLeft / w);
+      setActive(Math.min(Math.max(i, 0), slides.length - 1));
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [slides.length]);
+
+  const goTo = (i) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    el.scrollTo({ left: i * w, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="room-img room-img--carousel">
+      <div className="room-img-track" ref={trackRef}>
+        {slides.map((src, i) => (
+          <div
+            key={src}
+            className="room-img-slide"
+            style={{ backgroundImage: `url(${src})` }}
+            role="img"
+            aria-label={`${roomName} — photo ${i + 1} of ${slides.length}`}
+          />
+        ))}
+      </div>
+      <div className="room-img-floating">
+        {overlay}
+      </div>
+      {slides.length > 1 ? (
+        <div className="room-carousel-dots" role="tablist" aria-label={`${roomName} photos`}>
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              role="tab"
+              aria-selected={i === active}
+              className={`room-carousel-dot ${i === active ? 'is-active' : ''}`}
+              onClick={() => goTo(i)}
+              aria-label={`Photo ${i + 1} of ${slides.length}`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
@@ -15,6 +101,11 @@ export default function LandingPage() {
   const roomsSectionRef = useRef(null);
 
   const selectType = (type) => setBookingType(type);
+
+  const scrollToHash = (hash) => {
+    const el = hash && document.querySelector(hash);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const goToBooking = () => {
     const checkIn = checkInRef.current?.value?.trim();
@@ -109,37 +200,67 @@ export default function LandingPage() {
     { title: 'South Africa', desc: 'In the heart of the countryside', img: 'https://images.unsplash.com/photo-1527004013197-933c4bb611b3?w=400&q=80' },
   ];
 
-  const offerings = [
-    { title: 'BnB Farm Stay', desc: 'Wake up to valley views. Cozy rooms, farm breakfast, and genuine hospitality.', img: '/PHOTO-2026-03-24-23-07-59.jpg', cta: 'View Rooms', scrollToRooms: true },
-    { title: 'Events & Functions', desc: 'Weddings, corporate days, and private celebrations in a stunning farm setting.', img: '/PHOTO-2026-03-24-23-07-59.jpg', cta: 'Enquire', href: '#book' },
-    { title: 'Agro-Tourism', desc: 'Farm walks, seasonal activities, and a taste of country life.', img: '/PHOTO-2026-03-24-23-07-59.jpg', cta: 'Learn More', href: '#about' },
-  ];
-
-  const rooms = [
-    { tag: 'Popular', avail: 'yes', name: 'Harvest Suite', desc: 'Spacious room with valley views, en-suite and farm breakfast.', amenities: ['En-suite', 'Farm View', 'Breakfast'], price: 'R 1,100', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
-    { tag: 'Cosy', avail: 'yes', name: 'Meadow Room', desc: 'Quiet room overlooking the meadow. Perfect for a peaceful stay.', amenities: ['En-suite', 'Garden View', 'WiFi'], price: 'R 950', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
-    { tag: 'Family', avail: 'yes', name: 'Orchard Cottage', desc: 'Self-contained cottage with kitchenette, ideal for families.', amenities: ['Kitchenette', 'Private Entrance', 'Braai'], price: 'R 1,650', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
-    { tag: 'Premium', avail: 'yes', name: 'Farmhand Loft', desc: 'Loft suite with exposed beams and reading nook.', amenities: ['En-suite', 'Loft', 'Mountain View'], price: 'R 1,400', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
-    { tag: 'Bright', avail: 'yes', name: 'Sunflower Room', desc: 'Sun-filled room with garden access and sitting area.', amenities: ['En-suite', 'Garden Access', 'AC'], price: 'R 1,050', sub: 'per night', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: false },
-    { tag: 'Venue', avail: 'yes', name: 'Valley Croft Barn', desc: 'Event venue for weddings, functions and retreats. Catering & coordination available.', amenities: ['Up to 200', 'Catering', 'Overnight options'], price: 'From R 28,000', sub: 'full day hire', img: '/PHOTO-2026-03-24-23-07-59.jpg', isEvent: true },
-  ];
-
   const experienceItems = [
     { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
     { title: 'Nature & Wildlife', desc: 'Birdlife, gardens and the rhythm of the seasons.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
+    { title: 'Pool & Summer Days', desc: 'Take a dip and unwind by the water between farm walks and sundowners.', img: '/pool.jpeg' },
     { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
-    { title: 'Premium Events', desc: 'Weddings, corporate days and celebrations in style.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
+  ];
+
+  const rooms = [
+    {
+      tag: 'Popular',
+      avail: 'yes',
+      name: 'Willow Cottage',
+      bedsLabel: '2 bed',
+      desc: 'Two-bedroom cottage on the farm — living areas, bedrooms and bathroom. Ideal for small families or two couples.',
+      amenities: ['2 Bedrooms', 'Full bathroom', 'Farm breakfast'],
+      price: 'R 1,920',
+      sub: 'per night',
+      rating: 4.92,
+      img: HOUSE1_IMAGE_PATHS[0],
+      gallery: HOUSE1_IMAGE_PATHS,
+      isEvent: false,
+    },
+    {
+      tag: 'Cosy',
+      avail: 'yes',
+      name: 'Garden Nook',
+      bedsLabel: '1 bed',
+      desc: 'One-bedroom hideaway — quiet and comfortable for solo travellers or couples.',
+      amenities: ['1 Bedroom', 'Countryside setting', 'WiFi'],
+      price: 'R 1,280',
+      sub: 'per night',
+      rating: 4.89,
+      img: HOUSE2_IMAGE_PATHS[0],
+      gallery: HOUSE2_IMAGE_PATHS,
+      isEvent: false,
+    },
+    {
+      tag: 'Premium',
+      avail: 'yes',
+      name: 'The Blue House',
+      bedsLabel: '3 bed',
+      desc: 'Spacious three-bedroom home — our signature blue house — with room for larger groups and get-togethers.',
+      amenities: ['3 Bedrooms', 'Blue House', 'Groups'],
+      price: 'R 3,200',
+      sub: 'per night',
+      rating: 4.95,
+      img: HOUSE3_IMAGE_PATHS[0],
+      gallery: HOUSE3_IMAGE_PATHS,
+      isEvent: false,
+    },
   ];
 
   const events = [
     { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Catering for up to 200 guests with full coordination support.', features: ['Up to 200 guests', 'In-house catering available', 'Overnight accommodation for wedding party', 'Scenic photo backdrops throughout'], price: 'From R 28,000', sub: 'Full day venue hire', link: '/booking?type=wedding' },
     { icon: '🏢', name: 'Corporate Events', desc: 'Team retreats, strategy sessions, product launches. Escape the city for a productive day surrounded by nature.', features: ['20–120 delegates', 'AV equipment included', 'Catering & tea stations', 'Overnight delegate packages'], price: 'From R 8,500', sub: 'Half-day from R 5,000', link: '/booking?type=corporate' },
     { icon: '🎂', name: 'Private Celebrations', desc: 'Birthdays, anniversaries, family reunions. Our garden venue creates magical memories for every occasion.', features: ['Up to 80 guests', 'Entertainment area', 'Bar & catering options', 'Ample parking'], price: 'From R 6,500', sub: 'Venue hire per day', link: '/booking?type=celebration' },
-    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities, and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 8 rooms accommodated', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/booking?type=retreat' },
+    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities, and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/booking?type=retreat' },
   ];
 
   const testimonials = [
-    { stars: '★★★★★', text: '"An absolutely magical experience. The Loft Suite was breathtaking — we woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Loft Suite', avatarBg: 'var(--forest)' },
+    { stars: '★★★★★', text: '"An absolutely magical experience. Willow Cottage was breathtaking — we woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Willow Cottage', avatarBg: 'var(--forest)' },
     { stars: '★★★★★', text: '"We hosted our company strategy day here and it was perfect. The team was relaxed, focused, and inspired by the environment. We\'ll be back every quarter."', author: 'LV', name: 'Lerato van Wyk', date: '18 January 2026 · Corporate Event', avatarBg: 'var(--gold)' },
     { stars: '★★★★★', text: '"Our wedding was beyond anything we could have dreamed of. The staff were incredible and every detail was handled perfectly. Our guests still talk about it."', author: 'TM', name: 'Thabo & Mercy', date: '12 December 2025 · Wedding', avatarBg: 'var(--sage)' },
   ];
@@ -216,6 +337,7 @@ export default function LandingPage() {
         </div>
       </div>
 
+      <main className="landing-main">
       <section className="hero">
         <div className="hero-bg" />
         <div className="hero-overlay" />
@@ -224,10 +346,6 @@ export default function LandingPage() {
             <div className="hero-eyebrow">South Africa · Working Farm & BnB</div>
             <h1 className="hero-headline">Where the <em>Land</em><br />Comes to Life</h1>
             <p className="hero-desc">Experience authentic farm living at ValleyCroft Agro-Tourism. Luxurious BnB rooms, unforgettable event venues, and the warmth of South African countryside hospitality.</p>
-            <div className="hero-ctas">
-              <Link to="/booking" className="btn-hero-primary"><i className="fas fa-calendar-check" /> Book Your Stay</Link>
-              <a href="#accommodation" className="btn-hero-secondary"><i className="fas fa-eye" /> Explore Rooms</a>
-            </div>
             <div className="hero-trust">
               <div className="hero-trust-item"><i className="fas fa-star" /> 4.9 / 5 Rating</div>
               <div className="hero-trust-item"><i className="fas fa-check-circle" /> Instant Confirmation</div>
@@ -266,13 +384,12 @@ export default function LandingPage() {
                 </select>
               </div>
               <div className="qb-group">
-                <div className="qb-label">Room Type</div>
+                <div className="qb-label">House</div>
                 <select className="qb-input">
-                  <option>Any Room</option>
-                  <option>Standard Room</option>
-                  <option>Garden View</option>
-                  <option>Loft Suite</option>
-                  <option>Farm Suite</option>
+                  <option>Any house</option>
+                  <option>Willow Cottage (2 bed)</option>
+                  <option>Garden Nook (1 bed)</option>
+                  <option>The Blue House (3 bed)</option>
                 </select>
               </div>
             </div>
@@ -288,6 +405,7 @@ export default function LandingPage() {
         <div className="feature-item"><i className="fas fa-clock" /> 24/7 Guest Support</div>
         <div className="feature-item"><i className="fas fa-undo" /> Free Cancellation 48h</div>
         <div className="feature-item"><i className="fas fa-wifi" /> Free WiFi Throughout</div>
+        <div className="feature-item"><i className="fas fa-person-swimming" /> Swimming pool</div>
         <div className="feature-item"><i className="fas fa-utensils" /> Farm Breakfast Included</div>
       </div>
 
@@ -302,30 +420,6 @@ export default function LandingPage() {
           </div>
         ))}
       </div>
-
-      <section className="section offerings-section">
-        <div className="section-center" data-animate>
-          <div className="eyebrow">What We Offer</div>
-          <h2 className="section-heading">Valley Croft Agro-Tourism</h2>
-          <p className="section-desc">BnB stays, event venue hire, and authentic farm experiences in the heart of South Africa.</p>
-        </div>
-        <div className="offerings-grid">
-          {offerings.map((off) => (
-            <div key={off.title} className="offering-card" data-animate>
-              <div className="offering-bg" style={{ backgroundImage: `url(${off.img})` }} />
-              <div className="offering-content">
-                <h3 className="offering-title">{off.title}</h3>
-                <p className="offering-desc">{off.desc}</p>
-                {off.scrollToRooms ? (
-                  <button type="button" className="btn-offering" onClick={scrollToRooms}>{off.cta}</button>
-                ) : (
-                  <a href={off.href} className="btn-offering">{off.cta}</a>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       <section className="quick-actions" id="book">
         <div className="quick-actions-inner">
@@ -354,20 +448,59 @@ export default function LandingPage() {
       </section>
 
       <section className="section" id="accommodation" ref={roomsSectionRef}>
-        <div className="section-center" data-animate>
+        <div className="section-center section-center--accom" data-animate>
           <div className="eyebrow">Where You&apos;ll Stay</div>
-          <h2 className="section-heading">Rooms &amp; Suites</h2>
-          <p className="section-desc">Each room at ValleyCroft has been thoughtfully designed to blend rustic farm character with modern comfort.</p>
+          <h2 className="section-heading">Our farm houses</h2>
+          <p className="section-desc">Three houses on the farm — each with its own character, from cosy Garden Nook to the spacious Blue House.</p>
+        </div>
+        <div className="landing-m-accom-head">
+          <h2 className="landing-m-accom-title">Available farm houses</h2>
+          <button
+            type="button"
+            className="landing-m-accom-more"
+            aria-label="Scroll to house listings"
+            onClick={() => {
+              document.querySelector('#accommodation .rooms-grid-wide')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              });
+            }}
+          >
+            <i className="fas fa-chevron-right" aria-hidden />
+          </button>
         </div>
         <div className="rooms-grid rooms-grid-wide">
           {rooms.map((room) => (
             <div key={room.name} className="room-card-pub" data-animate>
-              <div className="room-img" style={{ backgroundImage: `url(${room.img})` }}>
-                <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
-                <div className={`room-avail ${room.avail}`}>{room.avail === 'yes' ? 'Available' : room.availText}</div>
-              </div>
+              <RoomCardImageCarousel
+                images={room.gallery?.length ? room.gallery : [room.img]}
+                roomName={room.name}
+                overlay={
+                  <>
+                    {room.tag === 'Popular' ? (
+                      <div className="room-guest-badge">Guest favourite</div>
+                    ) : null}
+                    <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
+                    <div className={`room-avail ${room.avail}`}>{room.avail === 'yes' ? 'Available' : room.availText}</div>
+                    <button
+                      type="button"
+                      className="room-wishlist"
+                      aria-label="Save listing"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <i className="far fa-heart" aria-hidden />
+                    </button>
+                  </>
+                }
+              />
               <div className="room-info">
                 <div className="room-name">{room.name}</div>
+                {room.bedsLabel ? <div className="room-beds">{room.bedsLabel}</div> : null}
+                <div className="room-meta-line">
+                  <span className="room-meta-price">{room.price}</span>
+                  <span className="room-meta-sep" aria-hidden>·</span>
+                  <span className="room-meta-rating"><i className="fas fa-star" aria-hidden /> {room.rating != null ? Number(room.rating).toFixed(2) : '4.9'}</span>
+                </div>
                 <p className="room-desc">{room.desc}</p>
                 <div className="room-amenities">
                   {room.amenities.map((a) => (
@@ -394,15 +527,20 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="experience-section">
+      <section className="experience-section" id="experience">
         <div className="section-center" data-animate>
           <div className="eyebrow">The Experience</div>
           <h2 className="section-heading">What to expect at Valley Croft</h2>
-          <p className="section-desc">From sunrise walks to evening braais — the farm comes alive in every season.</p>
+          <p className="section-desc">From sunrise walks to pool days and evening braais — the farm comes alive in every season.</p>
         </div>
         <div className="experience-grid">
           {experienceItems.map((exp) => (
-            <div key={exp.title} className="experience-card" data-animate>
+            <div
+              key={exp.title}
+              className="experience-card"
+              data-animate
+              id={exp.title === 'Pool & Summer Days' ? 'm-pool-spotlight' : undefined}
+            >
               <div className="experience-img" style={{ backgroundImage: `url(${exp.img})` }} />
               <div className="experience-content">
                 <h3 className="experience-title">{exp.title}</h3>
@@ -495,6 +633,7 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
+      </main>
 
       <div className={`modal-backdrop ${modalOpen ? 'open' : ''}`} onClick={closeModal} role="presentation">
         <div className="modal-box" onClick={(e) => e.stopPropagation()}>
@@ -528,10 +667,10 @@ export default function LandingPage() {
             </div>
             <div>
               <div className="footer-col-title">Accommodation</div>
-              <Link to="/booking" className="footer-link">Standard Rooms</Link>
-              <Link to="/booking" className="footer-link">Garden View</Link>
-              <Link to="/booking" className="footer-link">Loft Suite</Link>
-              <Link to="/booking" className="footer-link">Heritage Suite</Link>
+              <Link to="/booking" className="footer-link">Book a house</Link>
+              <Link to="/booking" className="footer-link">Willow Cottage (2 bed)</Link>
+              <Link to="/booking" className="footer-link">Garden Nook (1 bed)</Link>
+              <Link to="/booking" className="footer-link">The Blue House</Link>
               <Link to="/booking" className="footer-link">Farm Retreat</Link>
             </div>
             <div>
@@ -560,6 +699,29 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      <nav className="landing-m-bottom-nav" aria-label="Mobile quick links">
+        <button type="button" className="landing-m-bottom-item landing-m-bottom-item--active" onClick={() => scrollToHash('#accommodation')}>
+          <i className="fas fa-compass" aria-hidden />
+          <span>Explore</span>
+        </button>
+        <Link to="/booking" className="landing-m-bottom-item">
+          <i className="fas fa-calendar-check" aria-hidden />
+          <span>Book</span>
+        </Link>
+        <button type="button" className="landing-m-bottom-item" onClick={() => scrollToHash('#events')}>
+          <i className="fas fa-glass-cheers" aria-hidden />
+          <span>Events</span>
+        </button>
+        <Link to="/booking-track" className="landing-m-bottom-item">
+          <i className="fas fa-suitcase" aria-hidden />
+          <span>Trips</span>
+        </Link>
+        <Link to="/login" className="landing-m-bottom-item">
+          <i className="fas fa-user-circle" aria-hidden />
+          <span>Log in</span>
+        </Link>
+      </nav>
     </>
   );
 }
