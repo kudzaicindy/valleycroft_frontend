@@ -83,6 +83,7 @@ function App() {
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="bookings" element={<BookingsPage />} />
+                <Route path="booking-payments" element={<BookingPaymentsPage />} />
                 <Route path="guest-bookings" element={<Navigate to="bookings?tab=guest" replace />} />
                 <Route path="rooms" element={<RoomsPage />} />
                 <Route path="staff" element={<StaffPage />} />

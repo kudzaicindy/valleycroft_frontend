@@ -1,0 +1,101 @@
+/* Worker payments (/admin/staff, /ceo/staff) — compact finance-style table */
+.staff-payments-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+}
+
+.staff-payments-page .staff-pay-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--linen-dark, #e8e4dc);
+  background: var(--cream, #faf8f5);
+}
+
+.staff-payments-page .staff-pay-toolbar-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted, #6b7a72);
+  min-width: 200px;
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
+.staff-payments-page .staff-pay-toolbar-label .form-control {
+  height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.staff-payments-page .staff-pay-table-scroll {
+  overflow-x: auto;
+}
+
+.staff-payments-page .staff-pay-inline-status {
+  margin: 0;
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--text-dark, #2f3a4a);
+}
+
+.staff-payments-page .staff-pay-inline-status--muted {
+  color: var(--text-muted, #6b7a72);
+}
+
+.staff-payments-page .staff-pay-compact-table th,
+.staff-payments-page .staff-pay-compact-table td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.staff-payments-page .staff-pay-cell-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-mid, #4a5568);
+  width: 1%;
+}
+
+.staff-payments-page .staff-pay-cell-name {
+  font-weight: 600;
+  color: var(--text-dark, #2f3a4a);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-payments-page .staff-pay-cell-notes {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-mid, #4a5568);
+  max-width: 520px;
+}
+
+.staff-payments-page .staff-pay-cell-amt {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.staff-payments-modal.rooms-events-modal {
+  max-width: 460px;
+  border-radius: 14px;
+  border: 1px solid var(--linen-dark);
+  box-shadow: var(--shadow-md);
+}
+
+.staff-payments-modal .rooms-events-modal-header {
+  background: linear-gradient(180deg, var(--cream) 0%, var(--white) 100%);
+  border-bottom: 1px solid var(--linen);
+}
+
+.staff-payments-modal .rooms-events-modal-title {
+  font-family: 'Cormorant Garamond', serif;
+}

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { trackGuestBooking } from '@/api/guestBookings';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
+import { formatGuestBookingError } from '@/utils/guestBookingErrors';
 import './BookingPage.css';
 
 export default function BookingTrackPage() {
@@ -13,26 +14,44 @@ export default function BookingTrackPage() {
   const [result, setResult] = useState(null);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [errorModal, setErrorModal] = useState({ open: false, title: '', message: '' });
+
+  useEffect(() => {
+    if (!errorModal.open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [errorModal.open]);
 
   async function handleTrack(e) {
     e.preventDefault();
     const trackingCode = ref.trim();
     const em = email.trim();
-    if (!trackingCode || !em) {
-      alert('Please enter both your tracking code and email address.');
+    const nextField = {};
+    if (!trackingCode) nextField.ref = 'Tracking code is required.';
+    if (!em) nextField.email = 'Email is required.';
+    if (Object.keys(nextField).length) {
+      setFieldErrors(nextField);
       return;
     }
+    setFieldErrors({});
     setSearched(true);
-    setError(null);
+    setErrorModal({ open: false, title: '', message: '' });
     setResult(null);
     setLoading(true);
     try {
       const data = await trackGuestBooking({ email: em, trackingCode });
       setResult(data);
     } catch (err) {
-      setError(err && err.message ? err.message : 'Booking not found.');
       setResult(null);
+      setErrorModal({
+        open: true,
+        title: 'Could not load booking',
+        message: formatGuestBookingError(err),
+      });
     } finally {
       setLoading(false);
     }
@@ -66,27 +85,48 @@ export default function BookingTrackPage() {
             <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
               Enter your tracking code and email address to view your reservation status.
             </p>
-            {error && <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 12 }}>{error}</p>}
             <form onSubmit={handleTrack}>
               <div className="form-group">
-                <div className="form-label">Tracking code</div>
+                <div className="form-label">
+                  Tracking code <span className="form-required">*</span>
+                </div>
                 <input
                   type="text"
-                  className="form-control"
+                  className={`form-control${fieldErrors.ref ? ' form-control--error' : ''}`}
                   placeholder="e.g. VC-2026-089"
                   value={ref}
-                  onChange={(e) => setRef(e.target.value)}
+                  onChange={(e) => {
+                    setRef(e.target.value);
+                    if (fieldErrors.ref) setFieldErrors((f) => ({ ...f, ref: '' }));
+                  }}
+                  aria-invalid={!!fieldErrors.ref}
                 />
+                {fieldErrors.ref ? (
+                  <div className="form-field-error" role="alert">
+                    {fieldErrors.ref}
+                  </div>
+                ) : null}
               </div>
               <div className="form-group">
-                <div className="form-label">Your Email</div>
+                <div className="form-label">
+                  Your email <span className="form-required">*</span>
+                </div>
                 <input
                   type="email"
-                  className="form-control"
+                  className={`form-control${fieldErrors.email ? ' form-control--error' : ''}`}
                   placeholder="you@email.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors((f) => ({ ...f, email: '' }));
+                  }}
+                  aria-invalid={!!fieldErrors.email}
                 />
+                {fieldErrors.email ? (
+                  <div className="form-field-error" role="alert">
+                    {fieldErrors.email}
+                  </div>
+                ) : null}
               </div>
               <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
                 {loading ? <><i className="fas fa-spinner fa-spin" /> Searching…</> : <><i className="fas fa-search" /> Track Booking</>}
@@ -136,6 +176,38 @@ export default function BookingTrackPage() {
           </div>
         </div>
       </div>
+
+      {errorModal.open ? (
+        <div
+          className="booking-modal-overlay"
+          role="presentation"
+          onClick={() => setErrorModal({ open: false, title: '', message: '' })}
+        >
+          <div
+            className="booking-modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="track-error-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="track-error-title" className="booking-modal-title">
+              {errorModal.title}
+            </h2>
+            <div className="booking-modal-body">
+              {errorModal.message.split('\n').map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary booking-modal-btn"
+              onClick={() => setErrorModal({ open: false, title: '', message: '' })}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

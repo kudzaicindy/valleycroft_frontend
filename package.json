@@ -7,10 +7,16 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ad:studio": "remotion studio remotion/index.jsx",
+    "ad:render": "node scripts/render_remotion_ad.cjs",
+    "ad:render:cli": "remotion render remotion/index.jsx ValleyCroftAd out/valleycroft-remotion-ad.mp4 --concurrency=1 --overwrite",
+    "ad:generate": "node scripts/generate_ad.cjs",
+    "seed:rooms": "node scripts/seed_valleycroft_rooms.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@remotion/cli": "^4.0.447",
     "@tanstack/react-query": "^5.90.21",
     "autoprefixer": "^10.4.27",
     "axios": "^1.13.6",
@@ -20,12 +26,14 @@
     "react-hook-form": "^7.71.2",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.0",
+    "remotion": "^4.0.447",
     "tailwindcss": "^4.2.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@eslint/js": "^9.39.4",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@rolldown/plugin-babel": "^0.2.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",
@@ -35,12 +43,15 @@
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "fluent-ffmpeg": "^2.1.3",
     "globals": "^17.4.0",
+    "playwright": "^1.59.1",
+    "puppeteer": "^24.40.0",
     "vite": "^8.0.0"
   },
   "optionalDependencies": {
-    "@tailwindcss/oxide-win32-x64-msvc": "^4.2.2",
     "@tailwindcss/oxide-linux-x64-gnu": "^4.2.2",
-    "@tailwindcss/oxide-linux-x64-musl": "^4.2.2"
+    "@tailwindcss/oxide-linux-x64-musl": "^4.2.2",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.2.2"
   }
 }

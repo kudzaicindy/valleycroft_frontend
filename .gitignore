@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Puppeteer ad generator output
+ad_frames
+ad_frames_subtitled
+ad_subtitles.srt
+ad_voiceover_script.txt
+background_music.mp3

@@ -4,9 +4,54 @@ export function sumLineItems(items) {
   return items.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 }
 
+/**
+ * P&L payloads like `{ success, basis: 'double_entry_v3', data: { current: { presentation, revenue, costOfSales, operatingExpenses, ... } } }`.
+ * Merges `presentation` with top-level period fields and maps to { revenue, cogs, opex, netIncome } for the structured branch below.
+ */
+function normalizeDoubleEntryV3Period(cur) {
+  if (!cur || typeof cur !== 'object') return null;
+  const pres = cur.presentation && typeof cur.presentation === 'object' ? cur.presentation : {};
+  function mergeSection(key) {
+    const a = pres[key] && typeof pres[key] === 'object' && !Array.isArray(pres[key]) ? { ...pres[key] } : {};
+    const b = cur[key] && typeof cur[key] === 'object' && !Array.isArray(cur[key]) ? cur[key] : {};
+    return { ...a, ...b };
+  }
+  const revenue = mergeSection('revenue');
+  const cogs = mergeSection('costOfSales');
+  const opex = mergeSection('operatingExpenses');
+  if (revenue.total == null) {
+    if (revenue.netRevenue != null) revenue.total = Number(revenue.netRevenue) || 0;
+    else if (revenue.grossRevenue != null) revenue.total = Number(revenue.grossRevenue) || 0;
+  }
+  if (opex.total == null && cur.totalOperatingExpenses != null) {
+    opex.total = Number(cur.totalOperatingExpenses) || 0;
+  }
+  const netIncome =
+    cur.netProfitBeforeTax != null
+      ? Number(cur.netProfitBeforeTax)
+      : pres.netProfitBeforeTax != null
+        ? Number(pres.netProfitBeforeTax)
+        : cur.netProfit != null
+          ? Number(cur.netProfit)
+          : cur.operatingProfitEBIT != null
+            ? Number(cur.operatingProfitEBIT)
+            : undefined;
+  return {
+    revenue,
+    cogs,
+    opex,
+    ...(Number.isFinite(netIncome) ? { netIncome } : {}),
+  };
+}
+
 export function incomeStatementMetrics(data) {
   if (!data) return { revenue: 0, expense: 0, net: 0, incomeRows: [], expenseRows: [] };
-  const d = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
+  let wrapped = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
+  let d = wrapped;
+  if (d && typeof d === 'object' && d.current && typeof d.current === 'object' && !Array.isArray(d.current)) {
+    const normalized = normalizeDoubleEntryV3Period(d.current);
+    if (normalized) d = normalized;
+  }
 
   // Legacy array shape.
   if (Array.isArray(d?.income) || Array.isArray(d?.expense)) {
@@ -19,6 +64,7 @@ export function incomeStatementMetrics(data) {
 
   // Structured shape:
   // { revenue: {..., total}, cogs: {..., total}, opex: {..., total}, netIncome }
+  // (includes normalized double_entry_v3 `data.current` payloads)
   const revenueRows = Object.entries(d?.revenue || {})
     .filter(([k, v]) => k !== 'total' && Number.isFinite(Number(v)))
     .map(([k, v]) => ({ key: k, label: toTitleFromKey(k), amount: Number(v) || 0 }));
@@ -321,11 +367,20 @@ export function groupBalanceSheetItems(items) {
 }
 
 export function rowLabel(row) {
-  return row.description ?? row.category ?? row.name ?? row.label ?? '—';
+  return (
+    row.description ??
+    row.accountName ??
+    row.account_name ??
+    row.category ??
+    row.name ??
+    row.label ??
+    '—'
+  );
 }
 
 export function rowAmount(row) {
-  return row.amount ?? row.value ?? 0;
+  const n = row.amount ?? row.value ?? row.balance;
+  return n != null && Number.isFinite(Number(n)) ? Number(n) : 0;
 }
 
 function toTitleFromKey(k) {
@@ -338,8 +393,8 @@ function toTitleFromKey(k) {
 
 function isBalanceSheetAccountLine(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
-  if (v.amount == null && v.value == null) return false;
-  const amt = Number(v.amount ?? v.value);
+  if (v.amount == null && v.value == null && v.balance == null) return false;
+  const amt = Number(v.amount ?? v.value ?? v.balance);
   if (!Number.isFinite(amt)) return false;
   return (
     'accountName' in v ||
@@ -354,7 +409,7 @@ function pushObjectRows(out, section, group, obj, type = '') {
   for (const [k, v] of Object.entries(obj)) {
     if (k === 'total') {
       if (v != null && typeof v === 'object' && !Array.isArray(v) && isBalanceSheetAccountLine(v)) {
-        const amount = Number(v.amount ?? v.value ?? 0) || 0;
+        const amount = Number(v.amount ?? v.value ?? v.balance ?? 0) || 0;
         const code = v.accountCode ?? v.account_code ?? v.code ?? '';
         const name =
           v.accountName ??
@@ -375,7 +430,7 @@ function pushObjectRows(out, section, group, obj, type = '') {
     }
     if (v != null && typeof v === 'object' && !Array.isArray(v)) {
       if (isBalanceSheetAccountLine(v)) {
-        const amount = Number(v.amount ?? v.value ?? 0) || 0;
+        const amount = Number(v.amount ?? v.value ?? v.balance ?? 0) || 0;
         const code = v.accountCode ?? v.account_code ?? v.code ?? '';
         const name =
           v.accountName ??
@@ -408,25 +463,70 @@ function pushObjectRows(out, section, group, obj, type = '') {
   }
 }
 
+/** double_entry_v3 style: section arrays of { accountCode, accountName, accountType?, balance } */
+function mapBalanceSheetAccountArray(arr, sectionKey, sectionLabel) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((v) => {
+    if (!v || typeof v !== 'object') return null;
+    const amount = Number(v.balance ?? v.amount ?? v.value ?? 0) || 0;
+    return {
+      section: sectionLabel,
+      group: sectionLabel,
+      type: v.accountType || v.account_type || sectionKey,
+      code: String(v.accountCode ?? v.account_code ?? v.code ?? ''),
+      name: String(v.accountName ?? v.account_name ?? v.name ?? '—'),
+      category: v.category ?? '—',
+      amount,
+    };
+  }).filter(Boolean);
+}
+
 /**
  * Normalize balance-sheet payload to line-item rows.
  * Supports:
  * - array rows
  * - { items | lineItems }
- * - structured object { assets, liabilities, equity }
+ * - double_entry_v3: { assets, liabilities, equity } as **arrays** of account lines (balance field)
+ * - structured object { assets, liabilities, equity } as nested **objects** (legacy)
  */
 export function normalizeBalanceSheetRows(data) {
   if (Array.isArray(data)) return data;
-  const d = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
+  let d = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
   if (!d || typeof d !== 'object') return [];
   if (Array.isArray(d.items)) return d.items;
   if (Array.isArray(d.lineItems)) return d.lineItems;
+
+  const hasArraySections =
+    Array.isArray(d.assets) || Array.isArray(d.liabilities) || Array.isArray(d.equity);
+  if (hasArraySections) {
+    const out = [];
+    out.push(...mapBalanceSheetAccountArray(d.assets, 'assets', 'Assets'));
+    out.push(...mapBalanceSheetAccountArray(d.liabilities, 'liabilities', 'Liabilities'));
+    out.push(...mapBalanceSheetAccountArray(d.equity, 'equity', 'Equity'));
+    return out;
+  }
 
   const out = [];
   if (d.assets) pushObjectRows(out, 'Assets', 'Assets', d.assets, 'assets');
   if (d.liabilities) pushObjectRows(out, 'Liabilities', 'Liabilities', d.liabilities, 'liabilities');
   if (d.equity) pushObjectRows(out, 'Equity', 'Equity', d.equity, 'equity');
   return out;
+}
+
+/**
+ * Section totals for APIs that send totalAssets / totalLiabilities / totalEquity on the payload root.
+ */
+export function readDoubleEntryBalanceSheetTotals(d) {
+  if (!d || typeof d !== 'object') return null;
+  const a = d.totalAssets;
+  const l = d.totalLiabilities;
+  const e = d.totalEquity;
+  if (a == null && l == null && e == null) return null;
+  return {
+    assets: a != null ? Number(a) : null,
+    liabilities: l != null ? Number(l) : null,
+    equity: e != null ? Number(e) : null,
+  };
 }
 
 /** Read section grand total from API object `{ total: { amount } | number }`. */

@@ -1,9 +1,18 @@
-import { useState, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { createGuestBooking } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
+import { formatGuestBookingError, pickRoomNightlyRate } from '@/utils/guestBookingErrors';
+import { FARM_STAYS, apiRowMatchesStay } from '@/content/farmStays';
+import { resolveRoomImageUrls } from '@/utils/roomImageUrl';
+import {
+  loadBookingPolicySettings,
+  depositAmountFromTotal,
+  BOOKING_POLICY_CHANGED_EVENT,
+  BOOKING_POLICY_STORAGE_KEY,
+} from '@/utils/bookingPolicySettings';
 import './BookingPage.css';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -36,60 +45,6 @@ function formatNum(n) {
   return n.toLocaleString('en-ZA');
 }
 
-const HOUSE1_IMAGES = [
-  '/house%201living%20room.jpeg',
-  '/house%201living%20room%202.jpeg',
-  '/house%201bed%201.jpeg',
-  '/house%201%20bed%202.jpeg',
-  '/house%201%20bathroom.jpeg',
-];
-
-const HOUSE2_IMAGES = [
-  '/house%202%20living.jpeg',
-  '/house%202%20living%202.jpeg',
-  '/house%202%20living%203.jpeg',
-  '/house%202%20bath%201.jpeg',
-  '/house%202%20bath%202.jpeg',
-];
-
-const HOUSE3_IMAGES = [
-  '/house%203%20living.jpeg',
-  '/house%203%20bed%201.jpeg',
-  '/house%203%20bed%202.jpeg',
-  '/house%203%20kitchen.jpeg',
-  '/house%203%20bath.jpeg',
-];
-
-const ROOMS = [
-  {
-    id: 'house-1',
-    price: 1920,
-    name: 'Willow Cottage',
-    desc: 'Two-bedroom cottage on the farm — living spaces, bedrooms and bathroom. Ideal for small families or two couples.',
-    tags: ['2 Bedrooms', 'Full bathroom', 'Farm breakfast', 'WiFi'],
-    avail: true,
-    images: HOUSE1_IMAGES,
-  },
-  {
-    id: 'house-2',
-    price: 1280,
-    name: 'Garden Nook',
-    desc: 'One-bedroom hideaway — quiet and comfortable for solo travellers or couples.',
-    tags: ['1 Bedroom', 'Countryside', 'WiFi'],
-    avail: true,
-    images: HOUSE2_IMAGES,
-  },
-  {
-    id: 'house-3',
-    price: 3200,
-    name: 'The Blue House',
-    desc: 'Spacious three-bedroom home — our signature blue house — with room for larger groups.',
-    tags: ['3 Bedrooms', 'Blue House', 'Groups', 'WiFi'],
-    avail: true,
-    images: HOUSE3_IMAGES,
-  },
-];
-
 const REQ_CHIPS = [
   '🍽️ Early Breakfast',
   '🎵 Anniversary Setup',
@@ -101,8 +56,20 @@ const REQ_CHIPS = [
   '♿ Accessibility',
 ];
 
+/** Remotion iframe (?vc_embed=1): avoid /api/rooms — production API has no CORS for localhost. */
+function skipRoomsApiInEmbed() {
+  if (typeof document === 'undefined') return false;
+  if (document.documentElement.classList.contains('vc-remotion-ad')) return true;
+  try {
+    return new URLSearchParams(window.location.search).get('vc_embed') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export default function BookingPage() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const today = new Date();
   const defaultCheckout = new Date(today);
   defaultCheckout.setDate(defaultCheckout.getDate() + 3);
@@ -138,67 +105,214 @@ export default function BookingPage() {
   const [arrival, setArrival] = useState('14:00 – 16:00');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [confirmRef, setConfirmRef] = useState(null);
-  const [carouselIndex, setCarouselIndex] = useState({});
+  const [roomGallery, setRoomGallery] = useState(null);
+  const [errorModal, setErrorModal] = useState({ open: false, title: '', message: '' });
+  const [detailsErrors, setDetailsErrors] = useState({});
+  const [pendingPreferredId, setPendingPreferredId] = useState(null);
+  const [step1House, setStep1House] = useState('any');
+  const [policyRev, setPolicyRev] = useState(0);
+
+  const showErrorModal = useCallback((title, message) => {
+    setErrorModal({ open: true, title: title || 'Something went wrong', message: message || 'Please try again.' });
+  }, []);
+
+  const closeErrorModal = useCallback(() => {
+    setErrorModal((m) => ({ ...m, open: false }));
+  }, []);
+
+  const applyRoomSelection = useCallback((r) => {
+    setRoom(r.id);
+    setRoomName(r.name);
+    setRoomPrice(r.price);
+  }, []);
 
   const checkInStr = toLocalDateStr(checkin);
   const checkOutStr = toLocalDateStr(checkout);
+  const skipRoomsApi = skipRoomsApiInEmbed();
   const { data: roomsApi } = useQuery({
     queryKey: ['rooms', checkInStr, checkOutStr],
     queryFn: () => getRooms({ checkIn: checkInStr, checkOut: checkOutStr }),
-    enabled: step >= 2 && !!checkInStr && !!checkOutStr,
+    enabled: step >= 2 && !!checkInStr && !!checkOutStr && !skipRoomsApi,
   });
   const apiRoomsList = Array.isArray(roomsApi) ? roomsApi : (roomsApi?.data ?? []);
   const displayRooms = useMemo(() => {
-    if (apiRoomsList.length === 0) return ROOMS;
-    const defaultImages = ROOMS[0]?.images ?? [];
-    return apiRoomsList.map((r) => {
-      const staticMatch = ROOMS.find((s) => s.name === (r.name || '').trim() || s.id === (r._id || r.id));
+    const defaultImages = FARM_STAYS[0]?.images ?? [];
+    const imgs = (list) => resolveRoomImageUrls(list?.length ? list : defaultImages);
+    const fallbackRow = (stay) => ({
+      id: stay.slug,
+      slug: stay.slug,
+      name: stay.name,
+      price: stay.price,
+      desc: stay.desc,
+      tags: stay.tags,
+      images: imgs(stay.images?.length ? stay.images : defaultImages),
+      avail: true,
+      bookedBy: [],
+      onlyOneLeft: false,
+    });
+    if (apiRoomsList.length === 0) {
+      return FARM_STAYS.map((stay) => fallbackRow(stay));
+    }
+    return FARM_STAYS.map((stay) => {
+      const api = apiRoomsList.find((r) => apiRowMatchesStay(r, stay));
+      const staticMatch = {
+        name: stay.name,
+        desc: stay.desc,
+        tags: stay.tags,
+        images: stay.images,
+        price: stay.price,
+      };
+      if (!api) return fallbackRow(stay);
+      const id = api._id ?? api.id ?? stay.slug;
+      const price = pickRoomNightlyRate(api, staticMatch);
       return {
-        id: r._id ?? r.id,
-        name: r.name ?? staticMatch?.name ?? 'Room',
-        price: Number(r.rate ?? r.price ?? staticMatch?.price ?? 0),
-        desc: r.description ?? staticMatch?.desc ?? '',
-        tags: r.tags ?? staticMatch?.tags ?? [],
-        images: r.images?.length ? r.images : (staticMatch?.images ?? defaultImages),
-        avail: r.availableForDates !== false,
-        bookedBy: r.bookedBy ?? [],
-        onlyOneLeft: false,
+        id,
+        slug: stay.slug,
+        name: stay.name,
+        price,
+        desc: (api.description && String(api.description).trim()) || stay.desc,
+        tags: Array.isArray(api.tags) && api.tags.length ? api.tags : stay.tags,
+        images: imgs(api.images?.length ? api.images : stay.images?.length ? stay.images : defaultImages),
+        avail: api.availableForDates !== false,
+        bookedBy: api.bookedBy ?? [],
+        onlyOneLeft: Boolean(api.onlyOneLeft),
       };
     });
   }, [apiRoomsList]);
 
-  const setRoomCarouselIndex = (roomId, indexOrDelta) => {
-    setCarouselIndex((prev) => {
-      const current = prev[roomId] != null ? prev[roomId] : 0;
-      const room = displayRooms.find((r) => r.id === roomId);
-      const len = (room && room.images && room.images.length) ? room.images.length : 1;
-      const next = typeof indexOrDelta === 'number' && indexOrDelta >= 0
-        ? Math.min(indexOrDelta, len - 1)
-        : (current + (indexOrDelta === -1 ? len - 1 : 1)) % len;
-      return { ...prev, [roomId]: next };
-    });
-  };
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (window.parent === window) return;
+      if (e.source !== window.parent) return;
+      const d = e.data;
+      if (!d || typeof d !== 'object' || d.type !== 'VC_BOOKING_AD') return;
+
+      document.documentElement.classList.add('vc-remotion-ad');
+
+      if (d.demoGuest) {
+        setGuestFname('Alex');
+        setGuestLname('Morgan');
+        setGuestEmail('hello@example.com');
+        setGuestPhone('+27 82 000 0000');
+        setTermsAccepted(true);
+      }
+      if (d.room && typeof d.room === 'object') {
+        const { id, name, price } = d.room;
+        if (id != null && id !== '') setRoom(id);
+        if (name) setRoomName(name);
+        setRoomPrice(Number(price) || 0);
+      }
+      if (typeof d.step === 'number' && d.step >= 1 && d.step <= 5) {
+        setStep(d.step);
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  useEffect(() => {
+    const t = searchParams.get('type');
+    if (t && ['wedding', 'corporate', 'celebration', 'retreat'].includes(t)) {
+      setBookingType('event');
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const st = location.state;
+    if (!st || typeof st !== 'object') return;
+    if (st.checkIn) {
+      const d = parseLocalDateStr(st.checkIn);
+      if (d) setCheckin(d);
+    }
+    if (st.checkOut) {
+      const d = parseLocalDateStr(st.checkOut);
+      if (d) setCheckout(d);
+    }
+    if (st.bookingType === 'bnb' || st.bookingType === 'event') setBookingType(st.bookingType);
+    const ad = Number(st.adults);
+    if (Number.isFinite(ad) && ad >= 1 && ad <= 15) setAdults(ad);
+    const ch = Number(st.children);
+    if (Number.isFinite(ch) && ch >= 0 && ch <= 3) setChildren(ch);
+    if (st.preferredRoomId != null && String(st.preferredRoomId).trim() !== '') {
+      const pr = String(st.preferredRoomId).trim();
+      setPendingPreferredId(pr);
+      if (FARM_STAYS.some((s) => s.slug === pr)) setStep1House(pr);
+    }
+  }, [location.key, location.state]);
+
+  useEffect(() => {
+    const bump = (e) => {
+      if (e?.type === 'storage' && e.key != null && e.key !== BOOKING_POLICY_STORAGE_KEY) return;
+      setPolicyRev((r) => r + 1);
+    };
+    window.addEventListener('storage', bump);
+    window.addEventListener(BOOKING_POLICY_CHANGED_EVENT, bump);
+    return () => {
+      window.removeEventListener('storage', bump);
+      window.removeEventListener(BOOKING_POLICY_CHANGED_EVENT, bump);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingPreferredId) return;
+    let r = displayRooms.find(
+      (x) => String(x.slug) === String(pendingPreferredId) || String(x.id) === String(pendingPreferredId)
+    );
+    if (!r) {
+      const stay = FARM_STAYS.find((s) => s.slug === pendingPreferredId);
+      if (stay) {
+        r = displayRooms.find((x) => x.slug === stay.slug || (x.name || '').trim() === stay.name);
+      }
+    }
+    if (r && r.avail) {
+      applyRoomSelection(r);
+      setPendingPreferredId(null);
+    }
+  }, [displayRooms, pendingPreferredId, applyRoomSelection]);
 
   const nights = Math.max(1, Math.round((checkout - checkin) / (1000 * 60 * 60 * 24)));
   const subtotal = room ? roomPrice * nights : 0;
-  const vat = Math.round(subtotal * 0.15);
-  const total = subtotal + vat;
+  /** Room totals exclude VAT (rates are treated as VAT-inclusive or not charged separately on site). */
+  const total = subtotal;
+  const bookingPolicy = useMemo(() => loadBookingPolicySettings(), [policyRev]);
+  const policyDeposit = depositAmountFromTotal(total, bookingPolicy);
 
   function getNights() {
     return Math.max(1, Math.round((checkout - checkin) / (1000 * 60 * 60 * 24)));
   }
 
+  function validateDetailsForStep4() {
+    const errs = {};
+    if (!guestFname.trim()) errs.guestFname = 'First name is required.';
+    if (!guestEmail.trim()) errs.guestEmail = 'Email is required.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) {
+      errs.guestEmail = 'Enter a valid email address.';
+    }
+    if (!guestPhone.trim()) errs.guestPhone = 'Phone number is required.';
+    return errs;
+  }
+
   function goToStep(n) {
+    setDetailsErrors({});
+    if (n === 2 && step === 1) {
+      if (step1House && step1House !== 'any') {
+        setPendingPreferredId(step1House);
+      } else {
+        setPendingPreferredId(null);
+      }
+    }
     if (n === 3 && !room) {
-      alert('Please select a room first.');
+      showErrorModal('Choose a room', 'Please select a room before continuing.');
       return;
     }
     if (n === 4) {
-      const f = guestFname.trim();
-      const e = guestEmail.trim();
-      const p = guestPhone.trim();
-      if (!f || !e || !p) {
-        alert('Please fill in your name, email, and phone number.');
+      const errs = validateDetailsForStep4();
+      if (Object.keys(errs).length) {
+        setDetailsErrors(errs);
+        showErrorModal(
+          'Please complete your details',
+          'Some required information is missing. Check the highlighted fields below.'
+        );
         return;
       }
     }
@@ -206,10 +320,28 @@ export default function BookingPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function selectRoom(r) {
-    setRoom(r.id);
-    setRoomName(r.name);
-    setRoomPrice(r.price);
+  function openRoomPreview(r) {
+    if (!r.images?.length) return;
+    setRoomGallery({
+      name: r.name,
+      images: r.images,
+      index: 0,
+      room: r,
+      previewOnly: true,
+    });
+  }
+
+  function selectRoomWithGallery(r) {
+    if (!r.avail) return;
+    applyRoomSelection(r);
+    if (!r.images?.length) return;
+    setRoomGallery({
+      name: r.name,
+      images: r.images,
+      index: 0,
+      room: r,
+      previewOnly: false,
+    });
   }
 
   function toggleChip(label) {
@@ -218,15 +350,22 @@ export default function BookingPage() {
     );
   }
 
-  const [submitError, setSubmitError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function confirmBooking() {
-    if (!termsAccepted) {
-      alert('Please accept the Terms & Conditions to proceed.');
+    const errs = validateDetailsForStep4();
+    if (Object.keys(errs).length) {
+      setDetailsErrors(errs);
+      showErrorModal(
+        'Please complete your details',
+        'Some required information is missing. Check the highlighted fields below.'
+      );
       return;
     }
-    setSubmitError(null);
+    if (!termsAccepted) {
+      showErrorModal('Terms & conditions', 'Please accept the Terms & Conditions to confirm your booking.');
+      return;
+    }
     setSubmitting(true);
     const guestName = `${guestFname.trim()} ${guestLname.trim()}`.trim();
     const payload = {
@@ -238,7 +377,7 @@ export default function BookingPage() {
       checkIn: toLocalDateStr(checkin),
       checkOut: toLocalDateStr(checkout),
       totalAmount: total,
-      deposit: 0,
+      deposit: policyDeposit,
       source: 'website',
       notes: [notes.trim(), requests.length ? requests.join('; ') : ''].filter(Boolean).join(' ') || undefined,
     };
@@ -248,7 +387,7 @@ export default function BookingPage() {
       setConfirmRef(trackingCode);
       setStep(5);
     } catch (err) {
-      setSubmitError(err && err.message ? err.message : 'Could not submit booking. Please try again or contact us.');
+      showErrorModal('Could not submit booking', formatGuestBookingError(err));
     } finally {
       setSubmitting(false);
     }
@@ -262,6 +401,35 @@ export default function BookingPage() {
   };
 
   const lineClass = (n) => (n < step ? 'done' : 'pending');
+
+  const gallerySetIndex = useCallback((delta) => {
+    setRoomGallery((g) => {
+      if (!g || !g.images?.length) return g;
+      const len = g.images.length;
+      const next = (g.index + delta + len) % len;
+      return { ...g, index: next };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!roomGallery && !errorModal.open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [roomGallery, errorModal.open]);
+
+  useEffect(() => {
+    if (!roomGallery && !errorModal.open) return;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (roomGallery) setRoomGallery(null);
+      else closeErrorModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [roomGallery, errorModal.open, closeErrorModal]);
 
   return (
     <div className="booking-page">
@@ -348,7 +516,7 @@ export default function BookingPage() {
                       onClick={() => setBookingType('bnb')}
                     >
                       <div className="type-card-emoji" aria-hidden>🏡</div>
-                      <div className="type-card-title">BnB Accommodation</div>
+                      <div className="type-card-title">BnB</div>
                       <div className="type-card-sub">Overnight stay in our farm rooms</div>
                     </button>
                     <button
@@ -357,7 +525,7 @@ export default function BookingPage() {
                       onClick={() => setBookingType('event')}
                     >
                       <div className="type-card-emoji" aria-hidden>🎉</div>
-                      <div className="type-card-title">Event Venue</div>
+                      <div className="type-card-title">Event Hire</div>
                       <div className="type-card-sub">Weddings, corporate, celebrations</div>
                     </button>
                   </div>
@@ -431,12 +599,19 @@ export default function BookingPage() {
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <div className="form-label">Room Type</div>
-                    <select className="form-control">
-                      <option>Any Available</option>
-                      <option>Willow Cottage (2 bed)</option>
-                      <option>Garden Nook (1 bed)</option>
-                      <option>The Blue House (3 bed)</option>
+                    <div className="form-label">Room</div>
+                    <select
+                      className="form-control"
+                      value={step1House}
+                      onChange={(e) => setStep1House(e.target.value)}
+                      aria-label="Preferred room"
+                    >
+                      <option value="any">Any of our 3 stays</option>
+                      {FARM_STAYS.map((s) => (
+                        <option key={s.slug} value={s.slug}>
+                          {s.name} ({s.bedsShort})
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -466,52 +641,39 @@ export default function BookingPage() {
               <div className="panel-body">
                 <div className="room-list">
                   {displayRooms.map((r) => {
-                    const idx = (carouselIndex[r.id] != null ? carouselIndex[r.id] : 0) % (r.images && r.images.length ? r.images.length : 1);
-                    const imgUrl = r.images && r.images.length > 0 ? r.images[idx] : null;
+                    const imgUrl = r.images && r.images.length > 0 ? r.images[0] : null;
                     return (
                     <div
-                      key={r.id}
+                      key={r.slug ?? r.id}
                       className={`room-opt ${room === r.id ? 'sel' : ''} ${!r.avail ? 'unavail' : ''}`}
-                      onClick={() => r.avail && selectRoom(r)}
+                      onClick={() => r.avail && selectRoomWithGallery(r)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && r.avail) {
+                          e.preventDefault();
+                          selectRoomWithGallery(r);
+                        }
+                      }}
                     >
                       <div className="room-thumb-wrap">
-                        <div
-                          className="room-thumb room-thumb-img"
+                        <button
+                          type="button"
+                          className="room-thumb room-thumb-img room-thumb-open-gallery"
                           style={{
                             backgroundImage: imgUrl ? 'url(' + imgUrl + ')' : undefined,
                           }}
+                          aria-label={r.images?.length > 1 ? `View ${r.name} photo gallery` : `View ${r.name} photo`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (r.images?.length) openRoomPreview(r);
+                          }}
                         />
-                        {r.images && r.images.length > 1 && (
-                          <>
-                            <button
-                              type="button"
-                              className="room-carousel-btn room-carousel-prev"
-                              aria-label="Previous image"
-                              onClick={(e) => { e.stopPropagation(); setRoomCarouselIndex(r.id, -1); }}
-                            >
-                              <i className="fas fa-chevron-left" />
-                            </button>
-                            <button
-                              type="button"
-                              className="room-carousel-btn room-carousel-next"
-                              aria-label="Next image"
-                              onClick={(e) => { e.stopPropagation(); setRoomCarouselIndex(r.id, 1); }}
-                            >
-                              <i className="fas fa-chevron-right" />
-                            </button>
-                            <div className="room-carousel-dots">
-                              {r.images.map((_, i) => (
-                                <button
-                                  key={i}
-                                  type="button"
-                                  className={`room-carousel-dot ${(carouselIndex[r.id] != null ? carouselIndex[r.id] : 0) % r.images.length === i ? 'active' : ''}`}
-                                  aria-label={`Go to image ${i + 1}`}
-                                  onClick={(e) => { e.stopPropagation(); setRoomCarouselIndex(r.id, i); }}
-                                />
-                              ))}
-                            </div>
-                          </>
-                        )}
+                        {r.images?.length > 1 ? (
+                          <span className="room-gallery-hint" aria-hidden>
+                            <i className="fas fa-images" /> Gallery
+                          </span>
+                        ) : null}
                       </div>
                       <div className="room-info">
                         <div className="room-opt-name">{r.name}</div>
@@ -525,9 +687,7 @@ export default function BookingPage() {
                         </div>
                         <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: !r.avail ? 'var(--red)' : r.onlyOneLeft ? '#e67e22' : 'var(--forest)' }}>
                           {!r.avail
-                            ? (r.bookedBy?.length > 0
-                              ? `Booked for your dates (by ${r.bookedBy.map((b) => b.guestName || 'Guest').join(', ')})`
-                              : 'Booked for your dates')
+                            ? 'Booked for your dates'
                             : r.onlyOneLeft
                               ? 'Only 1 left for your dates'
                               : 'Available for your dates'}
@@ -544,7 +704,7 @@ export default function BookingPage() {
                           className={`btn-sel ${room === r.id ? 'active' : ''}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (r.avail) selectRoom(r);
+                            if (r.avail) selectRoomWithGallery(r);
                           }}
                         >
                           {room === r.id ? '✓ Selected' : 'Select'}
@@ -583,22 +743,37 @@ export default function BookingPage() {
               </div>
               <div className="panel-body guest-details-panel">
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
-                    Lead Guest Information
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 6 }}>
+                    Lead guest information
                   </div>
+                  <p className="form-required-legend">
+                    <span className="form-required">*</span> Required fields
+                  </p>
                   <div className="form-row">
                     <div className="form-group">
-                      <div className="form-label">First Name</div>
+                      <div className="form-label">
+                        First name <span className="form-required">*</span>
+                      </div>
                       <input
                         type="text"
-                        className="form-control"
+                        className={`form-control${detailsErrors.guestFname ? ' form-control--error' : ''}`}
                         placeholder="e.g. Sipho"
                         value={guestFname}
-                        onChange={(e) => setGuestFname(e.target.value)}
+                        onChange={(e) => {
+                          setGuestFname(e.target.value);
+                          if (detailsErrors.guestFname) setDetailsErrors((d) => ({ ...d, guestFname: '' }));
+                        }}
+                        aria-invalid={!!detailsErrors.guestFname}
+                        aria-describedby={detailsErrors.guestFname ? 'err-fname' : undefined}
                       />
+                      {detailsErrors.guestFname ? (
+                        <div id="err-fname" className="form-field-error" role="alert">
+                          {detailsErrors.guestFname}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="form-group">
-                      <div className="form-label">Last Name</div>
+                      <div className="form-label">Last name</div>
                       <input
                         type="text"
                         className="form-control"
@@ -610,25 +785,49 @@ export default function BookingPage() {
                   </div>
                   <div className="form-row">
                     <div className="form-group">
-                      <div className="form-label">Email Address</div>
+                      <div className="form-label">
+                        Email address <span className="form-required">*</span>
+                      </div>
                       <input
                         type="email"
-                        className="form-control"
+                        className={`form-control${detailsErrors.guestEmail ? ' form-control--error' : ''}`}
                         placeholder="sipho@email.com"
                         value={guestEmail}
-                        onChange={(e) => setGuestEmail(e.target.value)}
+                        onChange={(e) => {
+                          setGuestEmail(e.target.value);
+                          if (detailsErrors.guestEmail) setDetailsErrors((d) => ({ ...d, guestEmail: '' }));
+                        }}
+                        aria-invalid={!!detailsErrors.guestEmail}
+                        aria-describedby={detailsErrors.guestEmail ? 'err-email' : undefined}
                       />
                       <div className="form-hint">Confirmation will be sent here</div>
+                      {detailsErrors.guestEmail ? (
+                        <div id="err-email" className="form-field-error" role="alert">
+                          {detailsErrors.guestEmail}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="form-group">
-                      <div className="form-label">Phone Number</div>
+                      <div className="form-label">
+                        Phone number <span className="form-required">*</span>
+                      </div>
                       <input
                         type="tel"
-                        className="form-control"
+                        className={`form-control${detailsErrors.guestPhone ? ' form-control--error' : ''}`}
                         placeholder="+27 82 456 7890"
                         value={guestPhone}
-                        onChange={(e) => setGuestPhone(e.target.value)}
+                        onChange={(e) => {
+                          setGuestPhone(e.target.value);
+                          if (detailsErrors.guestPhone) setDetailsErrors((d) => ({ ...d, guestPhone: '' }));
+                        }}
+                        aria-invalid={!!detailsErrors.guestPhone}
+                        aria-describedby={detailsErrors.guestPhone ? 'err-phone' : undefined}
                       />
+                      {detailsErrors.guestPhone ? (
+                        <div id="err-phone" className="form-field-error" role="alert">
+                          {detailsErrors.guestPhone}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <div className="form-row">
@@ -745,7 +944,7 @@ export default function BookingPage() {
                   <div className="review-block-header">Stay Details</div>
                   <div className="review-row">
                     <div className="rv-label">Booking Type</div>
-                    <div className="rv-val">{bookingType === 'bnb' ? 'BnB Accommodation' : 'Event Venue'}</div>
+                    <div className="rv-val">{bookingType === 'bnb' ? 'BnB' : 'Event Hire'}</div>
                   </div>
                   <div className="review-row">
                     <div className="rv-label">Room</div>
@@ -808,18 +1007,31 @@ export default function BookingPage() {
                     <div className="rv-label">Subtotal</div>
                     <div className="rv-val">R {formatNum(subtotal)}</div>
                   </div>
-                  <div className="review-row">
-                    <div className="rv-label">VAT (15%)</div>
-                    <div className="rv-val">R {formatNum(vat)}</div>
-                  </div>
+                  {policyDeposit > 0 && (
+                    <div className="review-row">
+                      <div className="rv-label">Deposit (due with this request)</div>
+                      <div className="rv-val">R {formatNum(policyDeposit)}</div>
+                    </div>
+                  )}
                   <div className="review-row" style={{ background: 'rgba(45,80,22,.04)' }}>
                     <div className="rv-label" style={{ fontWeight: 700, color: 'var(--forest-d)' }}>
-                      Total Due
+                      Total due
                     </div>
                     <div className="rv-val" style={{ fontFamily: 'Cormorant Garamond,serif', fontSize: 22, fontWeight: 700, color: 'var(--forest)' }}>
                       R {formatNum(total)}
                     </div>
                   </div>
+                </div>
+                <div className="booking-policies-review" id="policies">
+                  <div className="booking-policies-review-title">ValleyCroft guest policies (BnB)</div>
+                  <ul className="booking-policies-review-list">
+                    {(bookingPolicy.policyLines || []).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                  <p className="booking-policies-review-cancel">
+                    <strong>Cancellation:</strong> {bookingPolicy.cancellationText}
+                  </p>
                 </div>
                 <div className="terms-box">
                   <input
@@ -829,15 +1041,11 @@ export default function BookingPage() {
                     onChange={(e) => setTermsAccepted(e.target.checked)}
                   />
                   <label htmlFor="terms-check">
-                    I agree to ValleyCroft's <a href="#">Terms & Conditions</a>, <a href="#">Privacy Policy</a>, and{' '}
-                    <a href="#">Cancellation Policy</a>. I understand that cancellations within 48 hours of check-in
-                    may incur a fee.
+                    I have read and agree to ValleyCroft&apos;s guest policies and cancellation terms shown above{' '}
+                    <span className="form-required">*</span>.
                   </label>
                 </div>
               </div>
-              {submitError && (
-                <div className="card card--error" style={{ margin: '0 20px 12px' }}><div className="card-body">{submitError}</div></div>
-              )}
               <div className="panel-footer">
                 <div className="step-actions">
                   <button type="button" className="btn btn-outline" onClick={() => goToStep(3)} disabled={submitting}>
@@ -933,7 +1141,7 @@ export default function BookingPage() {
             <div className="summary-body">
               <div className="sum-row">
                 <div className="sum-label">Type</div>
-                <div className="sum-val">{bookingType === 'bnb' ? 'BnB Stay' : 'Event Venue'}</div>
+                <div className="sum-val">{bookingType === 'bnb' ? 'BnB' : 'Event Hire'}</div>
               </div>
               <div className="sum-row">
                 <div className="sum-label">Check-in</div>
@@ -966,10 +1174,6 @@ export default function BookingPage() {
                 <div className="sum-label">Subtotal</div>
                 <div className="sum-val">{room ? `R ${formatNum(subtotal)}` : '—'}</div>
               </div>
-              <div className="sum-row">
-                <div className="sum-label">VAT (15%)</div>
-                <div className="sum-val">{room ? `R ${formatNum(vat)}` : '—'}</div>
-              </div>
             </div>
             <div className="summary-total">
               <div className="sum-total-label">Total</div>
@@ -997,6 +1201,119 @@ export default function BookingPage() {
           </div>
         </div>
       </div>
+
+      {errorModal.open ? (
+        <div
+          className="booking-modal-overlay"
+          role="presentation"
+          onClick={closeErrorModal}
+          onKeyDown={(e) => e.key === 'Escape' && closeErrorModal()}
+        >
+          <div
+            className="booking-modal-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="booking-error-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="booking-error-title" className="booking-modal-title">
+              {errorModal.title}
+            </h2>
+            <div className="booking-modal-body">
+              {errorModal.message.split('\n').map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+            <button type="button" className="btn btn-primary booking-modal-btn" onClick={closeErrorModal}>
+              OK
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {roomGallery && roomGallery.images?.length > 0 ? (
+        <div
+          className="booking-modal-overlay booking-modal-overlay--gallery"
+          role="presentation"
+          onClick={() => setRoomGallery(null)}
+        >
+          <div
+            className="room-gallery-shell"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${roomGallery.name} photos`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="room-gallery-header">
+              <div className="room-gallery-header-text">
+                <span className="room-gallery-eyebrow">Photo tour</span>
+                <h2 className="room-gallery-title">{roomGallery.name}</h2>
+              </div>
+              <button
+                type="button"
+                className="room-gallery-close"
+                onClick={() => setRoomGallery(null)}
+                aria-label="Close gallery"
+              >
+                <i className="fas fa-times" />
+              </button>
+            </header>
+            <div className="room-gallery-viewport">
+              <div className="room-gallery-stage-wrap">
+                <div
+                  className="room-gallery-stage"
+                  style={{ backgroundImage: `url(${roomGallery.images[roomGallery.index]})` }}
+                  role="img"
+                  aria-label={`Photo ${roomGallery.index + 1} of ${roomGallery.images.length}`}
+                />
+                {roomGallery.images.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="room-gallery-nav room-gallery-prev"
+                      aria-label="Previous photo"
+                      onClick={() => gallerySetIndex(-1)}
+                    >
+                      <i className="fas fa-chevron-left" />
+                    </button>
+                    <button
+                      type="button"
+                      className="room-gallery-nav room-gallery-next"
+                      aria-label="Next photo"
+                      onClick={() => gallerySetIndex(1)}
+                    >
+                      <i className="fas fa-chevron-right" />
+                    </button>
+                    <div className="room-gallery-counter" aria-live="polite">
+                      <span className="room-gallery-counter-inner">
+                        {roomGallery.index + 1} <span className="room-gallery-counter-sep">/</span>{' '}
+                        {roomGallery.images.length}
+                      </span>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            <footer className="room-gallery-footer">
+              {roomGallery.previewOnly && roomGallery.room?.avail ? (
+                <button
+                  type="button"
+                  className="btn btn-gold room-gallery-btn-primary"
+                  onClick={() => {
+                    applyRoomSelection(roomGallery.room);
+                    setRoomGallery(null);
+                  }}
+                >
+                  Select this room
+                </button>
+              ) : null}
+              <button type="button" className="btn btn-outline room-gallery-btn-secondary" onClick={() => setRoomGallery(null)}>
+                {roomGallery.previewOnly ? 'Close' : 'Done'}
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

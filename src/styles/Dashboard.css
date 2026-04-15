@@ -198,6 +198,10 @@
   flex-direction: column;
 }
 
+.dashboard .nav-section-flat {
+  padding: 4px 7px 2px;
+}
+
 .dashboard .nav-item {
   display: flex;
   align-items: center;
@@ -1458,6 +1462,24 @@
 .dashboard .stock-qty { font-size: 11px; color: var(--text-muted); }
 .dashboard .stock-level { flex: 1; margin: 0 12px; }
 
+.dashboard .stock-row--with-action {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+.dashboard .stock-row-main {
+  min-width: 0;
+  flex: 0 1 160px;
+}
+.dashboard .stock-row--with-action .stock-level {
+  flex: 1 1 100px;
+  min-width: 72px;
+  margin: 0 8px;
+}
+.dashboard .stock-row-update {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 /* Invoice */
 .dashboard .invoice-row {
   display: flex;
@@ -2580,6 +2602,65 @@
 .bookings-page .availability-card--rooms-ref .availability-cell.booked:hover .availability-cell-inner {
   background: rgba(192, 57, 43, 0.16);
   border-color: rgba(192, 57, 43, 0.38);
+}
+
+.bookings-page .availability-card--rooms-ref .availability-cell.availability-cell--clickable {
+  cursor: pointer;
+}
+
+.bookings-page .availability-filters-bar {
+  margin-top: 8px;
+}
+
+.bookings-page .bookings-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.bookings-page .bookings-policy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.bookings-page .bookings-policy-field > span:first-child {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.bookings-page .bookings-avail-guest-card {
+  border: 1px solid var(--linen);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.bookings-page .bookings-avail-guest-name {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--forest-dark);
+}
+
+.bookings-page .bookings-avail-guest-dl {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.bookings-page .bookings-avail-guest-dl dt {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.bookings-page .bookings-avail-guest-dl dd {
+  margin: 0;
 }
 
 .bookings-page .availability-card--rooms-ref .availability-cell.today .availability-cell-inner {
@@ -4068,6 +4149,34 @@
   gap: 12px !important;
 }
 
+/* Admin room photo uploads (file input + previews) */
+.dashboard .rooms-page .rooms-admin-upload-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #6f7e70);
+}
+
+.dashboard .rooms-page .rooms-admin-upload-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dashboard .rooms-page .rooms-admin-upload-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--linen-dark, #d8d2c4);
+  background: var(--linen, #f0ebe3);
+}
+
 .dashboard .rooms-page.rooms-page--reference .rooms-card {
   border-radius: 12px !important;
   border: 1px solid #d7ddd5 !important;
@@ -4081,7 +4190,7 @@
 }
 
 .dashboard .rooms-page.rooms-page--reference .rooms-card-photo {
-  height: 100px !important;
+  height: 168px !important;
 }
 
 .dashboard .rooms-page.rooms-page--reference .rooms-card-topline {
@@ -4219,7 +4328,7 @@
 }
 
 .dashboard .rooms-page.rooms-page--reference .rooms-card-photo {
-  height: 72px !important;
+  height: 168px !important;
   opacity: 1 !important;
   filter: none !important;
 }

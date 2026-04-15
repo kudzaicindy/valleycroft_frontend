@@ -6,7 +6,11 @@ import StatementAmountCell from '@/components/dashboard/StatementAmountCell';
 import StatementTransactionsModal from '@/components/dashboard/StatementTransactionsModal';
 import { MONTH_SHORT, defaultReportYear, monthRange, yearOptions, yearRange } from '@/utils/financePeriods';
 import { incomeStatementMetrics } from '@/utils/financeStatementHelpers';
-import { mergedMonthRange, statementKeyToTransactionCategory } from '@/utils/statementDrilldown';
+import {
+  extractAccountCodesFromStatementLineKey,
+  mergedMonthRange,
+  statementKeyToTransactionCategory,
+} from '@/utils/statementDrilldown';
 
 function money(n) {
   const num = Number(n);
@@ -145,6 +149,7 @@ export default function IncomeStatement() {
         end={drill?.end ?? ''}
         category={drill?.category ?? null}
         type={drill?.type ?? null}
+        accountCodes={drill?.accountCodes ?? null}
         statementAmount={drill?.statementAmount ?? null}
         sumMode={drill?.sumMode ?? 'abs'}
       />
@@ -188,6 +193,7 @@ export default function IncomeStatement() {
                             end,
                             category: cat,
                             type: 'income',
+                            accountCodes: extractAccountCodesFromStatementLineKey(k),
                             statementAmount: v != null ? Number(v) : null,
                             sumMode: 'abs',
                           })
@@ -226,6 +232,7 @@ export default function IncomeStatement() {
                               end: merged.end,
                               category: statementKeyToTransactionCategory(k),
                               type: 'income',
+                              accountCodes: extractAccountCodesFromStatementLineKey(k),
                               statementAmount: totalVal,
                               sumMode: 'abs',
                             });
@@ -314,6 +321,7 @@ export default function IncomeStatement() {
                             end,
                             category: cat,
                             type: 'expense',
+                            accountCodes: extractAccountCodesFromStatementLineKey(k),
                             statementAmount: v != null ? Number(v) : null,
                             sumMode: 'abs',
                           })
@@ -352,6 +360,7 @@ export default function IncomeStatement() {
                               end: merged.end,
                               category: statementKeyToTransactionCategory(k),
                               type: 'expense',
+                              accountCodes: extractAccountCodesFromStatementLineKey(k),
                               statementAmount: totalVal,
                               sumMode: 'abs',
                             });

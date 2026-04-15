@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { login as apiLogin } from '@/api/auth';
+import { resolveApiBaseUrl } from '@/api/resolveApiBaseUrl';
 import { useState } from 'react';
 import './LoginPage.css';
 
@@ -21,11 +22,6 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  if (isAuthenticated && user?.role) {
-    const home = ROLE_HOME[user.role?.toLowerCase()];
-    return <Navigate to={home ?? '/admin/dashboard'} replace />;
-  }
-
   const {
     register,
     handleSubmit,
@@ -36,6 +32,11 @@ export default function LoginPage() {
   });
 
   const from = location.state?.from ?? '/admin';
+
+  if (isAuthenticated && user?.role) {
+    const home = ROLE_HOME[user.role?.toLowerCase()];
+    return <Navigate to={home ?? '/admin/dashboard'} replace />;
+  }
 
   async function onSubmit(values) {
     setError(null);
@@ -59,8 +60,15 @@ export default function LoginPage() {
         typeof msg === 'string' &&
         (msg.toLowerCase().includes('network error') || msg.toLowerCase().includes('failed to fetch'));
       if (networkDown) {
-        const apiUrl = import.meta.env.VITE_API_URL || 'https://valleycroft-backend.onrender.com';
-        setError(`Cannot reach API server. Current VITE_API_URL is not reachable: ${apiUrl}`);
+        const base = resolveApiBaseUrl();
+        const where =
+          base ||
+          (typeof window !== 'undefined'
+            ? `${window.location.origin} → /api (proxied to your backend)`
+            : 'same-origin /api proxy');
+        setError(
+          `Cannot reach the API (${where}). In dev, start the backend (Vite forwards /api to http://localhost:5000 by default). To use another port set VITE_API_PROXY_TARGET in .env. To skip local and use Render: VITE_API_URL=https://valleycroft-backend.onrender.com`
+        );
       } else {
         setError(typeof msg === 'string' ? msg : 'Login failed');
       }

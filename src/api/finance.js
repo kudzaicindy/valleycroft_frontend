@@ -76,7 +76,10 @@ export function getIncomeStatement(params) {
 }
 
 export function getBalanceSheet(params) {
-  return axiosInstance.get('/api/finance/balance-sheet', { params: params || {} });
+  return getWithAliases(
+    ['/api/finance/balance-sheet', '/api/accounting/balance-sheet', '/api/statements/balance-sheet'],
+    params
+  );
 }
 
 export function getSalary(params) {

@@ -69,6 +69,7 @@ function sortKeyForLedger(t) {
  * @param {string} props.end - YYYY-MM-DD
  * @param {string | null} [props.category] - transaction category filter (API + client)
  * @param {string | null} [props.type] - income | expense — client filter after fetch
+ * @param {string[] | null} [props.accountCodes] - GL codes from the statement line; when set, list is restricted to txs touching these accounts (fetch omits category so postings are not dropped)
  * @param {number | null} [props.statementAmount] - expected total from statement line for comparison
  * @param {'abs' | 'signed'} [props.sumMode] - how to sum listed rows vs statement (default abs)
  */
@@ -81,17 +82,24 @@ export default function StatementTransactionsModal({
   end,
   category,
   type,
+  accountCodes = null,
   statementAmount,
   sumMode = 'abs',
 }) {
+  const accountKey = useMemo(() => {
+    if (!accountCodes?.length) return '';
+    return [...accountCodes].map((c) => String(c).trim()).filter(Boolean).sort().join(',');
+  }, [accountCodes]);
+
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: ['finance', 'statement-drilldown', start, end, category ?? ''],
+    queryKey: ['finance', 'statement-drilldown', start, end, category ?? '', accountKey],
     queryFn: async () => {
+      const useAcct = Boolean(accountKey);
       const res = await getTransactions({
         start,
         end,
         limit: 500,
-        ...(category ? { category } : {}),
+        ...(!useAcct && category ? { category } : {}),
       });
       return normalizeTransactionsFetchResult(res).list;
     },
@@ -100,8 +108,13 @@ export default function StatementTransactionsModal({
   });
 
   const filtered = useMemo(
-    () => filterTransactionsForDrilldown(data || [], { type: type || null, category: category || null }),
-    [data, type, category]
+    () =>
+      filterTransactionsForDrilldown(data || [], {
+        type: type || null,
+        category: category || null,
+        accountCodes: accountCodes?.length ? accountCodes : null,
+      }),
+    [data, type, category, accountCodes]
   );
 
   const ledgerRows = useMemo(() => {
@@ -166,6 +179,12 @@ export default function StatementTransactionsModal({
               <>
                 {' · '}
                 <span>Type: {type}</span>
+              </>
+            ) : null}
+            {accountCodes?.length ? (
+              <>
+                {' · '}
+                <span>Account{accountCodes.length > 1 ? 's' : ''}: {accountCodes.join(', ')}</span>
               </>
             ) : null}
           </p>

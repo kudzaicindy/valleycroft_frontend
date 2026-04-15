@@ -1,13 +1,123 @@
 import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 import { getFinanceDashboard } from '@/api/finance';
 import { normalizeFinanceDashboardResponse, fmtRand, mapFinanceQuickLinkHref } from '@/utils/financeDashboardResponse';
 
 /** @typedef {'ceo' | 'finance' | 'admin'} HomeVariant */
 
-const BAR_HEIGHTS = ['55%', '68%', '80%', '62%', '74%', '88%'];
-const BAR_LABELS = ['October', 'November', 'December', 'January', 'February', 'March'];
+function greetingPrefix() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/** Operations-style stat cards with zeros — used when API has no `operationsDashboard.cards` (not demo numbers). */
+function emptyOperationsStatCards() {
+  return [
+    {
+      tone: 'green',
+      icon: 'fas fa-clipboard-check',
+      label: 'Pending actions',
+      value: (
+        <>
+          0<span className="stat-unit"> items</span>
+        </>
+      ),
+      trendDir: 'down',
+      trendIcon: 'fas fa-arrow-down',
+      trendText: '0 cleared since yesterday',
+    },
+    {
+      tone: 'gold',
+      icon: 'fas fa-calendar-day',
+      label: 'Check-ins today',
+      value: '0',
+      trendDir: 'up',
+      trendIcon: 'fas fa-sun',
+      trendText: 'Today',
+    },
+    {
+      tone: 'sage',
+      icon: 'fas fa-sign-out-alt',
+      label: 'Check-outs today',
+      trendDir: 'up',
+      trendIcon: 'fas fa-check-circle',
+      value: '0',
+      trendText: 'Today',
+    },
+    {
+      tone: 'teal',
+      icon: 'fas fa-boxes',
+      label: 'Stock alerts',
+      value: (
+        <>
+          0<span className="stat-unit"> SKUs</span>
+        </>
+      ),
+      trendDir: 'down',
+      trendIcon: 'fas fa-exclamation-triangle',
+      trendText: 'No alerts',
+    },
+  ];
+}
+
+function financeTilesToStatCards(tilesList) {
+  const tones = ['green', 'gold', 'sage', 'teal'];
+  const icons = ['fas fa-chart-line', 'fas fa-file-invoice-dollar', 'fas fa-balance-scale', 'fas fa-truck'];
+  return tilesList.slice(0, 4).map((tile, i) => ({
+    tone: tones[i % tones.length],
+    icon: icons[i % icons.length],
+    label: tile.title,
+    value: <>{tile.primary}</>,
+    trendDir: 'up',
+    trendIcon: 'fas fa-circle',
+    trendText: tile.lines?.length ? tile.lines.join(' · ') : '—',
+  }));
+}
+
+function financeScalarStatCards(dash) {
+  return [
+    {
+      tone: 'green',
+      icon: 'fas fa-rand-sign',
+      label: 'Receipts MTD',
+      value: <>{fmtRand(dash?.incomeMtd)}</>,
+      trendDir: 'up',
+      trendIcon: 'fas fa-minus',
+      trendText: dash?.periodLabel || 'Month to date',
+    },
+    {
+      tone: 'gold',
+      icon: 'fas fa-file-invoice-dollar',
+      label: 'Open invoices',
+      value: <>{dash?.openInvoices != null ? String(dash.openInvoices) : '—'}</>,
+      trendDir: 'up',
+      trendIcon: 'fas fa-minus',
+      trendText: 'From dashboard API',
+    },
+    {
+      tone: 'sage',
+      icon: 'fas fa-calendar-week',
+      label: 'Due this week',
+      value: <>{dash?.dueWeekCount != null ? String(dash.dueWeekCount) : '—'}</>,
+      trendDir: 'up',
+      trendIcon: 'fas fa-minus',
+      trendText: 'Invoices due',
+    },
+    {
+      tone: 'teal',
+      icon: 'fas fa-user-clock',
+      label: 'Debtors',
+      value: <>{fmtRand(dash?.debtorsTotal)}</>,
+      trendDir: 'up',
+      trendIcon: 'fas fa-minus',
+      trendText: 'Outstanding',
+    },
+  ];
+}
 
 /**
  * CEO-style home layout shared by CEO, Finance, and Admin dashboards.
@@ -16,6 +126,9 @@ const BAR_LABELS = ['October', 'November', 'December', 'January', 'February', 'M
 export default function ExecutiveHomeDashboard({ variant }) {
   const c = CONFIG[variant];
   const to = (segment) => `${c.basePath}/${segment}`;
+  const { user } = useAuth();
+  const firstName =
+    (user && (user.name || user.firstName || user.email || '').toString().trim().split(/\s+/)[0]) || 'there';
 
   const liveEnabled = variant === 'finance' || variant === 'ceo' || variant === 'admin';
   const [revenueMonths, setRevenueMonths] = useState(6);
@@ -37,152 +150,273 @@ export default function ExecutiveHomeDashboard({ variant }) {
   const movementsToday = Array.isArray(operationsDashboard?.movementsToday)
     ? operationsDashboard.movementsToday
     : [];
+  const paymentQueue = Array.isArray(dash?.paymentQueue) ? dash.paymentQueue : [];
   const ledgerSnapshot = root?.ledgerSnapshot ?? null;
   const revenueReceiptsMonthly = root?.revenueReceiptsMonthly ?? null;
   const activityToday = Array.isArray(root?.activityToday) ? root.activityToday : dash?.activityToday ?? [];
 
-  const statCards = useMemo(() => {
-    if (!operationsDashboard?.cards) return c.statCards;
-    const cards = operationsDashboard.cards;
-    const pendingTotal = cards?.pendingActions?.total;
-    const pendingCleared = cards?.pendingActions?.clearedSinceYesterday;
-    const checkIns = cards?.checkInsToday;
-    const checkOuts = cards?.checkOutsToday;
-    const stockAlerts = cards?.stockAlerts;
+  const loading = liveEnabled && dashQuery.isPending;
+  const settled = liveEnabled && !dashQuery.isPending;
 
-    return [
-      {
-        tone: 'green',
-        icon: 'fas fa-clipboard-check',
-        label: 'Pending actions',
-        value: (
-          <>
-            {pendingTotal ?? 0}
-            <span className="stat-unit"> items</span>
-          </>
-        ),
-        trendDir: 'down',
-        trendIcon: 'fas fa-arrow-down',
-        trendText: `${pendingCleared ?? 0} cleared since yesterday`,
-      },
-      {
-        tone: 'gold',
-        icon: 'fas fa-calendar-day',
-        label: 'Check-ins today',
-        value: String(checkIns?.count ?? 0),
-        trendDir: 'up',
-        trendIcon: 'fas fa-sun',
-        trendText: checkIns?.firstAtLabel ? `First at ${checkIns.firstAtLabel}` : 'Today',
-      },
-      {
-        tone: 'sage',
-        icon: 'fas fa-sign-out-alt',
-        label: 'Check-outs today',
-        trendDir: 'up',
-        trendIcon: 'fas fa-check-circle',
-        value: String(checkOuts?.count ?? 0),
-        trendText: checkOuts?.firstAtLabel ? `First out at ${checkOuts.firstAtLabel}` : 'Today',
-      },
-      {
-        tone: 'teal',
-        icon: 'fas fa-boxes',
-        label: 'Stock alerts',
-        value: (
-          <>
-            {stockAlerts?.count ?? 0}
-            <span className="stat-unit"> SKUs</span>
-          </>
-        ),
-        trendDir: 'down',
-        trendIcon: 'fas fa-exclamation-triangle',
-        trendText: 'Reorder needed',
-      },
-    ];
-  }, [operationsDashboard, c.statCards]);
+  const statCards = useMemo(() => {
+    if (variant === 'finance' && Array.isArray(dash?.tilesList) && dash.tilesList.length > 0) {
+      return financeTilesToStatCards(dash.tilesList);
+    }
+    if (variant === 'finance') {
+      return financeScalarStatCards(dash);
+    }
+    if (operationsDashboard?.cards) {
+      const cards = operationsDashboard.cards;
+      const pendingTotal = cards?.pendingActions?.total;
+      const pendingCleared = cards?.pendingActions?.clearedSinceYesterday;
+      const checkIns = cards?.checkInsToday;
+      const checkOuts = cards?.checkOutsToday;
+      const stockAlerts = cards?.stockAlerts;
+
+      return [
+        {
+          tone: 'green',
+          icon: 'fas fa-clipboard-check',
+          label: 'Pending actions',
+          value: (
+            <>
+              {pendingTotal ?? 0}
+              <span className="stat-unit"> items</span>
+            </>
+          ),
+          trendDir: 'down',
+          trendIcon: 'fas fa-arrow-down',
+          trendText: `${pendingCleared ?? 0} cleared since yesterday`,
+        },
+        {
+          tone: 'gold',
+          icon: 'fas fa-calendar-day',
+          label: 'Check-ins today',
+          value: String(checkIns?.count ?? 0),
+          trendDir: 'up',
+          trendIcon: 'fas fa-sun',
+          trendText: checkIns?.firstAtLabel ? `First at ${checkIns.firstAtLabel}` : 'Today',
+        },
+        {
+          tone: 'sage',
+          icon: 'fas fa-sign-out-alt',
+          label: 'Check-outs today',
+          trendDir: 'up',
+          trendIcon: 'fas fa-check-circle',
+          value: String(checkOuts?.count ?? 0),
+          trendText: checkOuts?.firstAtLabel ? `First out at ${checkOuts.firstAtLabel}` : 'Today',
+        },
+        {
+          tone: 'teal',
+          icon: 'fas fa-boxes',
+          label: 'Stock alerts',
+          value: (
+            <>
+              {stockAlerts?.count ?? 0}
+              <span className="stat-unit"> SKUs</span>
+            </>
+          ),
+          trendDir: 'down',
+          trendIcon: 'fas fa-exclamation-triangle',
+          trendText: 'Reorder needed',
+        },
+      ];
+    }
+    return emptyOperationsStatCards();
+  }, [variant, dash, operationsDashboard]);
 
   const ring = useMemo(() => {
-    if (!occupancy) return c.ring;
-    const pct = Number(occupancy.occupancyPct ?? occupancy.pct ?? 0);
-    const occupied = occupancy.occupiedRooms;
-    const vacant = occupancy.vacantRooms;
-    const maintenance = occupancy.maintenanceRooms;
+    const base = { ...c.ring };
+    if (occupancy) {
+      const pct = Math.min(100, Math.max(0, Number(occupancy.occupancyPct ?? occupancy.pct ?? 0)));
+      const occupied = occupancy.occupiedRooms;
+      const vacant = occupancy.vacantRooms;
+      const maintenance = occupancy.maintenanceRooms;
+      const arc = Math.max(0, Math.round((pct / 100) * 196));
+      return {
+        ...base,
+        badge: `${Math.round(pct)}% full`,
+        badgeClass: 'badge badge-confirmed',
+        stroke: 'var(--forest)',
+        dashArray: `${arc} 226`,
+        dashOffset: 56,
+        centerText: `${Math.round(pct)}%`,
+        textFill: 'var(--forest-dark)',
+        info: (
+          <>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Occupied</div>
+              <div style={{ fontWeight: 700, color: 'var(--forest)' }}>{occupied ?? '—'} rooms</div>
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vacant</div>
+              <div style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{vacant ?? '—'} rooms</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Maintenance</div>
+              <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{maintenance ?? '—'} rooms</div>
+            </div>
+          </>
+        ),
+      };
+    }
     return {
-      ...c.ring,
-      badge: `${Math.round(pct)}% Full`,
-      badgeClass: 'badge badge-confirmed',
-      centerText: `${Math.round(pct)}%`,
+      ...base,
+      badge: null,
+      badgeClass: 'badge badge-pending',
+      stroke: 'var(--linen)',
+      dashArray: '0 226',
+      dashOffset: 56,
+      centerText: loading ? '…' : '—',
+      textFill: 'var(--text-muted)',
       info: (
-        <>
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Occupied</div>
-            <div style={{ fontWeight: 700, color: 'var(--forest)' }}>{occupied ?? '—'} rooms</div>
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vacant</div>
-            <div style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{vacant ?? '—'} rooms</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Maintenance</div>
-            <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{maintenance ?? '—'} rooms</div>
-          </div>
-        </>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          {loading ? 'Loading occupancy…' : 'No occupancy data in the latest dashboard response.'}
+        </div>
       ),
-      // Keep SVG geometry from the design system; swap text + info.
-      textFill: 'var(--forest-dark)',
     };
-  }, [occupancy, c.ring]);
+  }, [occupancy, c.ring, loading]);
 
   const mainTable = useMemo(() => {
-    if (!movementsToday.length) return c.mainTable;
+    const base = c.mainTable;
+    const colCount = base.columns?.length ?? 6;
+
+    if (loading) {
+      return {
+        ...base,
+        dateSpan: '',
+        rows: (
+          <tr>
+            <td colSpan={colCount} style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+              Loading table…
+            </td>
+          </tr>
+        ),
+      };
+    }
+
+    if (variant === 'finance') {
+      if (paymentQueue.length > 0) {
+        return {
+          ...base,
+          title: base.title,
+          dateSpan: dash?.periodLabel || '',
+          linkSegment: base.linkSegment ?? 'invoices',
+          linkLabel: base.linkLabel ?? 'All invoices',
+          rows: (
+            <>
+              {paymentQueue.map((p, i) => {
+                const party = p.customerName ?? p.party ?? p.debtor ?? p.name ?? p.counterparty ?? '—';
+                const ref = p.reference ?? p.invoiceNumber ?? p.ref ?? p.id ?? '—';
+                const due = p.dueDate ?? p.due ?? p.dueOn ?? '—';
+                const amt = p.amount ?? p.balance ?? p.total;
+                const status = p.status ?? p.state ?? '—';
+                return (
+                  <tr key={p._id ?? p.id ?? ref ?? i}>
+                    <td>
+                      <strong>{String(party)}</strong>
+                      {p.subtitle ? (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{String(p.subtitle)}</div>
+                      ) : null}
+                    </td>
+                    <td>{String(ref)}</td>
+                    <td>{String(due).slice(0, 16)}</td>
+                    <td style={{ fontWeight: 700 }}>{fmtRand(amt)}</td>
+                    <td>
+                      <span className="badge badge-pending">{String(status)}</span>
+                    </td>
+                    <td>
+                      <Link to={`${c.basePath}/invoices`} className="btn btn-outline btn-sm">
+                        Open
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </>
+          ),
+        };
+      }
+      return {
+        ...base,
+        dateSpan: dash?.periodLabel || '',
+        rows: (
+          <tr>
+            <td colSpan={colCount} style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+              No payment queue items returned from the dashboard API.
+            </td>
+          </tr>
+        ),
+      };
+    }
+
+    if (movementsToday.length > 0) {
+      return {
+        ...base,
+        title: `Today's movements`,
+        dateSpan: '',
+        linkSegment: base.linkSegment ?? 'bookings',
+        linkLabel: base.linkLabel ?? 'All bookings',
+        columns: ['Guest', 'Room', 'Check-in', 'Check-out', 'Guests', 'Status', 'Action'],
+        rows: (
+          <>
+            {movementsToday.map((m, i) => {
+              const guest = m.guest ?? m.guestName ?? m.party ?? '—';
+              const room = m.room ?? m.roomName ?? '—';
+              const checkOut = m.checkOut ?? m.check_out ?? '—';
+              const guests = m.guestsCount ?? m.guests ?? m.guests_no ?? '';
+              const status = m.status ?? m.displayStatus ?? '—';
+              const actionHref = m.detailsHref ?? m.href ?? null;
+              const actionLabel = m.suggestedAction ?? (m.suggestedActionLabel || 'Details');
+              const toHref = actionHref ? mapFinanceQuickLinkHref(actionHref, c.basePath) : null;
+              return (
+                <tr key={m.trackingCode ?? m.reference ?? m.id ?? i}>
+                  <td>
+                    <strong>{String(guest)}</strong>
+                  </td>
+                  <td>{String(room)}</td>
+                  <td>Today</td>
+                  <td>{checkOut === '—' ? 'Today' : String(checkOut)}</td>
+                  <td>{guests !== '' ? String(guests) : '—'}</td>
+                  <td>
+                    <span
+                      className={
+                        String(status).toLowerCase().includes('out') ? 'badge badge-checkout' : 'badge badge-checkin'
+                      }
+                    >
+                      {String(status).includes('out') ? 'Check-out' : String(status)}
+                    </span>
+                  </td>
+                  <td>
+                    {toHref ? (
+                      <Link to={toHref} className="btn btn-primary btn-sm">
+                        {String(actionLabel)}
+                      </Link>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{String(actionLabel)}</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </>
+        ),
+      };
+    }
+
     return {
-      ...c.mainTable,
-      title: `Today's movements`,
-      dateSpan: '',
-      linkSegment: c.mainTable.linkSegment ?? 'bookings',
-      linkLabel: c.mainTable.linkLabel ?? 'All bookings',
-      columns: ['Guest', 'Room', 'Check-in', 'Check-out', 'Guests', 'Status', 'Action'],
+      ...base,
+      dateSpan: settled ? '' : base.dateSpan,
+      columns: base.columns?.length >= 7 ? base.columns : ['Guest', 'Room', 'Check-in', 'Check-out', 'Guests', 'Status', 'Action'],
       rows: (
-        <>
-          {movementsToday.map((m, i) => {
-            const guest = m.guest ?? m.guestName ?? m.party ?? '—';
-            const room = m.room ?? m.roomName ?? '—';
-            const checkIn = m.checkIn ?? m.check_in ?? 'Today';
-            const checkOut = m.checkOut ?? m.check_out ?? '—';
-            const guests = m.guestsCount ?? m.guests ?? m.guests_no ?? '';
-            const status = m.status ?? m.displayStatus ?? '—';
-            const actionHref = m.detailsHref ?? m.href ?? null;
-            const actionLabel = m.suggestedAction ?? (m.suggestedActionLabel || 'Details');
-            const toHref = actionHref ? mapFinanceQuickLinkHref(actionHref, c.basePath) : null;
-            return (
-              <tr key={m.trackingCode ?? m.reference ?? m.id ?? i}>
-                <td>
-                  <strong>{String(guest)}</strong>
-                </td>
-                <td>{String(room)}</td>
-                <td>Today</td>
-                <td>{checkOut === '—' ? 'Today' : String(checkOut)}</td>
-                <td>{guests !== '' ? String(guests) : '—'}</td>
-                <td>
-                  <span className={String(status).toLowerCase().includes('out') ? 'badge badge-checkout' : 'badge badge-checkin'}>
-                    {String(status).includes('out') ? 'Check-out' : String(status)}
-                  </span>
-                </td>
-                <td>
-                  {toHref ? (
-                    <Link to={toHref} className="btn btn-primary btn-sm">
-                      {String(actionLabel)}
-                    </Link>
-                  ) : (
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{String(actionLabel)}</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </>
+        <tr>
+          <td colSpan={7} style={{ padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+            No movements for today in the dashboard feed.
+          </td>
+        </tr>
       ),
     };
-  }, [movementsToday, c.mainTable, c.basePath]);
+  }, [loading, settled, variant, paymentQueue, movementsToday, c.mainTable, c.basePath, dash?.periodLabel]);
 
   const ledger = useMemo(() => {
     if (!ledgerSnapshot) return null;
@@ -205,27 +439,50 @@ export default function ExecutiveHomeDashboard({ variant }) {
     return { bnbRevenue, eventHire, totalExpenses, netProfit, bnbPct, eventPct, expensePct, fmt };
   }, [ledgerSnapshot]);
 
+  const ledgerForUi = useMemo(() => {
+    if (ledger) return ledger;
+    const fmt = (n) => (n == null ? '—' : fmtRand(n));
+    return {
+      bnbRevenue: null,
+      eventHire: null,
+      totalExpenses: null,
+      netProfit: null,
+      bnbPct: 0,
+      eventPct: 0,
+      expensePct: 0,
+      fmt,
+    };
+  }, [ledger]);
+
   const chartBars = useMemo(() => {
     const arr =
       revenueReceiptsMonthly?.months ??
       revenueReceiptsMonthly?.series ??
       revenueReceiptsMonthly?.data ??
       null;
-    if (!Array.isArray(arr) || !arr.length) {
-      return { labels: BAR_LABELS, values: BAR_HEIGHTS.map((x) => Number(x.replace('%', ''))) };
-    }
+    if (!Array.isArray(arr) || !arr.length) return null;
     const labels = arr.map((x) => String(x.month ?? x.label ?? x.name ?? '').trim()).filter(Boolean);
     const values = arr.map((x) => Number(x.value ?? x.amount ?? x.total ?? NaN)).filter((n) => Number.isFinite(n));
-    // If labels/values mismatch, fall back.
     if (!values.length) return null;
     const max = Math.max(...values);
     const pct = max ? values.map((v) => (v / max) * 100) : values.map(() => 0);
-    // Keep up to 6 for the existing bar layout.
-    return { labels: labels.length ? labels.slice(0, 6) : BAR_LABELS, values: pct.slice(0, 6) };
+    return { labels: labels.length ? labels.slice(0, 6) : [], values: pct.slice(0, 6) };
+  }, [revenueReceiptsMonthly]);
+
+  const chartFooterRight = useMemo(() => {
+    const arr =
+      revenueReceiptsMonthly?.months ??
+      revenueReceiptsMonthly?.series ??
+      revenueReceiptsMonthly?.data ??
+      null;
+    if (!Array.isArray(arr) || !arr.length) return '—';
+    const values = arr.map((x) => Number(x.value ?? x.amount ?? x.total ?? NaN)).filter((n) => Number.isFinite(n));
+    if (!values.length) return '—';
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    return `Avg ${fmtRand(avg)}/period`;
   }, [revenueReceiptsMonthly]);
 
   const activityCard = useMemo(() => {
-    if (!activityToday?.length) return c.activity;
     const pickDot = (item) => {
       const t = String(item?.type ?? item?.title ?? item?.message ?? '').toLowerCase();
       if (t.includes('check') && t.includes('in')) return 'green';
@@ -233,6 +490,18 @@ export default function ExecutiveHomeDashboard({ variant }) {
       if (t.includes('stock') || t.includes('low')) return 'red';
       return 'gold';
     };
+    if (!activityToday?.length) {
+      return {
+        ...c.activity,
+        title: c.activity.title || 'Activity',
+        span: 'Today',
+        items: (
+          <div style={{ padding: '12px 0', fontSize: 13, color: 'var(--text-muted)' }}>
+            {loading ? 'Loading activity…' : 'No activity items in today’s dashboard feed.'}
+          </div>
+        ),
+      };
+    }
     return {
       ...c.activity,
       title: c.activity.title || 'Activity',
@@ -262,15 +531,92 @@ export default function ExecutiveHomeDashboard({ variant }) {
         </>
       ),
     };
-  }, [activityToday, c.activity]);
+  }, [activityToday, c.activity, loading]);
+
+  const heroStats = useMemo(() => {
+    if (loading) {
+      return [
+        { value: '—', label: variant === 'finance' ? 'Receipts MTD' : 'Occupancy' },
+        { value: '—', label: variant === 'finance' ? 'Open invoices' : 'Rooms occupied' },
+        { value: '—', label: variant === 'finance' ? 'Debtors' : 'Receipts MTD' },
+      ];
+    }
+    if (variant === 'finance') {
+      return [
+        { value: fmtRand(dash?.incomeMtd), label: 'Receipts MTD' },
+        { value: dash?.openInvoices != null ? String(dash.openInvoices) : '—', label: 'Open invoices' },
+        { value: fmtRand(dash?.debtorsTotal), label: 'Debtors' },
+      ];
+    }
+    const pct = occupancy ? Math.round(Number(occupancy.occupancyPct ?? occupancy.pct ?? 0)) : null;
+    return [
+      { value: pct != null ? `${pct}%` : '—', label: 'Occupancy' },
+      { value: occupancy?.occupiedRooms != null ? String(occupancy.occupiedRooms) : '—', label: 'Rooms occupied' },
+      { value: fmtRand(dash?.incomeMtd), label: 'Receipts MTD' },
+    ];
+  }, [loading, variant, dash, occupancy]);
+
+  const heroSubtitle = useMemo(() => {
+    if (dash?.headline) return dash.headline;
+    if (dash?.bookingsNote) return dash.bookingsNote;
+    if (loading) return 'Loading your dashboard…';
+    return 'Live figures from /api/finance/dashboard.';
+  }, [dash, loading]);
+
+  const eventsSection = useMemo(() => {
+    const dl = dash?.deadlines;
+    if (Array.isArray(dl) && dl.length > 0) {
+      const rows = dl.slice(0, 4);
+      return (
+        <>
+          {rows.map((d, i) => {
+            const title = d.title ?? d.label ?? d.name ?? 'Deadline';
+            const sub = d.subtitle ?? d.detail ?? d.due ?? d.date ?? '';
+            const badge = d.status ?? d.badge ?? '—';
+            return (
+              <div
+                key={d._id ?? d.id ?? i}
+                style={{ padding: '10px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--linen)' : undefined }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{String(title)}</div>
+                    {sub ? (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{String(sub)}</div>
+                    ) : null}
+                  </div>
+                  <span className="badge badge-pending">{String(badge)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      );
+    }
+    return (
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+        {loading ? 'Loading…' : 'No deadlines in the dashboard feed.'}
+      </p>
+    );
+  }, [dash?.deadlines, loading]);
 
   return (
     <>
+      {dashQuery.isError && (
+        <div className="card card--error" style={{ marginBottom: 16 }}>
+          <div className="card-body" style={{ fontSize: 13 }}>
+            {dashQuery.error?.message || 'Could not load dashboard data.'} Empty values below until the request succeeds.
+          </div>
+        </div>
+      )}
+
       <div className="hero-banner">
         <div className="hero-text">
-          <div className="hero-greeting">{c.hero.greeting}</div>
+          <div className="hero-greeting">
+            {greetingPrefix()}, {firstName}
+          </div>
           <div className="hero-title">{c.hero.title}</div>
-          <div className="hero-subtitle">{dash?.headline || c.hero.subtitle}</div>
+          <div className="hero-subtitle">{heroSubtitle}</div>
           <div className="hero-actions">
             {c.hero.actions.map((a) => (
               <Link key={a.to} to={to(a.to)} className={a.btnClass} style={a.linkStyle}>
@@ -280,7 +626,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
           </div>
         </div>
         <div className="hero-stats-row">
-          {c.hero.stats.map((s, i) => (
+          {heroStats.map((s, i) => (
             <div key={s.label} style={{ display: 'contents' }}>
               {i > 0 ? <div className="hero-divider" /> : null}
               <div className="hero-stat">
@@ -337,25 +683,30 @@ export default function ExecutiveHomeDashboard({ variant }) {
                 </div>
               </div>
               <div className="card-body">
-                <div className="bar-chart">
-                  {(chartBars?.labels ?? BAR_LABELS).map((label, i) => {
-                    const h = chartBars?.values?.[i];
-                    const height = h != null ? `${h}%` : BAR_HEIGHTS[i];
-                    const tone = i === 2 || i === 5 ? 'gold' : 'forest';
-                    return (
-                      <div key={label ?? i} className="bar-wrap">
-                      <div
-                        className={`bar-col ${tone}`}
-                        style={{ height }}
-                      />
-                      <div className="bar-label">{label ?? BAR_LABELS[i]}</div>
-                    </div>
-                    );
-                  })}
-                </div>
+                {loading ? (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
+                ) : chartBars?.labels?.length ? (
+                  <div className="bar-chart">
+                    {chartBars.labels.map((label, i) => {
+                      const h = chartBars.values?.[i];
+                      const height = h != null ? `${h}%` : '0%';
+                      const tone = i === 2 || i === 5 ? 'gold' : 'forest';
+                      return (
+                        <div key={`${label}-${i}`} className="bar-wrap">
+                          <div className={`bar-col ${tone}`} style={{ height }} />
+                          <div className="bar-label">{label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                    No monthly revenue series in the dashboard response for this range.
+                  </p>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.chart1.footerLeft}</span>
-                  <span style={{ fontSize: 11, color: '#3a8c4e', fontWeight: 700 }}>{c.chart1.footerRight}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{chartFooterRight}</span>
                 </div>
               </div>
             </div>
@@ -435,30 +786,30 @@ export default function ExecutiveHomeDashboard({ variant }) {
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>BnB Revenue</span>
-                  <span style={{ fontWeight: 700 }}>{ledger ? ledger.fmt(ledger.bnbRevenue) : 'R 32,450'}</span>
+                  <span style={{ fontWeight: 700 }}>{ledgerForUi.fmt(ledgerForUi.bnbRevenue)}</span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: ledger ? `${ledger.bnbPct}%` : '68%' }} />
+                  <div className="progress-fill" style={{ width: `${ledgerForUi.bnbPct}%` }} />
                 </div>
               </div>
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Event Hire</span>
-                  <span style={{ fontWeight: 700 }}>{ledger ? ledger.fmt(ledger.eventHire) : 'R 15,800'}</span>
+                  <span style={{ fontWeight: 700 }}>{ledgerForUi.fmt(ledgerForUi.eventHire)}</span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill gold" style={{ width: ledger ? `${ledger.eventPct}%` : '33%' }} />
+                  <div className="progress-fill gold" style={{ width: `${ledgerForUi.eventPct}%` }} />
                 </div>
               </div>
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Total Expenses</span>
                   <span style={{ fontWeight: 700, color: 'var(--red)' }}>
-                    {ledger ? `— ${ledger.fmt(ledger.totalExpenses)}` : '— R 21,300'}
+                    — {ledgerForUi.fmt(ledgerForUi.totalExpenses)}
                   </span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill red" style={{ width: ledger ? `${ledger.expensePct}%` : '45%' }} />
+                  <div className="progress-fill red" style={{ width: `${ledgerForUi.expensePct}%` }} />
                 </div>
               </div>
               <div
@@ -489,7 +840,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
                     color: 'var(--forest)',
                   }}
                 >
-                  {ledger ? ledger.fmt(ledger.netProfit) : 'R 26,950'}
+                  {ledgerForUi.fmt(ledgerForUi.netProfit)}
                 </span>
               </div>
             </div>
@@ -1050,6 +1401,13 @@ const CONFIG = {
       subtitle: '3 check-ins expected today. 7 items need your attention across bookings and stock.',
       actions: [
         { to: 'bookings', label: 'New booking', icon: 'fas fa-plus', btnClass: 'btn btn-gold btn-sm' },
+        {
+          to: 'booking-payments',
+          label: 'Guest payments',
+          icon: 'fas fa-credit-card',
+          btnClass: OUTLINE_HERO_BTN,
+          linkStyle: OUTLINE_ON_DARK,
+        },
         {
           to: 'inventory',
           label: 'Inventory',

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 import { getBookings } from '@/api/bookings';
 import { createTransaction } from '@/api/finance';
 import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
@@ -81,8 +82,10 @@ function defaultPaymentForm(booking) {
 }
 
 export default function BookingPaymentsPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentBooking, setPaymentBooking] = useState(null);
   const [form, setForm] = useState(() => defaultPaymentForm(null));
   const [saveError, setSaveError] = useState(null);
@@ -112,25 +115,48 @@ export default function BookingPaymentsPage() {
     );
   }, [eligible, search]);
 
+  /** Confirmed-only list for the primary picker; current modal booking is appended if opened from a table row with another status. */
+  const confirmedForSelect = useMemo(
+    () => eligible.filter((b) => statusStr(b).toLowerCase() === 'confirmed'),
+    [eligible]
+  );
+
+  const bookingSelectOptions = useMemo(() => {
+    const ids = new Set(confirmedForSelect.map((b) => String(b._id ?? b.id)));
+    const cur = paymentBooking;
+    const curId = cur ? String(cur._id ?? cur.id) : '';
+    if (cur && curId && !ids.has(curId)) return [...confirmedForSelect, cur];
+    return confirmedForSelect;
+  }, [confirmedForSelect, paymentBooking]);
+
   const openPayment = useCallback((b) => {
     setPaymentBooking(b);
     setForm(defaultPaymentForm(b));
     setSaveError(null);
+    setPaymentModalOpen(true);
+  }, []);
+
+  const openAddPayment = useCallback(() => {
+    setPaymentBooking(null);
+    setForm(defaultPaymentForm(null));
+    setSaveError(null);
+    setPaymentModalOpen(true);
   }, []);
 
   const closePayment = useCallback(() => {
+    setPaymentModalOpen(false);
     setPaymentBooking(null);
     setSaveError(null);
   }, []);
 
   useEffect(() => {
-    if (!paymentBooking) return undefined;
+    if (!paymentModalOpen) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') closePayment();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [paymentBooking, closePayment]);
+  }, [paymentModalOpen, closePayment]);
 
   const createMutation = useMutation({
     mutationFn: ({ body, idempotencyKey }) => createTransaction(body, { idempotencyKey }),
@@ -148,6 +174,10 @@ export default function BookingPaymentsPage() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setSaveError(null);
+    if (!form.booking?.trim()) {
+      setSaveError('Select a confirmed booking before saving.');
+      return;
+    }
     try {
       const body = buildTransactionWritePayload({
         type: 'income',
@@ -176,10 +206,20 @@ export default function BookingPaymentsPage() {
           <div className="page-title">Booking payments</div>
           <div className="page-subtitle">
             Record cash or bank receipts against confirmed stays. Each save posts a{' '}
-            <strong>transaction</strong> (Dr bank/cash, Cr accounts receivable) linked to the booking — same API as{' '}
-            <Link to="/finance/transactions">Transactions</Link>.
+            <strong>transaction</strong> (Dr bank/cash, Cr accounts receivable) linked to the booking
+            {String(user?.role || '').toLowerCase() === 'finance' ? (
+              <>
+                {' '}
+                — same screen as Finance → <Link to="/finance/transactions">Transactions</Link>.
+              </>
+            ) : (
+              <> — Finance can review entries under Transactions.</>
+            )}
           </div>
         </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={openAddPayment}>
+          <i className="fas fa-plus" aria-hidden /> Record payment
+        </button>
       </div>
 
       {error && (
@@ -276,7 +316,7 @@ export default function BookingPaymentsPage() {
         </div>
       </div>
 
-      {paymentBooking && (
+      {paymentModalOpen && (
         <div
           className="transactions-modal-overlay"
           role="dialog"
@@ -292,18 +332,63 @@ export default function BookingPaymentsPage() {
               </button>
             </div>
             <div className="transactions-modal-body">
-              <div className="booking-payments-modal-summary">
-                <div>
-                  <strong>{bookingGuestLabel(paymentBooking)}</strong>
-                  <span className="booking-payments-modal-ref">{bookingReferenceDisplay(paymentBooking)}</span>
-                </div>
-                <div className="booking-payments-modal-meta">
-                  Booking total {fmtMoney(bookingTotalAmount(paymentBooking))}
-                  {paymentBooking.deposit != null && Number(paymentBooking.deposit) > 0
-                    ? ` · Deposit recorded R ${Number(paymentBooking.deposit).toLocaleString('en-ZA')}`
-                    : null}
-                </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label className="form-label" htmlFor="bp-booking-select">
+                  Confirmed booking *
+                </label>
+                <select
+                  id="bp-booking-select"
+                  className="form-control"
+                  value={form.booking}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const b = bookingSelectOptions.find((x) => String(x._id ?? x.id) === id);
+                    if (b) {
+                      setPaymentBooking(b);
+                      setForm(defaultPaymentForm(b));
+                    } else {
+                      setPaymentBooking(null);
+                      setForm(defaultPaymentForm(null));
+                    }
+                    setSaveError(null);
+                  }}
+                >
+                  <option value="">Choose a confirmed booking…</option>
+                  {bookingSelectOptions.map((b) => {
+                    const bid = b._id ?? b.id;
+                    return (
+                      <option key={bid} value={String(bid)}>
+                        {bookingReferenceDisplay(b)} — {bookingGuestLabel(b)}
+                        {statusStr(b).toLowerCase() !== 'confirmed' ? ` (${statusStr(b)})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                {confirmedForSelect.length === 0 && (
+                  <p className="booking-payments-hint" style={{ marginTop: 8 }}>
+                    No <strong>confirmed</strong> bookings in the current list. Confirm a reservation in Bookings first, or use a row that is
+                    already confirmed below.
+                  </p>
+                )}
               </div>
+              {paymentBooking ? (
+                <div className="booking-payments-modal-summary">
+                  <div>
+                    <strong>{bookingGuestLabel(paymentBooking)}</strong>
+                    <span className="booking-payments-modal-ref">{bookingReferenceDisplay(paymentBooking)}</span>
+                  </div>
+                  <div className="booking-payments-modal-meta">
+                    Booking total {fmtMoney(bookingTotalAmount(paymentBooking))}
+                    {paymentBooking.deposit != null && Number(paymentBooking.deposit) > 0
+                      ? ` · Deposit recorded R ${Number(paymentBooking.deposit).toLocaleString('en-ZA')}`
+                      : null}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted" style={{ fontSize: 13, marginBottom: 14 }}>
+                  Pick which guest stay this receipt applies to. Amount and accounts can be adjusted after you select.
+                </p>
+              )}
               <form onSubmit={handleSubmit}>
                 <div className="transactions-form-grid">
                   <div className="transactions-form-field">

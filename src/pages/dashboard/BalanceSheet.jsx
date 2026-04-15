@@ -7,6 +7,7 @@ import {
   groupBalanceSheetItems,
   normalizeBalanceSheetRows,
   readBalanceSheetSectionTotal,
+  readDoubleEntryBalanceSheetTotals,
   rowLabel,
   sumBalanceSheetLines,
 } from '@/utils/financeStatementHelpers';
@@ -45,19 +46,29 @@ export default function BalanceSheet() {
   });
 
   const payload = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-  const asAtLabel = payload.asAt || asAt;
+  const asAtLabel =
+    payload.asAt ||
+    (payload.presentation && typeof payload.presentation === 'object' ? payload.presentation.asAt : null) ||
+    asAt;
 
   const rawItems = useMemo(() => normalizeBalanceSheetRows(data), [data]);
   const groups = useMemo(() => groupBalanceSheetItems(rawItems), [rawItems]);
 
-  const apiSectionTotals = useMemo(
-    () => ({
+  const apiSectionTotals = useMemo(() => {
+    const flat = readDoubleEntryBalanceSheetTotals(payload);
+    if (flat && (flat.assets != null || flat.liabilities != null || flat.equity != null)) {
+      return {
+        assets: flat.assets,
+        liabilities: flat.liabilities,
+        equity: flat.equity,
+      };
+    }
+    return {
       assets: readBalanceSheetSectionTotal(payload.assets),
       liabilities: readBalanceSheetSectionTotal(payload.liabilities),
       equity: readBalanceSheetSectionTotal(payload.equity),
-    }),
-    [payload.assets, payload.liabilities, payload.equity]
-  );
+    };
+  }, [payload]);
 
   const sectionTotal = useCallback(
     (g) => {

@@ -8,6 +8,10 @@ import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
 import { listFromSuccessEnvelope, metaFromSuccessEnvelope } from '@/utils/apiEnvelope';
 import { getOccupiedRoomDayKeys } from '@/utils/availability';
+import {
+  loadBookingPolicySettings,
+  saveBookingPolicySettings,
+} from '@/utils/bookingPolicySettings';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { getApiErrorHint, looksLikeLedgerPostError } from '@/utils/apiError';
 import RoomBookingCalendarModal from '@/components/dashboard/RoomBookingCalendarModal';
@@ -195,17 +199,32 @@ export default function BookingsPage() {
 
   const activeTab = useMemo(() => {
     const t = (searchParams.get('tab') || '').toLowerCase();
+    if (t === 'list' || t === 'internal') return 'list';
     if (t === 'guest' || t === 'website') return 'guest';
     if (t === 'availability') return 'availability';
-    return 'list';
+    return 'guest';
   }, [searchParams]);
+
+  /** Primary tab is website requests — normalize bare /bookings to ?tab=guest */
+  useEffect(() => {
+    const raw = searchParams.get('tab');
+    if (raw != null && raw !== '') return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', 'guest');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [searchParams, setSearchParams]);
 
   const setBookingsTab = useCallback(
     (tab) => {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (tab === 'list') next.delete('tab');
+          if (tab === 'list') next.set('tab', 'list');
           else if (tab === 'guest') next.set('tab', 'guest');
           else if (tab === 'availability') next.set('tab', 'availability');
           return next;
@@ -241,6 +260,11 @@ export default function BookingsPage() {
   /** Room availability tab: open same month calendar modal as Rooms page */
   const [availCalendarRoom, setAvailCalendarRoom] = useState(null);
   const closeAvailCalendar = useCallback(() => setAvailCalendarRoom(null), []);
+  const [availRoomSearch, setAvailRoomSearch] = useState('');
+  const [availStatusFilter, setAvailStatusFilter] = useState('');
+  const [availCellModal, setAvailCellModal] = useState(null);
+  const [policySettingsOpen, setPolicySettingsOpen] = useState(false);
+  const [policyDraft, setPolicyDraft] = useState(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['bookings', page, statusFilter || statusSidebar, typeFilter, search],
@@ -571,6 +595,30 @@ export default function BookingsPage() {
     return getOccupiedRoomDayKeys(allBookingsForAvail, start, end);
   }, [allBookingsForAvail, availDays]);
 
+  const roomsForAvailabilityGrid = useMemo(() => {
+    let r = rooms;
+    if (availRoomSearch.trim()) {
+      const q = availRoomSearch.trim().toLowerCase();
+      r = r.filter((room) => {
+        const id = room._id ?? room.id;
+        const label = String(room.name ?? room.number ?? id ?? '').toLowerCase();
+        return label.includes(q);
+      });
+    }
+    if (availStatusFilter === 'booked') {
+      r = r.filter((room) => {
+        const roomId = room._id ?? room.id;
+        return availDays.some((d) => bookedKeys.has(`${roomId}-${d.toDateString()}`));
+      });
+    } else if (availStatusFilter === 'free') {
+      r = r.filter((room) => {
+        const roomId = room._id ?? room.id;
+        return availDays.every((d) => !bookedKeys.has(`${roomId}-${d.toDateString()}`));
+      });
+    }
+    return r;
+  }, [rooms, availRoomSearch, availStatusFilter, availDays, bookedKeys]);
+
   /** Today as local date string for column highlighting. */
   const todayDateString = useMemo(() => {
     const t = new Date();
@@ -599,34 +647,51 @@ export default function BookingsPage() {
               <>{guestTotalCount} request{guestTotalCount !== 1 ? 's' : ''} · tracking codes and status</>
             )}
             {activeTab === 'availability' && (
-              <>By room and date · room name opens month view</>
+              <>By room and date · click a booked cell for guest details · room name opens month view</>
             )}
           </div>
         </div>
-        {activeTab === 'list' && isAdmin && (
-          <div className="page-header-right">
+        {isAdmin && (
+          <div className="page-header-right bookings-admin-actions">
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-outline btn-sm"
               onClick={() => {
-                createBookingMutation.reset();
-                setAddInternalAmountManual(false);
-                setAddInternalForm(emptyInternalBookingForm());
-                setShowAddInternalModal(true);
+                const s = loadBookingPolicySettings();
+                setPolicyDraft({
+                  depositPercent: s.depositPercent,
+                  policyText: (s.policyLines || []).join('\n'),
+                  cancellationText: s.cancellationText,
+                });
+                setPolicySettingsOpen(true);
               }}
             >
-              <i className="fas fa-plus" /> Add internal booking
+              <i className="fas fa-file-contract" /> Deposit & guest policies
             </button>
+            {activeTab === 'list' && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  createBookingMutation.reset();
+                  setAddInternalAmountManual(false);
+                  setAddInternalForm(emptyInternalBookingForm());
+                  setShowAddInternalModal(true);
+                }}
+              >
+                <i className="fas fa-plus" /> Add internal booking
+              </button>
+            )}
           </div>
         )}
       </div>
 
       <div className="page-tabs page-tabs--bookings">
-        <button type="button" className={`page-tab ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setBookingsTab('list')}>
-          Internal
-        </button>
         <button type="button" className={`page-tab ${activeTab === 'guest' ? 'active' : ''}`} onClick={() => setBookingsTab('guest')}>
           Website requests
+        </button>
+        <button type="button" className={`page-tab ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setBookingsTab('list')}>
+          Internal
         </button>
         <button type="button" className={`page-tab ${activeTab === 'availability' ? 'active' : ''}`} onClick={() => setBookingsTab('availability')}>
           Room availability
@@ -1026,10 +1091,7 @@ export default function BookingsPage() {
                               {r.availableForDates !== false ? (
                                 <span style={{ color: 'var(--teal)', fontWeight: 600 }}>Available</span>
                               ) : (
-                                <span style={{ color: 'var(--red)', fontWeight: 600 }}>
-                                  Booked
-                                  {r.bookedBy?.length > 0 ? ` (by ${r.bookedBy.map((x) => x.guestName || 'Guest').join(', ')})` : ''}
-                                </span>
+                                <span style={{ color: 'var(--red)', fontWeight: 600 }}>Booked</span>
                               )}
                             </li>
                           ))}
@@ -1107,6 +1169,26 @@ export default function BookingsPage() {
               <span className="availability-legend-item"><span className="availability-dot booked" /> Booked</span>
               <span className="availability-today-badge">Today</span>
             </div>
+            <div className="bookings-filters-bar availability-filters-bar">
+              <input
+                type="search"
+                className="form-control"
+                placeholder="Search rooms…"
+                value={availRoomSearch}
+                onChange={(e) => setAvailRoomSearch(e.target.value)}
+                style={{ maxWidth: 240 }}
+              />
+              <select
+                className="form-control"
+                value={availStatusFilter}
+                onChange={(e) => setAvailStatusFilter(e.target.value)}
+                style={{ minWidth: 140 }}
+              >
+                <option value="">All rooms</option>
+                <option value="booked">Booked in this period</option>
+                <option value="free">Free entire period</option>
+              </select>
+            </div>
             <div className="availability-grid-wrap">
               <table className="availability-grid">
                 <thead>
@@ -1147,7 +1229,14 @@ export default function BookingsPage() {
                       </td>
                     </tr>
                   )}
-                  {!availabilityRoomsLoading && rooms.map((room) => {
+                  {!availabilityRoomsLoading && rooms.length > 0 && roomsForAvailabilityGrid.length === 0 && (
+                    <tr>
+                      <td colSpan={availDays.length + 1} className="availability-empty">
+                        No rooms match your search or filters.
+                      </td>
+                    </tr>
+                  )}
+                  {!availabilityRoomsLoading && roomsForAvailabilityGrid.map((room) => {
                     const roomId = room._id ?? room.id;
                     const name = room.name ?? room.number ?? roomId;
                     return (
@@ -1169,20 +1258,42 @@ export default function BookingsPage() {
                           const booked = bookedKeys.has(key);
                           const guests = bookedByKey.get(key) || [];
                           const isToday = d.toDateString() === todayDateString;
+                          const guestLabel = (g) => g?.guestName || g?.name || 'Guest';
                           const tooltip = booked
-                            ? `${name} · ${formatDateDayMonthYear(d)} · Booked${guests.length ? ` by ${guests.map((g) => g.guestName).join(', ')}` : ''}`
+                            ? `${name} · ${formatDateDayMonthYear(d)} · Booked${guests.length ? ` by ${guests.map(guestLabel).join(', ')}` : ''}`
                             : `${name} · ${formatDateDayMonthYear(d)} · Available`;
                           return (
                             <td
                               key={key}
-                              className={`availability-cell ${booked ? 'booked' : 'available'} ${isToday ? 'today' : ''}`}
+                              role="button"
+                              tabIndex={0}
+                              className={`availability-cell ${booked ? 'booked' : 'available'} ${isToday ? 'today' : ''} ${booked ? 'availability-cell--clickable' : ''}`}
                               title={tooltip}
+                              onClick={() => {
+                                if (!booked || guests.length === 0) return;
+                                setAvailCellModal({
+                                  roomName: name,
+                                  date: d,
+                                  bookings: guests,
+                                });
+                              }}
+                              onKeyDown={(e) => {
+                                if (!booked || guests.length === 0) return;
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setAvailCellModal({
+                                    roomName: name,
+                                    date: d,
+                                    bookings: guests,
+                                  });
+                                }
+                              }}
                             >
                               <span className="availability-cell-inner">
                                 {booked ? <i className="fas fa-bed availability-cell-icon" /> : <i className="fas fa-check availability-cell-icon available" />}
                                 <span className="availability-cell-label">{booked ? 'Booked' : 'Free'}</span>
                                 {booked && guests.length > 0 && (
-                                  <span className="availability-cell-guest">{guests.map((g) => g.guestName).join(', ')}</span>
+                                  <span className="availability-cell-guest">{guests.map(guestLabel).join(', ')}</span>
                                 )}
                               </span>
                             </td>
@@ -1194,7 +1305,7 @@ export default function BookingsPage() {
                 </tbody>
               </table>
             </div>
-            <p className="availability-footer">Based on guest bookings. Dates in local time. Click Prev/Next to change period; Today resets to current week.</p>
+            <p className="availability-footer">Based on confirmed guest website bookings. Dates in local time. Click a booked cell for details; Prev/Next change period; Today resets to current week.</p>
           </div>
         </div>
       )}
@@ -1413,6 +1524,166 @@ export default function BookingsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {availCellModal && (
+        <div
+          className="rooms-events-modal-overlay"
+          onClick={() => setAvailCellModal(null)}
+          role="presentation"
+        >
+          <div
+            className="rooms-events-modal bookings-avail-guest-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="avail-guest-modal-title"
+          >
+            <div className="rooms-events-modal-header">
+              <div>
+                <h2 id="avail-guest-modal-title" className="rooms-events-modal-title">
+                  {availCellModal.roomName}
+                </h2>
+                <p className="rooms-events-modal-sub">{formatDateDayMonthYear(availCellModal.date)} · confirmed stay</p>
+              </div>
+              <button type="button" className="rooms-events-modal-close" onClick={() => setAvailCellModal(null)} aria-label="Close">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <div className="rooms-events-modal-body">
+              {Array.from(
+                new Map(
+                  (availCellModal.bookings || []).map((b) => [String(b._id ?? b.id ?? b.guestName + b.checkIn), b])
+                ).values()
+              ).map((b) => (
+                <div key={String(b._id ?? b.id ?? `${b.guestName}-${b.checkIn}`)} className="bookings-avail-guest-card">
+                  <div className="bookings-avail-guest-name">{b.guestName || 'Guest'}</div>
+                  <dl className="bookings-avail-guest-dl">
+                    <dt>Email</dt>
+                    <dd>{b.guestEmail || '—'}</dd>
+                    <dt>Phone</dt>
+                    <dd>{b.guestPhone || '—'}</dd>
+                    <dt>Tracking</dt>
+                    <dd>{b.trackingCode || '—'}</dd>
+                    <dt>Check-in</dt>
+                    <dd>{fmtDate(b.checkIn)}</dd>
+                    <dt>Check-out</dt>
+                    <dd>{fmtDate(b.checkOut)}</dd>
+                    <dt>Status</dt>
+                    <dd>
+                      <span
+                        className={`badge ${
+                          (statusStr(b.status).toLowerCase() === 'confirmed'
+                            ? 'badge-confirmed'
+                            : statusStr(b.status).toLowerCase() === 'cancelled'
+                              ? 'badge-cancelled'
+                              : 'badge-pending')
+                        }`}
+                      >
+                        {statusStr(b.status) || '—'}
+                      </span>
+                    </dd>
+                    <dt>Total</dt>
+                    <dd className="statement-table-num">R {Number(b.totalAmount ?? 0).toLocaleString('en-ZA')}</dd>
+                    {b.deposit != null && Number(b.deposit) > 0 && (
+                      <>
+                        <dt>Deposit</dt>
+                        <dd className="statement-table-num">R {Number(b.deposit).toLocaleString('en-ZA')}</dd>
+                      </>
+                    )}
+                  </dl>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {policySettingsOpen && policyDraft && isAdmin && (
+        <div
+          className="rooms-events-modal-overlay"
+          onClick={() => setPolicySettingsOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="rooms-events-modal bookings-policy-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="policy-modal-title"
+          >
+            <div className="rooms-events-modal-header">
+              <div>
+                <h2 id="policy-modal-title" className="rooms-events-modal-title">
+                  Deposit & guest policies
+                </h2>
+                <p className="rooms-events-modal-sub">Shown on the public booking page · deposit is calculated from the guest&apos;s total</p>
+              </div>
+              <button type="button" className="rooms-events-modal-close" onClick={() => setPolicySettingsOpen(false)} aria-label="Close">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <div className="rooms-events-modal-body">
+              <label className="bookings-policy-field">
+                <span>Deposit (% of website booking total)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="form-control"
+                  value={policyDraft.depositPercent}
+                  onChange={(e) =>
+                    setPolicyDraft((p) => ({ ...p, depositPercent: e.target.value }))
+                  }
+                />
+                <small className="text-muted">Use 0 for no deposit on submitted requests.</small>
+              </label>
+              <label className="bookings-policy-field">
+                <span>House rules &amp; guest policy (one line per bullet)</span>
+                <textarea
+                  className="form-control"
+                  rows={5}
+                  value={policyDraft.policyText}
+                  onChange={(e) => setPolicyDraft((p) => ({ ...p, policyText: e.target.value }))}
+                />
+              </label>
+              <label className="bookings-policy-field">
+                <span>Cancellation policy (paragraph)</span>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={policyDraft.cancellationText}
+                  onChange={(e) => setPolicyDraft((p) => ({ ...p, cancellationText: e.target.value }))}
+                />
+              </label>
+              <div className="bookings-add-internal-actions" style={{ marginTop: 12 }}>
+                <button type="button" className="btn btn-outline" onClick={() => setPolicySettingsOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const depositPercent = Math.min(100, Math.max(0, Number(policyDraft.depositPercent) || 0));
+                    const policyLines = String(policyDraft.policyText || '')
+                      .split('\n')
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    saveBookingPolicySettings({
+                      depositPercent,
+                      policyLines: policyLines.length ? policyLines : loadBookingPolicySettings().policyLines,
+                      cancellationText: String(policyDraft.cancellationText || '').trim() || loadBookingPolicySettings().cancellationText,
+                    });
+                    setPolicySettingsOpen(false);
+                  }}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>

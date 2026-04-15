@@ -103,7 +103,7 @@ export function isRoomAvailableForDates(roomId, checkIn, checkOut, guestBookings
  * @param {Array} guestBookings - List of guest bookings
  * @param {Date} rangeStart - First day (inclusive)
  * @param {Date} rangeEnd - Last day (inclusive)
- * @returns {{ keys: Set<string>, byKey: Map<string, { guestName: string }[]> }} keys set and optional guest info per cell for tooltips
+ * @returns {{ keys: Set<string>, byKey: Map<string, object[]> }} keys set and booking objects per cell (confirmed guest bookings only)
  */
 export function getOccupiedRoomDayKeys(guestBookings, rangeStart, rangeEnd) {
   const keys = new Set();
@@ -132,7 +132,7 @@ export function getOccupiedRoomDayKeys(guestBookings, rangeStart, rangeEnd) {
         const key = `${rid}-${day.toDateString()}`;
         keys.add(key);
         if (!byKey.has(key)) byKey.set(key, []);
-        byKey.get(key).push({ guestName: b.guestName || 'Guest', checkIn: b.checkIn, checkOut: b.checkOut });
+        byKey.get(key).push(b);
       }
       day.setDate(day.getDate() + 1);
     }

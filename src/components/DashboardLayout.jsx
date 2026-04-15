@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { dashboardNavConfig } from '@/config/dashboardNav';
@@ -6,9 +6,11 @@ import '@/styles/Dashboard.css';
 
 export default function DashboardLayout({ role, basePath, children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const sidebarRef = useRef(null);
+  const pageContentRef = useRef(null);
   const [openSections, setOpenSections] = useState(() => {
-    const config = dashboardNavConfig[role] || dashboardNavConfig.admin;
-    return new Set(config.sections.map((s) => s.label));
+    const cfg = dashboardNavConfig[role] || dashboardNavConfig.admin;
+    return new Set(cfg.sections.map((s) => s.label).filter(Boolean));
   });
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -16,8 +18,62 @@ export default function DashboardLayout({ role, basePath, children }) {
   const config = dashboardNavConfig[role] || dashboardNavConfig.admin;
   useEffect(() => {
     const cfg = dashboardNavConfig[role] || dashboardNavConfig.admin;
-    setOpenSections(new Set(cfg.sections.map((s) => s.label)));
+    setOpenSections(new Set(cfg.sections.map((s) => s.label).filter(Boolean)));
   }, [role]);
+
+  // Keep sidebar position stable across auth/layout remounts.
+  useLayoutEffect(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+    const key = `dashboard:sidebar-scroll:${role}`;
+    try {
+      const saved = Number(sessionStorage.getItem(key));
+      if (Number.isFinite(saved) && saved >= 0) {
+        el.scrollTop = saved;
+      }
+    } catch {
+      // ignore storage failures (private mode, disabled storage, etc.)
+    }
+
+    const onScroll = () => {
+      try {
+        sessionStorage.setItem(key, String(el.scrollTop));
+      } catch {
+        // ignore
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      onScroll();
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [role]);
+
+  // Keep main panel scroll stable when routes change after login.
+  useLayoutEffect(() => {
+    const el = pageContentRef.current;
+    if (!el) return;
+    const key = `dashboard:content-scroll:${basePath}:${location.pathname}`;
+    try {
+      const saved = Number(sessionStorage.getItem(key));
+      el.scrollTop = Number.isFinite(saved) && saved >= 0 ? saved : 0;
+    } catch {
+      el.scrollTop = 0;
+    }
+
+    const onScroll = () => {
+      try {
+        sessionStorage.setItem(key, String(el.scrollTop));
+      } catch {
+        // ignore
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      onScroll();
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [basePath, location.pathname]);
 
   const toggleSection = (label) => {
     setOpenSections((prev) => {
@@ -34,15 +90,34 @@ export default function DashboardLayout({ role, basePath, children }) {
   }
 
   const isActive = (itemPath) => {
-    const normalized = (itemPath || '').toString();
+    const raw = (itemPath ?? '').toString();
+    const qIdx = raw.indexOf('?');
+    const pathSeg = qIdx >= 0 ? raw.slice(0, qIdx) : raw;
+    const queryPart = qIdx >= 0 ? raw.slice(qIdx + 1) : '';
+
     const atBase = location.pathname === basePath || location.pathname === `${basePath}/`;
-    if (normalized === '' || normalized === 'dashboard') return atBase || location.pathname.startsWith(`${basePath}/dashboard`);
-    return location.pathname.startsWith(`${basePath}/${normalized}`);
+    if (pathSeg === '' || pathSeg === 'dashboard') {
+      return atBase || location.pathname.startsWith(`${basePath}/dashboard`);
+    }
+
+    const onPath =
+      location.pathname === `${basePath}/${pathSeg}` ||
+      location.pathname.startsWith(`${basePath}/${pathSeg}/`);
+    if (!onPath) return false;
+
+    if (!queryPart) return true;
+
+    const required = new URLSearchParams(queryPart);
+    const current = new URLSearchParams(location.search);
+    for (const [k, v] of required.entries()) {
+      if (current.get(k) !== v) return false;
+    }
+    return true;
   };
 
   return (
     <div className={`dashboard ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className="sidebar">
+      <aside className="sidebar" ref={sidebarRef}>
         <div className="sidebar-brand">
           <Link to={`${basePath}/dashboard`} style={{ textDecoration: 'none' }}>
             <div className="logo-line">
@@ -66,10 +141,42 @@ export default function DashboardLayout({ role, basePath, children }) {
         </div>
         <nav>
           {config.sections.map((section) => {
-            const isOpen = openSections.has(section.label);
+            const sectionKey = section.sectionKey ?? section.label ?? 'nav';
+            const flat = section.hideSectionHeader === true;
+            const isOpen = flat ? true : openSections.has(section.label);
+            const itemsBlock = (
+              <div className="nav-section-items">
+                {section.items.map((item) => {
+                  const to = item.path ? `${basePath}/${item.path}` : `${basePath}/dashboard`;
+                  const active = isActive(item.path);
+                  return (
+                    <Link
+                      key={item.path + item.label}
+                      to={to}
+                      className={`nav-item ${active ? 'active' : ''}`}
+                    >
+                      <div className="nav-icon">
+                        <i className={item.icon} />
+                      </div>
+                      <span className="nav-label">{item.label}</span>
+                      {item.badge != null && (
+                        <span className="nav-badge">{item.badge}</span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+            if (flat) {
+              return (
+                <div key={sectionKey} className="nav-section nav-section-flat">
+                  {itemsBlock}
+                </div>
+              );
+            }
             return (
               <div
-                key={section.label}
+                key={sectionKey}
                 className={`nav-section ${isOpen ? 'nav-section-open' : 'nav-section-closed'}`}
               >
                 <button
@@ -82,29 +189,7 @@ export default function DashboardLayout({ role, basePath, children }) {
                   <span className="nav-section-label">{section.label}</span>
                   <i className={`fas fa-chevron-${isOpen ? 'down' : 'right'} nav-section-chevron`} />
                 </button>
-                {(isOpen || sidebarCollapsed) && (
-                  <div className="nav-section-items">
-                    {section.items.map((item) => {
-                      const to = item.path ? `${basePath}/${item.path}` : `${basePath}/dashboard`;
-                      const active = isActive(item.path);
-                      return (
-                        <Link
-                          key={item.path + item.label}
-                          to={to}
-                          className={`nav-item ${active ? 'active' : ''}`}
-                        >
-                          <div className="nav-icon">
-                            <i className={item.icon} />
-                          </div>
-                          <span className="nav-label">{item.label}</span>
-                          {item.badge != null && (
-                            <span className="nav-badge">{item.badge}</span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
+                {(isOpen || sidebarCollapsed) && itemsBlock}
               </div>
             );
           })}
@@ -130,7 +215,7 @@ export default function DashboardLayout({ role, basePath, children }) {
         </div>
       </aside>
       <div className="main-wrapper">
-        <main className="page-content">
+        <main className="page-content" ref={pageContentRef}>
           {children}
         </main>
       </div>

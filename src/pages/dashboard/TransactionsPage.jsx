@@ -52,6 +52,7 @@ export default function TransactionsPage() {
   const qpCategory = searchParams.get('category') || '';
   const qpType = searchParams.get('type') || '';
   const [page, setPage] = useState(1);
+  const [tableSearch, setTableSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -75,6 +76,17 @@ export default function TransactionsPage() {
     if (!qpType) return listRaw;
     return listRaw.filter((t) => (t.type || '') === qpType);
   }, [listRaw, qpType]);
+  const listDisplayed = useMemo(() => {
+    if (!tableSearch.trim()) return list;
+    const q = tableSearch.trim().toLowerCase();
+    return list.filter(
+      (t) =>
+        String(t.description || '').toLowerCase().includes(q) ||
+        String(t.reference || '').toLowerCase().includes(q) ||
+        String(transactionCategoryLabel(t.category) || '').toLowerCase().includes(q) ||
+        String(t.type || '').toLowerCase().includes(q)
+    );
+  }, [list, tableSearch]);
   const meta = data?.meta ?? {};
 
   const openAdd = useCallback(() => {
@@ -188,6 +200,17 @@ export default function TransactionsPage() {
         </button>
       </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
+
+      <div className="bookings-filters-bar" style={{ marginBottom: 12 }}>
+        <input
+          type="search"
+          className="form-control"
+          placeholder="Search description, reference, category…"
+          value={tableSearch}
+          onChange={(e) => setTableSearch(e.target.value)}
+          style={{ maxWidth: 320 }}
+        />
+      </div>
 
       {modalOpen && (
         <div
@@ -405,13 +428,13 @@ export default function TransactionsPage() {
                     <td colSpan={colCount}>Loading…</td>
                   </tr>
                 )}
-                {!isLoading && list.length === 0 && (
+                {!isLoading && listDisplayed.length === 0 && (
                   <tr>
                     <td colSpan={colCount}>No transactions</td>
                   </tr>
                 )}
                 {!isLoading &&
-                  list.map((t) => {
+                  listDisplayed.map((t) => {
                     const id = t._id ?? t.id;
                     const jid = t.journalEntryId;
                     const posted = isTransactionLedgerPosted(t);

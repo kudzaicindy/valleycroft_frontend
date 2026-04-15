@@ -1,33 +1,129 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { getRooms } from '@/api/rooms';
+import { FARM_STAYS, quickBookNameBySlug } from '@/content/farmStays';
+import { resolveRoomImageUrl, resolveRoomImageUrls } from '@/utils/roomImageUrl';
 import './LandingPage.css';
 
-/** Public folder filenames with spaces — URL-encoded for img src */
-const HOUSE1_IMAGE_PATHS = [
-  '/house%201living%20room.jpeg',
-  '/house%201living%20room%202.jpeg',
-  '/house%201bed%201.jpeg',
-  '/house%201%20bed%202.jpeg',
-  '/house%201%20bathroom.jpeg',
+function ymdLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function findApiRoomForQuickBookHouse(apiList, houseVal) {
+  if (!apiList?.length || houseVal === 'any') return null;
+  let r = apiList.find((x) => String(x._id ?? x.id) === houseVal);
+  if (r) return r;
+  const name = quickBookNameBySlug(houseVal);
+  if (name) {
+    r = apiList.find((x) => (x.name || '').trim() === name);
+    if (r) return r;
+    const stay = FARM_STAYS.find((s) => s.slug === houseVal);
+    if (stay?.legacyNames?.length) {
+      return apiList.find((x) => stay.legacyNames.some((ln) => (x.name || '').trim() === ln));
+    }
+  }
+  return null;
+}
+
+const HOUSE1_IMAGE_PATHS = FARM_STAYS[0].images;
+const HOUSE2_IMAGE_PATHS = FARM_STAYS[1].images;
+const HOUSE3_IMAGE_PATHS = FARM_STAYS[2].images;
+
+/** Chandelier-lit rustic walkway entrance (grounds / arrival). */
+const VALLEYCROFT_ENTRANCE_WALKWAY = encodeURI('/WhatsApp Image 2026-04-15 at 09.24.26.jpeg');
+const VALLEYCROFT_POOL_BRAAI_IMAGE = encodeURI('/WhatsApp Image 2026-04-15 at 09.24.26 (1).jpeg');
+
+/**
+ * April 2026 — outdoors only: lawns, pool, patios, pavilion, house exteriors (not barn interior).
+ */
+const FARM_SURROUNDINGS_PHOTOS = [
+  VALLEYCROFT_ENTRANCE_WALKWAY,
+  '/PHOTO-2026-04-10-10-38-28.jpg',
+  '/PHOTO-2026-04-10-10-38-30.jpg',
+  '/PHOTO-2026-04-10-10-38-30_1.jpg',
+  '/PHOTO-2026-04-10-10-38-30_2.jpg',
+  '/PHOTO-2026-04-10-10-38-30_3.jpg',
+  '/PHOTO-2026-04-10-10-38-31.jpg',
+  '/PHOTO-2026-04-10-10-38-31_1.jpg',
+  '/PHOTO-2026-04-10-10-38-31_2.jpg',
+  '/PHOTO-2026-04-10-10-38-31_3.jpg',
+  '/PHOTO-2026-04-10-10-38-32.jpg',
+  '/PHOTO-2026-04-10-10-38-32_1.jpg',
+  '/PHOTO-2026-04-10-10-38-32_2.jpg',
+  '/PHOTO-2026-04-10-10-38-32_3.jpg',
+  '/PHOTO-2026-04-10-10-38-33.jpg',
+  '/PHOTO-2026-04-10-10-38-33_1.jpg',
+  '/PHOTO-2026-04-10-10-38-33_2.jpg',
+  '/PHOTO-2026-04-10-10-38-33_3.jpg',
+  '/PHOTO-2026-04-10-10-38-33_4.jpg',
 ];
 
-const HOUSE2_IMAGE_PATHS = [
-  '/house%202%20living.jpeg',
-  '/house%202%20living%202.jpeg',
-  '/house%202%20living%203.jpeg',
-  '/house%202%20bath%201.jpeg',
-  '/house%202%20bath%202.jpeg',
+/** Rustic barn interior — communal dining / event space (long table, hay panels). */
+const FARM_BARN_INTERIOR_PHOTOS = [
+  '/PHOTO-2026-04-10-10-38-44.jpg',
+  '/PHOTO-2026-04-10-10-38-45.jpg',
+  '/PHOTO-2026-04-10-10-38-45_1.jpg',
+  '/PHOTO-2026-04-10-10-38-45_2.jpg',
+  '/PHOTO-2026-04-10-10-38-46.jpg',
 ];
 
-const HOUSE3_IMAGE_PATHS = [
-  '/house%203%20living.jpeg',
-  '/house%203%20bed%201.jpeg',
-  '/house%203%20bed%202.jpeg',
-  '/house%203%20kitchen.jpeg',
-  '/house%203%20bath.jpeg',
-];
+const FARM_PREVIEW_GROUNDS = VALLEYCROFT_ENTRANCE_WALKWAY;
+const FARM_PREVIEW_BARN = '/PHOTO-2026-04-10-10-38-44.jpg';
 
-function RoomCardImageCarousel({ images, roomName, overlay }) {
+function vcRemotionEmbed() {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('vc-remotion-ad');
+}
+
+/** Horizontal “scroll” for farm cards: transform vs scrollLeft (embed uses transform only). */
+function applyRoomRowProgress(grid, progress) {
+  const p = Math.min(1, Math.max(0, progress));
+  const adTrack = grid.querySelector('.rooms-grid-wide-adtrack');
+  if (adTrack && grid.classList.contains('rooms-grid-wide--embed-ad')) {
+    const max = Math.max(0, adTrack.scrollWidth - grid.clientWidth);
+    const x = Math.round(max * p);
+    const t = `translate3d(-${x}px,0,0)`;
+    if (adTrack.style.transform !== t) adTrack.style.transform = t;
+  } else {
+    const max = Math.max(0, grid.scrollWidth - grid.clientWidth);
+    const next = Math.round(max * p);
+    if (grid.scrollLeft !== next) grid.scrollLeft = next;
+  }
+}
+
+/**
+ * Remotion: parent sets .room-img-track scrollLeft via postMessage every frame.
+ * No useState/useEffect here — avoids scroll listeners, dot updates, and memo-defeating churn from `overlay` identity.
+ */
+function RoomCardImageCarouselEmbed({ images, roomName, overlay }) {
+  const slides = images?.length ? images : [];
+  return (
+    <div className="room-img room-img--carousel">
+      <div className="room-img-track">
+        {slides.map((src, i) => (
+          <div
+            key={src}
+            className="room-img-slide"
+            style={{ backgroundImage: `url("${src}")` }}
+            role="img"
+            aria-label={`${roomName} — photo ${i + 1} of ${slides.length}`}
+          />
+        ))}
+      </div>
+      <div className="room-img-floating">{overlay}</div>
+    </div>
+  );
+}
+
+const RoomCardImageCarouselEmbedMemo = memo(
+  RoomCardImageCarouselEmbed,
+  (a, b) => a.roomName === b.roomName && a.images === b.images
+);
+
+function RoomCardImageCarouselInteractive({ images, roomName, overlay }) {
   const trackRef = useRef(null);
   const [active, setActive] = useState(0);
   const slides = images?.length ? images : [];
@@ -60,7 +156,7 @@ function RoomCardImageCarousel({ images, roomName, overlay }) {
           <div
             key={src}
             className="room-img-slide"
-            style={{ backgroundImage: `url(${src})` }}
+            style={{ backgroundImage: `url("${src}")` }}
             role="img"
             aria-label={`${roomName} — photo ${i + 1} of ${slides.length}`}
           />
@@ -88,17 +184,88 @@ function RoomCardImageCarousel({ images, roomName, overlay }) {
   );
 }
 
+function RoomCardImageCarousel(props) {
+  return vcRemotionEmbed() ? <RoomCardImageCarouselEmbedMemo {...props} /> : <RoomCardImageCarouselInteractive {...props} />;
+}
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
   const [bookingType, setBookingType] = useState('bnb');
   const [modalOpen, setModalOpen] = useState(false);
+  const [farmGalleryOpen, setFarmGalleryOpen] = useState(false);
   const [bookingContext, setBookingContext] = useState({ name: '', type: 'room' });
-  const checkInRef = useRef(null);
-  const checkOutRef = useRef(null);
+  const [qbCheckIn, setQbCheckIn] = useState(() => ymdLocal(new Date()));
+  const [qbCheckOut, setQbCheckOut] = useState(() => {
+    const t = new Date();
+    t.setDate(t.getDate() + 1);
+    return ymdLocal(t);
+  });
+  const [qbHouse, setQbHouse] = useState('any');
+  const guestsRef = useRef(null);
   const trackRefRef = useRef(null);
   const trackEmailRef = useRef(null);
   const roomsSectionRef = useRef(null);
+  const [messageModal, setMessageModal] = useState({ open: false, title: '', message: '' });
+
+  const todayMin = useMemo(() => ymdLocal(new Date()), []);
+
+  const bnbDatesValid =
+    bookingType === 'bnb' && qbCheckIn && qbCheckOut && qbCheckOut > qbCheckIn;
+
+  const { data: roomsRaw, isSuccess, isError, isFetching } = useQuery({
+    queryKey: ['landing-rooms-avail', qbCheckIn, qbCheckOut],
+    queryFn: () => getRooms({ checkIn: qbCheckIn, checkOut: qbCheckOut }),
+    enabled: bnbDatesValid,
+    retry: 1,
+  });
+
+  const landingApiRooms = useMemo(() => {
+    const raw = roomsRaw;
+    return Array.isArray(raw) ? raw : (raw?.data ?? []);
+  }, [roomsRaw]);
+
+  const landingAvail = useMemo(() => {
+    if (!bnbDatesValid || !isSuccess || isError || landingApiRooms.length === 0) {
+      return { known: false, blocked: false, message: '' };
+    }
+    if (qbHouse === 'any') {
+      const someOpen = landingApiRooms.some((r) => r.availableForDates !== false);
+      if (!someOpen) {
+        return {
+          known: true,
+          blocked: true,
+          message:
+            'These dates are not available for a BnB stay. Please choose different check-in and check-out dates.',
+        };
+      }
+      return { known: true, blocked: false, message: '' };
+    }
+    const target = findApiRoomForQuickBookHouse(landingApiRooms, qbHouse);
+    if (target && target.availableForDates === false) {
+      return {
+        known: true,
+        blocked: true,
+        message:
+          'The house you selected is not available for these dates. Please change the dates or choose another property.',
+      };
+    }
+    return { known: true, blocked: false, message: '' };
+  }, [bnbDatesValid, isSuccess, isError, landingApiRooms, qbHouse]);
+
+  const onQbCheckInChange = (e) => {
+    const v = e.target.value;
+    setQbCheckIn(v);
+    setQbCheckOut((co) => {
+      if (!v || !co) return co;
+      if (co <= v) {
+        const [y, mo, d] = v.split('-').map(Number);
+        const n = new Date(y, mo - 1, d + 1);
+        return ymdLocal(n);
+      }
+      return co;
+    });
+  };
 
   const selectType = (type) => setBookingType(type);
 
@@ -108,10 +275,38 @@ export default function LandingPage() {
   };
 
   const goToBooking = () => {
-    const checkIn = checkInRef.current?.value?.trim();
-    const checkOut = checkOutRef.current?.value?.trim();
+    const checkIn = qbCheckIn.trim();
+    const checkOut = qbCheckOut.trim();
+    if (bookingType === 'bnb' && landingAvail.known && landingAvail.blocked) {
+      setMessageModal({
+        open: true,
+        title: 'Dates not available',
+        message: landingAvail.message,
+      });
+      return;
+    }
+    const guestsVal = guestsRef.current?.value ?? '2';
+    const houseVal = qbHouse;
+    let adults = 2;
+    let children = 0;
+    const g = String(guestsVal);
+    if (g === '1') adults = 1;
+    else if (g === '2') adults = 2;
+    else if (g === '3') adults = 3;
+    else if (g === '4') adults = 4;
+    else if (g === '5+') {
+      adults = 6;
+    }
+    const preferredRoomId = houseVal && houseVal !== 'any' ? houseVal : undefined;
     navigate('/booking', {
-      state: checkIn || checkOut ? { checkIn: checkIn || undefined, checkOut: checkOut || undefined, bookingType } : undefined,
+      state: {
+        checkIn: checkIn || undefined,
+        checkOut: checkOut || undefined,
+        bookingType,
+        adults,
+        children,
+        ...(preferredRoomId ? { preferredRoomId } : {}),
+      },
     });
   };
 
@@ -121,6 +316,9 @@ export default function LandingPage() {
   };
 
   const closeModal = () => setModalOpen(false);
+
+  const openFarmGallery = () => setFarmGalleryOpen(true);
+  const closeFarmGallery = () => setFarmGalleryOpen(false);
 
   const closeNav = () => setNavOpen(false);
 
@@ -132,36 +330,15 @@ export default function LandingPage() {
     const ref = trackRefRef.current?.value?.trim();
     const email = trackEmailRef.current?.value?.trim();
     if (!ref || !email) {
-      alert('Please enter both your booking reference and email address.');
+      setMessageModal({
+        open: true,
+        title: 'Missing details',
+        message: 'Please enter both your booking reference and email address.',
+      });
       return;
     }
     navigate(`/booking-track?ref=${encodeURIComponent(ref)}&email=${encodeURIComponent(email)}`);
   };
-
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-    if (checkInRef.current) {
-      checkInRef.current.min = today;
-      checkInRef.current.value = today;
-    }
-    if (checkOutRef.current) {
-      checkOutRef.current.min = today;
-      checkOutRef.current.value = tomorrowStr;
-    }
-  }, []);
-
-  useEffect(() => {
-    const checkIn = checkInRef.current;
-    if (!checkIn) return;
-    const onChange = () => {
-      if (checkOutRef.current && checkIn.value) checkOutRef.current.min = checkIn.value;
-    };
-    checkIn.addEventListener('change', onChange);
-    return () => checkIn.removeEventListener('change', onChange);
-  }, []);
 
   useEffect(() => {
     document.body.classList.toggle('landing-nav-open', navOpen);
@@ -178,6 +355,71 @@ export default function LandingPage() {
   }, [navOpen]);
 
   useEffect(() => {
+    if (!farmGalleryOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setFarmGalleryOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [farmGalleryOpen]);
+
+  useEffect(() => {
+    if (!farmGalleryOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [farmGalleryOpen]);
+
+  /**
+   * Remotion ad: parent drives (1) horizontal scroll on `.rooms-grid-wide` and
+   * (2) each house card’s `.room-img-track` gallery — not the whole page.
+   */
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (window.parent === window) return;
+      if (e.source !== window.parent) return;
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+
+      const grid = document.querySelector('#accommodation .rooms-grid-wide');
+      if (!grid) return;
+
+      if (d.type === 'VC_ROOM_SCROLL' && typeof d.progress === 'number') {
+        document.documentElement.classList.add('vc-remotion-ad');
+        applyRoomRowProgress(grid, d.progress);
+        return;
+      }
+
+      if (d.type === 'VC_ROOM_AD') {
+        document.documentElement.classList.add('vc-remotion-ad');
+        if (typeof d.rowProgress === 'number') {
+          applyRoomRowProgress(grid, d.rowProgress);
+        }
+        if (typeof d.activeCard === 'number' && d.activeCard >= 0 && typeof d.gallerySlide === 'number') {
+          const cards = grid.querySelectorAll('.room-card-pub');
+          const card = cards[d.activeCard];
+          const track = card?.querySelector('.room-img-track');
+          if (track && track.clientWidth > 0) {
+            const w = track.clientWidth;
+            const slideCount = Math.max(1, Math.round(track.scrollWidth / w));
+            const maxIdx = slideCount - 1;
+            const idx = Math.min(maxIdx, Math.max(0, Math.round(d.gallerySlide)));
+            const next = Math.round(idx * w);
+            if (track.scrollLeft !== next) track.scrollLeft = next;
+          }
+        }
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  useEffect(() => {
+    if (document.documentElement.classList.contains('vc-remotion-ad')) {
+      return;
+    }
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -194,63 +436,39 @@ export default function LandingPage() {
   }, []);
 
   const aboutStrip = [
-    { title: 'BnB Stays', desc: 'Comfortable farm accommodation', img: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=400&q=80' },
-    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400&q=80' },
-    { title: 'Working Farm', desc: 'Authentic agro-tourism experiences', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
-    { title: 'South Africa', desc: 'In the heart of the countryside', img: 'https://images.unsplash.com/photo-1527004013197-933c4bb611b3?w=400&q=80' },
+    { title: 'BnB Stays', desc: 'Comfortable farm accommodation', img: resolveRoomImageUrl(HOUSE1_IMAGE_PATHS[0]) },
+    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: FARM_BARN_INTERIOR_PHOTOS[0] },
+    { title: 'Working Farm', desc: 'Authentic agro-tourism experiences', img: '/PHOTO-2026-04-10-10-38-30_2.jpg' },
+    { title: 'South Africa', desc: 'In the heart of the countryside', img: '/PHOTO-2026-04-10-10-38-33_1.jpg' },
   ];
 
   const experienceItems = [
-    { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
-    { title: 'Nature & Wildlife', desc: 'Birdlife, gardens and the rhythm of the seasons.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
-    { title: 'Pool & Summer Days', desc: 'Take a dip and unwind by the water between farm walks and sundowners.', img: '/pool.jpeg' },
-    { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: '/PHOTO-2026-03-24-23-07-59.jpg' },
+    { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: '/PHOTO-2026-04-10-10-38-32_3.jpg' },
+    { title: 'Nature & Wildlife', desc: 'Birdlife, gardens and the rhythm of the seasons.', img: '/PHOTO-2026-04-10-10-38-31_2.jpg' },
+    { title: 'Pool & Summer Days', desc: 'Take a dip and unwind by the water between farm walks and sundowners.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
+    { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
   ];
 
-  const rooms = [
-    {
-      tag: 'Popular',
+  const rooms = FARM_STAYS.map((stay, idx) => {
+    const tags = ['Popular', 'Cosy', 'Premium'];
+    const ratings = [4.92, 4.89, 4.95];
+    const imgs = [HOUSE1_IMAGE_PATHS, HOUSE2_IMAGE_PATHS, HOUSE3_IMAGE_PATHS][idx];
+    const gallery = resolveRoomImageUrls(imgs);
+    return {
+      tag: tags[idx],
       avail: 'yes',
-      name: 'Willow Cottage',
-      bedsLabel: '2 bed',
-      desc: 'Two-bedroom cottage on the farm — living areas, bedrooms and bathroom. Ideal for small families or two couples.',
-      amenities: ['2 Bedrooms', 'Full bathroom', 'Farm breakfast'],
-      price: 'R 1,920',
+      name: stay.name,
+      bedsLabel: stay.bedsShort,
+      desc: stay.desc,
+      amenities: stay.tags.slice(0, 4),
+      price: `R ${stay.price.toLocaleString('en-ZA')}`,
       sub: 'per night',
-      rating: 4.92,
-      img: HOUSE1_IMAGE_PATHS[0],
-      gallery: HOUSE1_IMAGE_PATHS,
+      rating: ratings[idx],
+      img: gallery[0] || '',
+      gallery,
       isEvent: false,
-    },
-    {
-      tag: 'Cosy',
-      avail: 'yes',
-      name: 'Garden Nook',
-      bedsLabel: '1 bed',
-      desc: 'One-bedroom hideaway — quiet and comfortable for solo travellers or couples.',
-      amenities: ['1 Bedroom', 'Countryside setting', 'WiFi'],
-      price: 'R 1,280',
-      sub: 'per night',
-      rating: 4.89,
-      img: HOUSE2_IMAGE_PATHS[0],
-      gallery: HOUSE2_IMAGE_PATHS,
-      isEvent: false,
-    },
-    {
-      tag: 'Premium',
-      avail: 'yes',
-      name: 'The Blue House',
-      bedsLabel: '3 bed',
-      desc: 'Spacious three-bedroom home — our signature blue house — with room for larger groups and get-togethers.',
-      amenities: ['3 Bedrooms', 'Blue House', 'Groups'],
-      price: 'R 3,200',
-      sub: 'per night',
-      rating: 4.95,
-      img: HOUSE3_IMAGE_PATHS[0],
-      gallery: HOUSE3_IMAGE_PATHS,
-      isEvent: false,
-    },
-  ];
+    };
+  });
 
   const events = [
     { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Catering for up to 200 guests with full coordination support.', features: ['Up to 200 guests', 'In-house catering available', 'Overnight accommodation for wedding party', 'Scenic photo backdrops throughout'], price: 'From R 28,000', sub: 'Full day venue hire', link: '/booking?type=wedding' },
@@ -264,6 +482,56 @@ export default function LandingPage() {
     { stars: '★★★★★', text: '"We hosted our company strategy day here and it was perfect. The team was relaxed, focused, and inspired by the environment. We\'ll be back every quarter."', author: 'LV', name: 'Lerato van Wyk', date: '18 January 2026 · Corporate Event', avatarBg: 'var(--gold)' },
     { stars: '★★★★★', text: '"Our wedding was beyond anything we could have dreamed of. The staff were incredible and every detail was handled perfectly. Our guests still talk about it."', author: 'TM', name: 'Thabo & Mercy', date: '12 December 2025 · Wedding', avatarBg: 'var(--sage)' },
   ];
+
+  const accommodationRoomCards = rooms.map((room) => (
+    <div key={room.name} className="room-card-pub" data-animate>
+      <RoomCardImageCarousel
+        images={room.gallery?.length ? room.gallery : [room.img]}
+        roomName={room.name}
+        overlay={
+          <>
+            {room.tag === 'Popular' ? (
+              <div className="room-guest-badge">Guest favourite</div>
+            ) : null}
+            <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
+            <div className={`room-avail ${room.avail}`}>{room.avail === 'yes' ? 'Available' : room.availText}</div>
+            <button
+              type="button"
+              className="room-wishlist"
+              aria-label="Save listing"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <i className="far fa-heart" aria-hidden />
+            </button>
+          </>
+        }
+      />
+      <div className="room-info">
+        <div className="room-name">{room.name}</div>
+        {room.bedsLabel ? <div className="room-beds">{room.bedsLabel}</div> : null}
+        <div className="room-meta-line">
+          <span className="room-meta-price">{room.price}</span>
+          <span className="room-meta-sep" aria-hidden>·</span>
+          <span className="room-meta-rating"><i className="fas fa-star" aria-hidden /> {room.rating != null ? Number(room.rating).toFixed(2) : '4.9'}</span>
+        </div>
+        <p className="room-desc">{room.desc}</p>
+        <div className="room-amenities">
+          {room.amenities.map((a) => (
+            <span key={a} className="amenity-tag">{a}</span>
+          ))}
+        </div>
+        <div className="room-footer">
+          <div>
+            <div className="room-price">{room.price}</div>
+            <div className="room-price-sub">{room.sub}</div>
+          </div>
+          <button type="button" className="btn-book-room" onClick={() => openBookingModal(room.name, room.isEvent ? 'event' : 'room')}>
+            {room.isEvent ? 'Enquire' : 'Book'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ));
 
   return (
     <>
@@ -279,6 +547,7 @@ export default function LandingPage() {
           <a href="#accommodation" className="nav-link">Accommodation</a>
           <a href="#events" className="nav-link">Events & Venues</a>
           <a href="#about" className="nav-link">About the Farm</a>
+          <a href="#experience" className="nav-link">Experience</a>
           <a href="#contact" className="nav-link">Contact</a>
         </div>
         <div className="nav-actions">
@@ -317,6 +586,9 @@ export default function LandingPage() {
         </a>
         <a href="#about" className="nav-drawer-link" onClick={closeNav}>
           About the Farm
+        </a>
+        <a href="#experience" className="nav-drawer-link" onClick={closeNav}>
+          Experience
         </a>
         <a href="#contact" className="nav-drawer-link" onClick={closeNav}>
           Contact
@@ -358,42 +630,80 @@ export default function LandingPage() {
             <div className="qb-group">
               <div className="qb-label">Booking Type</div>
               <div className="qb-type-grid">
-                <button type="button" className={`qb-type-btn ${bookingType === 'bnb' ? 'active' : ''}`} onClick={() => selectType('bnb')}><i className="fas fa-bed" />BnB Stay</button>
-                <button type="button" className={`qb-type-btn ${bookingType === 'event' ? 'active' : ''}`} onClick={() => selectType('event')}><i className="fas fa-glass-cheers" />Event Venue</button>
+                <button type="button" className={`qb-type-btn ${bookingType === 'bnb' ? 'active' : ''}`} onClick={() => selectType('bnb')}><i className="fas fa-bed" />BnB</button>
+                <button type="button" className={`qb-type-btn ${bookingType === 'event' ? 'active' : ''}`} onClick={() => selectType('event')}><i className="fas fa-glass-cheers" />Event Hire</button>
               </div>
             </div>
             <div className="qb-row">
               <div className="qb-group">
                 <div className="qb-label">Check-in Date</div>
-                <input type="date" className="qb-input" id="qbCheckin" ref={checkInRef} />
+                <input
+                  type="date"
+                  className="qb-input"
+                  id="qbCheckin"
+                  min={todayMin}
+                  value={qbCheckIn}
+                  onChange={onQbCheckInChange}
+                />
               </div>
               <div className="qb-group">
                 <div className="qb-label">Check-out Date</div>
-                <input type="date" className="qb-input" id="qbCheckout" ref={checkOutRef} />
+                <input
+                  type="date"
+                  className="qb-input"
+                  id="qbCheckout"
+                  min={qbCheckIn || todayMin}
+                  value={qbCheckOut}
+                  onChange={(e) => setQbCheckOut(e.target.value)}
+                />
               </div>
             </div>
+            {bookingType === 'bnb' && bnbDatesValid && isFetching ? (
+              <div className="qb-availability qb-availability--checking" aria-live="polite">
+                <i className="fas fa-spinner fa-spin" aria-hidden /> Checking availability for these dates…
+              </div>
+            ) : null}
+            {bookingType === 'bnb' && landingAvail.blocked ? (
+              <div className="qb-availability qb-availability--bad" role="alert">
+                {landingAvail.message}
+              </div>
+            ) : null}
             <div className="qb-row">
               <div className="qb-group">
                 <div className="qb-label">Guests</div>
-                <select className="qb-input">
-                  <option>1 Guest</option>
-                  <option>2 Guests</option>
-                  <option>3 Guests</option>
-                  <option>4 Guests</option>
-                  <option>5+ Guests</option>
+                <select className="qb-input" ref={guestsRef} defaultValue="2" aria-label="Number of guests">
+                  <option value="1">1 Guest</option>
+                  <option value="2">2 Guests</option>
+                  <option value="3">3 Guests</option>
+                  <option value="4">4 Guests</option>
+                  <option value="5+">5+ Guests</option>
                 </select>
               </div>
               <div className="qb-group">
                 <div className="qb-label">House</div>
-                <select className="qb-input">
-                  <option>Any house</option>
-                  <option>Willow Cottage (2 bed)</option>
-                  <option>Garden Nook (1 bed)</option>
-                  <option>The Blue House (3 bed)</option>
+                <select
+                  className="qb-input"
+                  value={qbHouse}
+                  onChange={(e) => setQbHouse(e.target.value)}
+                  aria-label="Preferred house"
+                >
+                  <option value="any">Any house</option>
+                  {FARM_STAYS.map((s) => (
+                    <option key={s.slug} value={s.slug}>
+                      {s.name} ({s.bedsShort})
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
-            <button type="button" className="btn-book-now" onClick={goToBooking}><i className="fas fa-search" /> Check Availability & Book</button>
+            <button
+              type="button"
+              className="btn-book-now"
+              onClick={goToBooking}
+              disabled={bookingType === 'bnb' && landingAvail.blocked}
+            >
+              <i className="fas fa-search" /> Check Availability & Book
+            </button>
             <div className="qb-track-link">Already booked? <Link to="/booking-track">Track your reservation →</Link></div>
           </div>
         </div>
@@ -412,7 +722,7 @@ export default function LandingPage() {
       <div className="about-strip" id="about">
         {aboutStrip.map((item) => (
           <div key={item.title} className="about-strip-item" data-animate>
-            <div className="about-strip-img" style={{ backgroundImage: `url(${item.img})` }} />
+            <div className="about-strip-img" style={{ backgroundImage: `url("${item.img}")` }} />
             <div className="about-strip-text">
               <div className="about-strip-title">{item.title}</div>
               <div className="about-strip-desc">{item.desc}</div>
@@ -430,12 +740,12 @@ export default function LandingPage() {
           <div className="quick-actions-grid">
             <button type="button" className="quick-action-card" onClick={scrollToRooms} data-animate>
               <i className="fas fa-bed" />
-              <h3>Book BnB Stay</h3>
+              <h3>Book BnB</h3>
               <p>Choose a room and reserve your dates</p>
             </button>
-            <button type="button" className="quick-action-card" onClick={() => openBookingModal('Event / Venue', 'event')} data-animate>
+            <button type="button" className="quick-action-card" onClick={() => openBookingModal('Event Hire', 'event')} data-animate>
               <i className="fas fa-glass-cheers" />
-              <h3>Book Event Venue</h3>
+              <h3>Book Event Hire</h3>
               <p>Weddings, corporate events & celebrations</p>
             </button>
             <a href="mailto:admin@valleycroft.com" className="quick-action-card" data-animate>
@@ -451,7 +761,7 @@ export default function LandingPage() {
         <div className="section-center section-center--accom" data-animate>
           <div className="eyebrow">Where You&apos;ll Stay</div>
           <h2 className="section-heading">Our farm houses</h2>
-          <p className="section-desc">Three houses on the farm — each with its own character, from cosy Garden Nook to the spacious Blue House.</p>
+          <p className="section-desc">Three houses on the farm — each with its own character, from cosy Studio Flier to the spacious Blue House.</p>
         </div>
         <div className="landing-m-accom-head">
           <h2 className="landing-m-accom-title">Available farm houses</h2>
@@ -469,57 +779,13 @@ export default function LandingPage() {
             <i className="fas fa-chevron-right" aria-hidden />
           </button>
         </div>
-        <div className="rooms-grid rooms-grid-wide">
-          {rooms.map((room) => (
-            <div key={room.name} className="room-card-pub" data-animate>
-              <RoomCardImageCarousel
-                images={room.gallery?.length ? room.gallery : [room.img]}
-                roomName={room.name}
-                overlay={
-                  <>
-                    {room.tag === 'Popular' ? (
-                      <div className="room-guest-badge">Guest favourite</div>
-                    ) : null}
-                    <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
-                    <div className={`room-avail ${room.avail}`}>{room.avail === 'yes' ? 'Available' : room.availText}</div>
-                    <button
-                      type="button"
-                      className="room-wishlist"
-                      aria-label="Save listing"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <i className="far fa-heart" aria-hidden />
-                    </button>
-                  </>
-                }
-              />
-              <div className="room-info">
-                <div className="room-name">{room.name}</div>
-                {room.bedsLabel ? <div className="room-beds">{room.bedsLabel}</div> : null}
-                <div className="room-meta-line">
-                  <span className="room-meta-price">{room.price}</span>
-                  <span className="room-meta-sep" aria-hidden>·</span>
-                  <span className="room-meta-rating"><i className="fas fa-star" aria-hidden /> {room.rating != null ? Number(room.rating).toFixed(2) : '4.9'}</span>
-                </div>
-                <p className="room-desc">{room.desc}</p>
-                <div className="room-amenities">
-                  {room.amenities.map((a) => (
-                    <span key={a} className="amenity-tag">{a}</span>
-                  ))}
-                </div>
-                <div className="room-footer">
-                  <div>
-                    <div className="room-price">{room.price}</div>
-                    <div className="room-price-sub">{room.sub}</div>
-                  </div>
-                  <button type="button" className="btn-book-room" onClick={() => openBookingModal(room.name, room.isEvent ? 'event' : 'room')}>
-                    {room.isEvent ? 'Enquire' : 'Book'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        {vcRemotionEmbed() ? (
+          <div className="rooms-grid rooms-grid-wide rooms-grid-wide--embed-ad">
+            <div className="rooms-grid-wide-adtrack">{accommodationRoomCards}</div>
+          </div>
+        ) : (
+          <div className="rooms-grid rooms-grid-wide">{accommodationRoomCards}</div>
+        )}
         <div style={{ textAlign: 'center', marginTop: 32 }} data-animate>
           <Link to="/booking" className="btn-view-all-rooms">
             <i className="fas fa-calendar-alt" /> View All Rooms & Availability
@@ -527,11 +793,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="experience-section" id="experience">
+      <section className="experience-farm-section" id="experience">
         <div className="section-center" data-animate>
-          <div className="eyebrow">The Experience</div>
+          <div className="eyebrow">On the farm</div>
           <h2 className="section-heading">What to expect at Valley Croft</h2>
-          <p className="section-desc">From sunrise walks to pool days and evening braais — the farm comes alive in every season.</p>
+          <p className="section-desc">
+            Sunrise walks, pool days, braais under the stars — plus our welcoming entrance, lawns, pavilion, and rustic barn for gatherings. Open the gallery for the full photo tour.
+          </p>
         </div>
         <div className="experience-grid">
           {experienceItems.map((exp) => (
@@ -541,13 +809,55 @@ export default function LandingPage() {
               data-animate
               id={exp.title === 'Pool & Summer Days' ? 'm-pool-spotlight' : undefined}
             >
-              <div className="experience-img" style={{ backgroundImage: `url(${exp.img})` }} />
+              <div className="experience-img" style={{ backgroundImage: `url("${exp.img}")` }} />
               <div className="experience-content">
                 <h3 className="experience-title">{exp.title}</h3>
                 <p className="experience-desc">{exp.desc}</p>
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="farm-gallery-inner" data-animate>
+          <p className="experience-farm-bridge" id="surroundings-barn">
+            Arrival, grounds &amp; barn
+          </p>
+          <div className="farm-preview-row">
+            <article className="farm-preview-card">
+              <div
+                className="farm-preview-visual"
+                style={{ backgroundImage: `url("${FARM_PREVIEW_GROUNDS}")` }}
+                role="img"
+                aria-label="Rustic covered entrance with chandelier, tiled path and barrel planters at ValleyCroft"
+              />
+              <div className="farm-preview-body">
+                <h3 className="farm-preview-title">Arrival &amp; grounds</h3>
+                <p className="farm-preview-desc">
+                  Chandelier-lit walkway and gardens — plus pool, fire pit, lawns, and pavilion in the gallery.
+                </p>
+              </div>
+            </article>
+            <article className="farm-preview-card">
+              <div
+                className="farm-preview-visual"
+                style={{ backgroundImage: `url("${FARM_PREVIEW_BARN}")` }}
+                role="img"
+                aria-label="Rustic barn interior with long wooden communal table"
+              />
+              <div className="farm-preview-body">
+                <h3 className="farm-preview-title">Barn interior</h3>
+                <p className="farm-preview-desc">A long hand-built table, straw-panel walls, and space for gatherings and celebrations.</p>
+              </div>
+            </article>
+          </div>
+
+          <div className="farm-gallery-actions">
+            <button type="button" className="btn-view-farm-gallery" onClick={openFarmGallery}>
+              <i className="fas fa-images" aria-hidden />
+              View gallery
+            </button>
+            <p className="farm-gallery-hint">{FARM_SURROUNDINGS_PHOTOS.length + FARM_BARN_INTERIOR_PHOTOS.length} photos</p>
+          </div>
         </div>
       </section>
 
@@ -633,7 +943,86 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
+
       </main>
+
+      <div
+        className={`modal-backdrop farm-gallery-modal-backdrop ${farmGalleryOpen ? 'open' : ''}`}
+        onClick={closeFarmGallery}
+        role="presentation"
+      >
+        <div
+          className="farm-gallery-modal-box"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="farm-gallery-modal-title"
+        >
+          <button type="button" className="modal-close" onClick={closeFarmGallery} aria-label="Close gallery">
+            <i className="fas fa-times" />
+          </button>
+          <h3 id="farm-gallery-modal-title" className="farm-gallery-modal-title">
+            ValleyCroft — photo gallery
+          </h3>
+          <p className="farm-gallery-modal-lead">
+            Outdoors includes the entrance walkway, pool, lawns, and patios; barn photos are the interior event space — labels match what you see.
+          </p>
+          <div className="farm-gallery-modal-scroll">
+            <h4 className="farm-gallery-modal-subhead">Grounds &amp; outdoors</h4>
+            <div className="farm-gallery-modal-grid">
+              {FARM_SURROUNDINGS_PHOTOS.map((src, i) => (
+                <div
+                  key={src}
+                  className="farm-gallery-modal-cell"
+                  style={{ backgroundImage: `url("${src}")` }}
+                  role="img"
+                  aria-label={`Outdoors, photo ${i + 1}`}
+                />
+              ))}
+            </div>
+            <h4 className="farm-gallery-modal-subhead farm-gallery-modal-subhead--barn">Barn interior</h4>
+            <div className="farm-gallery-modal-grid">
+              {FARM_BARN_INTERIOR_PHOTOS.map((src, i) => (
+                <div
+                  key={src}
+                  className="farm-gallery-modal-cell"
+                  style={{ backgroundImage: `url("${src}")` }}
+                  role="img"
+                  aria-label={`Barn interior, photo ${i + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`modal-backdrop ${messageModal.open ? 'open' : ''}`}
+        onClick={() => setMessageModal({ open: false, title: '', message: '' })}
+        role="presentation"
+      >
+        <div className="modal-box" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="landing-msg-title">
+          <button
+            type="button"
+            className="modal-close"
+            onClick={() => setMessageModal({ open: false, title: '', message: '' })}
+            aria-label="Close"
+          >
+            <i className="fas fa-times" />
+          </button>
+          <h3 id="landing-msg-title" className="modal-title">
+            {messageModal.title}
+          </h3>
+          <p className="modal-desc">{messageModal.message}</p>
+          <button
+            type="button"
+            className="btn-modal-primary"
+            onClick={() => setMessageModal({ open: false, title: '', message: '' })}
+          >
+            OK
+          </button>
+        </div>
+      </div>
 
       <div className={`modal-backdrop ${modalOpen ? 'open' : ''}`} onClick={closeModal} role="presentation">
         <div className="modal-box" onClick={(e) => e.stopPropagation()}>
@@ -669,7 +1058,7 @@ export default function LandingPage() {
               <div className="footer-col-title">Accommodation</div>
               <Link to="/booking" className="footer-link">Book a house</Link>
               <Link to="/booking" className="footer-link">Willow Cottage (2 bed)</Link>
-              <Link to="/booking" className="footer-link">Garden Nook (1 bed)</Link>
+              <Link to="/booking" className="footer-link">Studio Flier (1 bed)</Link>
               <Link to="/booking" className="footer-link">The Blue House</Link>
               <Link to="/booking" className="footer-link">Farm Retreat</Link>
             </div>
@@ -684,7 +1073,6 @@ export default function LandingPage() {
               <div className="footer-col-title">Guest Services</div>
               <Link to="/booking" className="footer-link">Make a Booking</Link>
               <Link to="/booking-track" className="footer-link">Track Reservation</Link>
-              <a href="#" className="footer-link">Cancellation Policy</a>
               <a href="#contact" className="footer-link">Contact Us</a>
               <div style={{ marginTop: 20 }}>
                 <div className="footer-col-title">Contact</div>
