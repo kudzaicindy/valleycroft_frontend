@@ -7,6 +7,13 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
+const ROLE_HOME = {
+  admin: '/admin/dashboard',
+  ceo: '/ceo/dashboard',
+  finance: '/finance/dashboard',
+  employee: '/employee/dashboard',
+};
+
 export function ProtectedRoute({ children, allowedRoles }) {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
@@ -22,7 +29,8 @@ export function ProtectedRoute({ children, allowedRoles }) {
     : true;
 
   if (!isAllowed) {
-    return <Navigate to="/login" state={{ from: pathname }} replace />;
+    const fallback = ROLE_HOME[role] || '/login';
+    return <Navigate to={fallback} replace />;
   }
 
   return children;

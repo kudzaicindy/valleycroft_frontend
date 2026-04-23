@@ -32,7 +32,24 @@ function normalizeEncodedUri(value) {
 export function resolveRoomImageUrl(src) {
   if (src == null || src === '') return '';
   const s = String(src).trim();
-  if (/^https?:\/\//i.test(s)) return normalizeEncodedUri(s);
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s);
+      const host = (u.hostname || '').toLowerCase();
+      // Legacy DB rows may store localhost absolute URLs; remap by path to canonical S3 URL.
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return resolveRoomImageUrl(`${u.pathname}${u.search || ''}`);
+      }
+      // Some legacy S3 URLs persisted spaces as '+' in pathname; normalize to %20.
+      if (host.includes('amazonaws.com') || host.includes('cloudfront.net')) {
+        const normalizedPath = u.pathname.replace(/\+/g, '%20');
+        return normalizeEncodedUri(`${u.origin}${normalizedPath}${u.search || ''}`);
+      }
+    } catch {
+      // Keep existing behavior below for malformed URLs.
+    }
+    return normalizeEncodedUri(s);
+  }
   if (/^data:/i.test(s)) return s;
   const configuredS3Base =
     typeof import.meta !== 'undefined' && import.meta.env?.VITE_S3_PUBLIC_HTTP_BASE
