@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { resolveApiBaseUrl } from '@/api/resolveApiBaseUrl';
 import { useAuth } from '@/context/AuthContext';
 import {
   getRooms,
@@ -58,12 +57,8 @@ function getRoomImage(room) {
     : '/WhatsApp Image 2026-04-15 at 09.24.26 (1).jpeg';
   const fallback = room?.isEventSpace ? resolveRoomImageUrl(eventFallbackByName) : 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400&h=300&fit=crop';
   if (!raw) return fallback;
-  if (/^s3:\/\//i.test(raw) || /^https?:\/\//i.test(raw) || /^data:/i.test(raw)) {
-    return resolveRoomImageUrl(raw) || fallback;
-  }
-  const apiBase = resolveApiBaseUrl();
   const withSlash = raw.startsWith('/') ? raw : `/${raw}`;
-  return `${apiBase}${withSlash}`;
+  return resolveRoomImageUrl(withSlash) || fallback;
 }
 
 function fmtDate(val) {

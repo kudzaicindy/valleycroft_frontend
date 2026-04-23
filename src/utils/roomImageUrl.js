@@ -22,17 +22,17 @@ export function resolveRoomImageUrl(src) {
   if (src == null || src === '') return '';
   const s = String(src).trim();
   if (/^https?:\/\//i.test(s) || /^data:/i.test(s)) return s;
+  const base =
+    typeof import.meta !== 'undefined' && import.meta.env?.VITE_S3_PUBLIC_HTTP_BASE
+      ? String(import.meta.env.VITE_S3_PUBLIC_HTTP_BASE).trim().replace(/\/$/, '')
+      : '';
   /** Root-relative paths may contain spaces; encodeURI keeps `/` and fixes CSS url() parsing. */
-  if (s.startsWith('/')) return encodeURI(s);
+  if (s.startsWith('/')) return base ? `${base}${encodeURI(s)}` : encodeURI(s);
 
   const m = /^s3:\/\/([^/]+)\/(.+)$/i.exec(s);
   if (m) {
     const bucket = m[1];
     const key = m[2];
-    const base =
-      typeof import.meta !== 'undefined' && import.meta.env?.VITE_S3_PUBLIC_HTTP_BASE
-        ? String(import.meta.env.VITE_S3_PUBLIC_HTTP_BASE).trim().replace(/\/$/, '')
-        : '';
     if (base) {
       return `${base}/${encodeKeySegments(key)}`;
     }

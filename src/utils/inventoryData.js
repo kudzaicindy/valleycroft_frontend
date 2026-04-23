@@ -24,13 +24,16 @@ function normalizeRow(raw, kind, fallbackEmoji) {
   const hasQty = Number.isFinite(quantityRaw);
   const hasReorder = Number.isFinite(reorderRaw) && reorderRaw >= 0;
   const lowByThreshold = hasQty && hasReorder ? quantityRaw <= reorderRaw : false;
-  const ratioLevel = hasQty && hasReorder && reorderRaw > 0
-    ? Math.max(0, Math.min(100, (quantityRaw / reorderRaw) * 100))
+  const ratioLevel = hasQty && hasReorder
+    ? (reorderRaw > 0
+      ? Math.max(0, Math.min(100, (quantityRaw / reorderRaw) * 100))
+      : (quantityRaw > 0 ? 100 : 0))
     : null;
-  const level = Number.isFinite(explicitLevelRaw)
-    ? Math.max(0, Math.min(100, explicitLevelRaw))
-    : Number.isFinite(ratioLevel)
-      ? ratioLevel
+  // Stock level should come from reorder level when reorder data is present.
+  const level = Number.isFinite(ratioLevel)
+    ? ratioLevel
+    : Number.isFinite(explicitLevelRaw)
+      ? Math.max(0, Math.min(100, explicitLevelRaw))
       : (explicitLowFlag || lowByThreshold ? 15 : 65);
   const band = explicitLowFlag || lowByThreshold || level < 30 ? 'low' : 'ok';
   const quantityLabel = hasQty
@@ -44,7 +47,8 @@ function normalizeRow(raw, kind, fallbackEmoji) {
     level,
     band,
     emoji: String(pick(raw, ['emoji', 'icon']) ?? fallbackEmoji),
-    asOfMonth: toMonthKey(pick(raw, ['asOfMonth', 'monthKey', 'updatedAt', 'createdAt', 'date'])),
+    // Inventory endpoints represent current stock levels; do not month-scope by created/updated timestamps.
+    asOfMonth: toMonthKey(pick(raw, ['asOfMonth', 'monthKey', 'period'])),
   };
 }
 
