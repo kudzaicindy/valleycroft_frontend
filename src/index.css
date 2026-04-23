@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import './styles/globalBase.css';
 
 html {
   scroll-behavior: smooth;
@@ -14,4 +13,5 @@ body {
   padding: 0;
   width: 100%;
   max-width: none;
+  overflow-x: hidden; /* safe here — does not break position:fixed like body overflow-x would */
 }

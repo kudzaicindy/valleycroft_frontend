@@ -534,8 +534,8 @@ export default function LandingPage() {
   ));
 
   return (
-    <>
-      <nav className={navOpen ? 'nav-is-open' : ''} aria-label="Primary">
+    <div className="landing-page">
+      <nav className={`landing-nav ${navOpen ? 'nav-is-open' : ''}`.trim()} aria-label="Primary">
         <a href="#" className="nav-brand" onClick={closeNav}>
           <div className="nav-icon"><i className="fas fa-leaf" /></div>
           <div>
@@ -1110,6 +1110,6 @@ export default function LandingPage() {
           <span>Log in</span>
         </Link>
       </nav>
-    </>
+    </div>
   );
 }

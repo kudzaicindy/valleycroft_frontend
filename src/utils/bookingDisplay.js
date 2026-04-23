@@ -1,6 +1,7 @@
 /** Guest-facing / staff reference for a booking row (list or detail). */
 export function bookingReferenceDisplay(b) {
   if (!b || typeof b !== 'object') return '—';
+  if (b.trackingCode != null) return String(b.trackingCode);
   if (b.reference != null) return String(b.reference);
   if (b.bookingReference != null) return String(b.bookingReference);
   const id = b._id ?? b.id;

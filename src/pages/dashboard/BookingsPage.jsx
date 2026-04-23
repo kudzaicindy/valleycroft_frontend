@@ -2,8 +2,8 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { getBookings, getBooking, updateBooking, createBooking } from '@/api/bookings';
-import { getGuestBookings, updateGuestBooking } from '@/api/guestBookings';
+import { getBookings, getBooking, updateBooking, createBooking, deleteBooking } from '@/api/bookings';
+import { getGuestBookings, updateGuestBooking, deleteGuestBooking } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
 import { listFromSuccessEnvelope, metaFromSuccessEnvelope } from '@/utils/apiEnvelope';
@@ -15,6 +15,7 @@ import {
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { getApiErrorHint, looksLikeLedgerPostError } from '@/utils/apiError';
 import RoomBookingCalendarModal from '@/components/dashboard/RoomBookingCalendarModal';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 
 const LIMIT = 100;
 const STATUS_OPTIONS = ['pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled'];
@@ -237,6 +238,7 @@ export default function BookingsPage() {
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [listMonthFilter, setListMonthFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusSidebar, setStatusSidebar] = useState('');
@@ -244,6 +246,7 @@ export default function BookingsPage() {
 
   const [guestPage, setGuestPage] = useState(1);
   const [guestSearch, setGuestSearch] = useState('');
+  const [guestMonthFilter, setGuestMonthFilter] = useState('');
   const [guestStatusFilter, setGuestStatusFilter] = useState('');
   const [guestStatusSidebar, setGuestStatusSidebar] = useState('');
   const [guestSelectedId, setGuestSelectedId] = useState(null);
@@ -281,16 +284,25 @@ export default function BookingsPage() {
 
   const rawList = useMemo(() => listFromSuccessEnvelope(data), [data]);
   const list = useMemo(() => {
-    if (!search.trim()) return rawList;
+    let rows = rawList;
+    if (listMonthFilter) {
+      rows = rows.filter((b) => {
+        const ci = b.checkIn || b.eventDate;
+        const m = ci != null && String(ci).length >= 7 ? String(ci).slice(0, 7) : '';
+        if (!m) return true;
+        return m === listMonthFilter;
+      });
+    }
+    if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
-    return rawList.filter(
+    return rows.filter(
       (b) =>
         String(b.guestName || '').toLowerCase().includes(q) ||
         String(b.guestEmail || '').toLowerCase().includes(q) ||
         String(referenceDisplay(b)).toLowerCase().includes(q) ||
         String(roomDisplay(b)).toLowerCase().includes(q)
     );
-  }, [rawList, search]);
+  }, [rawList, search, listMonthFilter]);
 
   const meta = metaFromSuccessEnvelope(data);
   const totalCount = meta.total ?? list.length;
@@ -319,16 +331,25 @@ export default function BookingsPage() {
 
   const guestRawList = Array.isArray(guestBookingsData) ? guestBookingsData : (guestBookingsData?.data ?? []);
   const guestList = useMemo(() => {
-    if (!guestSearch.trim()) return guestRawList;
+    let rows = guestRawList;
+    if (guestMonthFilter) {
+      rows = rows.filter((b) => {
+        const ci = b.checkIn || b.eventDate || b.createdAt;
+        const m = ci != null && String(ci).length >= 7 ? String(ci).slice(0, 7) : '';
+        if (!m) return true;
+        return m === guestMonthFilter;
+      });
+    }
+    if (!guestSearch.trim()) return rows;
     const q = guestSearch.trim().toLowerCase();
-    return guestRawList.filter(
+    return rows.filter(
       (b) =>
         String(b.guestName || '').toLowerCase().includes(q) ||
         String(b.guestEmail || '').toLowerCase().includes(q) ||
         String(b.trackingCode || '').toLowerCase().includes(q) ||
         fmtRoomGuest(b.room || b.roomId).toLowerCase().includes(q)
     );
-  }, [guestRawList, guestSearch]);
+  }, [guestRawList, guestSearch, guestMonthFilter]);
 
   const guestMeta = guestBookingsData?.meta ?? {};
   const guestTotalCount = guestMeta.total ?? guestList.length;
@@ -437,6 +458,27 @@ export default function BookingsPage() {
     },
   });
 
+  const deleteBookingMutation = useMutation({
+    mutationFn: (id) => deleteBooking(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['booking'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      setSelectedId(null);
+    },
+  });
+
+  const deleteGuestBookingMutation = useMutation({
+    mutationFn: (id) => deleteGuestBooking(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['guest-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      setGuestSelectedId(null);
+    },
+  });
+
   async function ensureRevenueTransactionForBooking(bookingLike) {
     const bookingEntity = normalizeBookingEntity(bookingLike);
     if (!bookingEntity || bookingEntity.revenueTransactionId) return;
@@ -487,6 +529,12 @@ export default function BookingsPage() {
   function handleCancel(id) {
     if (!window.confirm('Cancel this booking?')) return;
     updateMutation.mutate({ id, body: { status: 'cancelled' } });
+  }
+
+  function handleDeleteInternalBooking(id) {
+    if (!isAdmin) return;
+    if (!window.confirm('Delete this booking permanently? This cannot be undone.')) return;
+    deleteBookingMutation.mutate(id);
   }
 
   function handleGuestStatusChange(id, newStatus, e) {
@@ -540,6 +588,12 @@ export default function BookingsPage() {
   function handleGuestWaitlist() {
     if (!guestSelected) return;
     guestUpdateMutation.mutate({ id: guestSelected._id, body: { status: 'waitlist' } });
+  }
+
+  function handleDeleteGuestReservation(id) {
+    if (!isAdmin) return;
+    if (!window.confirm('Delete this reservation permanently? This cannot be undone.')) return;
+    deleteGuestBookingMutation.mutate(id);
   }
 
   function submitAddInternal(e) {
@@ -727,13 +781,13 @@ export default function BookingsPage() {
         <div className="bookings-layout">
           <div className="bookings-main">
             <div className="bookings-filters-bar">
-              <input
-                type="search"
-                className="form-control"
-                placeholder="Search by guest name, reference, or room…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ maxWidth: 280 }}
+              <DashboardListFilters
+                embedded
+                search={search}
+                onSearchChange={setSearch}
+                searchPlaceholder="Search by guest name, reference, or room…"
+                month={listMonthFilter}
+                onMonthChange={setListMonthFilter}
               />
               <select className="form-control" value={statusFilter} onChange={(e) => { const v = e.target.value; setStatusFilter(v); setStatusSidebar(v); }} style={{ minWidth: 120 }}>
                 {STATUS_FILTERS.map((o) => (
@@ -877,6 +931,18 @@ export default function BookingsPage() {
                   {['pending', 'confirmed'].includes(statusStr(booking.status).toLowerCase()) && (
                     <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => handleCancel(booking._id)} disabled={updateMutation.isPending}>Cancel booking</button>
                   )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                      onClick={() => handleDeleteInternalBooking(booking._id)}
+                      disabled={deleteBookingMutation.isPending}
+                      title="Delete booking permanently"
+                    >
+                      {deleteBookingMutation.isPending ? 'Deleting…' : 'Delete'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -888,13 +954,13 @@ export default function BookingsPage() {
         <div className="bookings-layout">
           <div className="bookings-main">
             <div className="bookings-filters-bar">
-              <input
-                type="search"
-                className="form-control"
-                placeholder="Search by guest name, tracking code, or room…"
-                value={guestSearch}
-                onChange={(e) => setGuestSearch(e.target.value)}
-                style={{ maxWidth: 280 }}
+              <DashboardListFilters
+                embedded
+                search={guestSearch}
+                onSearchChange={setGuestSearch}
+                searchPlaceholder="Search by guest name, tracking code, or room…"
+                month={guestMonthFilter}
+                onMonthChange={setGuestMonthFilter}
               />
               <select
                 className="form-control"
@@ -1116,6 +1182,18 @@ export default function BookingsPage() {
                       <button type="button" className="btn btn-outline btn-sm" onClick={handleGuestWaitlist} disabled={guestUpdateMutation.isPending}>Waitlist</button>
                       <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleGuestReject} disabled={guestUpdateMutation.isPending}>Reject</button>
                     </>
+                  )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                      onClick={() => handleDeleteGuestReservation(guestSelected._id)}
+                      disabled={deleteGuestBookingMutation.isPending}
+                      title="Delete reservation permanently"
+                    >
+                      {deleteGuestBookingMutation.isPending ? 'Deleting…' : 'Delete'}
+                    </button>
                   )}
                 </div>
               </div>

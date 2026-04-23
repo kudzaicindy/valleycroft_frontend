@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getTransactions } from '@/api/finance';
@@ -15,7 +16,8 @@ import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 import {
   getTransactionRowDebitCreditNet,
   getTransactionDebitCreditAccounts,
-  isTransactionLedgerPosted,
+  inferStatementDrillDisplayAmounts,
+  ledgerRunningDeltaForAccount,
 } from '@/utils/transactionLedgerUi';
 
 function moneyCell(n) {
@@ -86,19 +88,30 @@ export default function StatementTransactionsModal({
   statementAmount,
   sumMode = 'abs',
 }) {
+  const [drillSearch, setDrillSearch] = useState('');
+  const [drillMonth, setDrillMonth] = useState('');
+
   const accountKey = useMemo(() => {
     if (!accountCodes?.length) return '';
     return [...accountCodes].map((c) => String(c).trim()).filter(Boolean).sort().join(',');
+  }, [accountCodes]);
+  const singleAccountCode = useMemo(() => {
+    if (!accountCodes?.length) return '';
+    const clean = accountCodes.map((c) => String(c).trim()).filter(Boolean);
+    return clean.length === 1 ? clean[0] : '';
   }, [accountCodes]);
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['finance', 'statement-drilldown', start, end, category ?? '', accountKey],
     queryFn: async () => {
       const useAcct = Boolean(accountKey);
+      /** Canonical `GET /api/finance/transactions`: date range + optional `accountCode` + smaller payload without `meta.byAccount`. */
       const res = await getTransactions({
         start,
         end,
         limit: 500,
+        includeByAccount: 0,
+        ...(singleAccountCode ? { accountCode: singleAccountCode } : {}),
         ...(!useAcct && category ? { category } : {}),
       });
       return normalizeTransactionsFetchResult(res).list;
@@ -120,28 +133,66 @@ export default function StatementTransactionsModal({
   const ledgerRows = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => sortKeyForLedger(a).localeCompare(sortKeyForLedger(b)));
     let running = 0;
-    return sorted.map((t) => {
-      const { rowDebit, rowCredit, rowNet } = getTransactionRowDebitCreditNet(t);
+    const acct = singleAccountCode;
+    const out = [];
+    for (const t of sorted) {
+      const { rowNet: txnNet } = getTransactionRowDebitCreditNet(t);
+      const rowNet = acct ? ledgerRunningDeltaForAccount(t, acct) : txnNet;
+      const display = inferStatementDrillDisplayAmounts(t);
       running += Number(rowNet) || 0;
       const { debitCode, creditCode, debitName, creditName } = getTransactionDebitCreditAccounts(t);
-      return {
+      out.push({
         t,
-        rowDebit,
-        rowCredit,
+        rowDebit: display.displayDebit,
+        rowCredit: display.displayCredit,
         rowNet,
         debitCode,
         creditCode,
         debitName,
         creditName,
         runningBalance: running,
-      };
-    });
-  }, [filtered]);
+      });
+    }
+    return out;
+  }, [filtered, singleAccountCode]);
 
-  const txSum = useMemo(
-    () => (sumMode === 'signed' ? sumTransactionNetEffect(filtered) : sumTransactionAbsAmounts(filtered)),
-    [filtered, sumMode]
-  );
+  const visibleLedgerRows = useMemo(() => {
+    let rows = ledgerRows;
+    if (drillMonth) {
+      rows = rows.filter(({ t }) => String(t?.date ?? '').slice(0, 7) === drillMonth);
+    }
+    if (drillSearch.trim()) {
+      const q = drillSearch.trim().toLowerCase();
+      rows = rows.filter(({ t, debitCode, creditCode, debitName, creditName }) => {
+        const debitTitle = debitCreditAccountTitle(debitName, debitCode);
+        const creditTitle = debitCreditAccountTitle(creditName, creditCode);
+        return (
+          String(t.description || '').toLowerCase().includes(q) ||
+          String(t.reference || '').toLowerCase().includes(q) ||
+          String(transactionCategoryLabel(t.category) || '').toLowerCase().includes(q) ||
+          String(t.type || '').toLowerCase().includes(q) ||
+          String(debitTitle).toLowerCase().includes(q) ||
+          String(creditTitle).toLowerCase().includes(q)
+        );
+      });
+    }
+    let running = 0;
+    const out = [];
+    for (const row of rows) {
+      running += Number(row.rowNet) || 0;
+      out.push({ ...row, runningBalance: running });
+    }
+    return out;
+  }, [ledgerRows, drillMonth, drillSearch]);
+
+  const txSum = useMemo(() => {
+    if (singleAccountCode) {
+      const deltas = filtered.map((t) => ledgerRunningDeltaForAccount(t, singleAccountCode));
+      if (sumMode === 'abs') return deltas.reduce((s, d) => s + Math.abs(Number(d) || 0), 0);
+      return deltas.reduce((s, d) => s + (Number(d) || 0), 0);
+    }
+    return sumMode === 'signed' ? sumTransactionNetEffect(filtered) : sumTransactionAbsAmounts(filtered);
+  }, [filtered, sumMode, singleAccountCode]);
 
   if (!open) return null;
 
@@ -203,6 +254,13 @@ export default function StatementTransactionsModal({
           )}
           {ledgerRows.length > 0 && (
             <>
+              <DashboardListFilters
+                search={drillSearch}
+                onSearchChange={setDrillSearch}
+                searchPlaceholder="Search description, reference, accounts…"
+                month={drillMonth}
+                onMonthChange={setDrillMonth}
+              />
               <div className="statement-table-wrap statement-drill-table-wrap">
                 <table className="statement-table statement-drill-ledger-table acct-ui-table statement-drill-table">
                   <thead>
@@ -211,7 +269,6 @@ export default function StatementTransactionsModal({
                       <th className="statement-drill-col-type">Type</th>
                       <th className="statement-drill-col-cat">Category</th>
                       <th className="statement-drill-col-desc">Description</th>
-                      <th className="statement-drill-col-ledger">Ledger</th>
                       <th className="statement-drill-col-acct-debit">Account debited</th>
                       <th className="statement-table-num statement-drill-col-amt">Debit</th>
                       <th className="statement-drill-col-acct-cr">Account credited</th>
@@ -221,7 +278,12 @@ export default function StatementTransactionsModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {ledgerRows.map(
+                    {visibleLedgerRows.length === 0 && (
+                      <tr>
+                        <td colSpan={10}>No rows match the current search or month filter.</td>
+                      </tr>
+                    )}
+                    {visibleLedgerRows.map(
                       ({
                         t,
                         rowDebit,
@@ -235,7 +297,6 @@ export default function StatementTransactionsModal({
                       }) => {
                         const id = t._id ?? t.id;
                         const jid = t.journalEntryId;
-                        const posted = isTransactionLedgerPosted(t);
                         const refundLike = t.category === 'refund';
                         const debitTitle = debitCreditAccountTitle(debitName, debitCode);
                         const creditTitle = debitCreditAccountTitle(creditName, creditCode);
@@ -265,18 +326,6 @@ export default function StatementTransactionsModal({
                                   <code>{String(jid)}</code>
                                 </div>
                               ) : null}
-                            </td>
-                            <td className="statement-drill-col-ledger">
-                              {posted ? (
-                                <span className="transactions-ledger-pill" title={jid ? String(jid) : t.ledgerStatus || 'Posted'}>
-                                  <i className="fas fa-book" aria-hidden />
-                                  Posted
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: 12, color: 'var(--text-muted, #6b7a72)' }} title="Unposted">
-                                  —
-                                </span>
-                              )}
                             </td>
                             <td className="statement-drill-acct-cell" title={debitTitle !== '—' ? debitTitle : undefined}>
                               <div className="statement-drill-acct-name">{debitTitle}</div>
@@ -315,14 +364,21 @@ export default function StatementTransactionsModal({
                   </tbody>
                   <tfoot>
                     <tr className="statement-drill-ledger-foot">
-                      <td colSpan={9}>
+                      <td colSpan={8}>
                         <strong>Totals</strong>
-                        <span className="statement-drill-foot-hint"> — net is credit minus debit per row</span>
+                        <span className="statement-drill-foot-hint">
+                          {drillSearch.trim() || drillMonth
+                            ? ' — table filtered; net total is for visible rows only; running balance restarts within the filtered list. '
+                            : ''}
+                          {singleAccountCode
+                            ? `Net per row is movement on account ${singleAccountCode}; running balance is cumulative of that column`
+                            : 'Net is credit minus debit per row'}
+                        </span>
                       </td>
                       <td className="statement-table-num statement-drill-col-net">
                         <strong>
                           {moneyOrBlank(
-                            ledgerRows.reduce((s, r) => s + (Number(r.rowNet) || 0), 0)
+                            visibleLedgerRows.reduce((s, r) => s + (Number(r.rowNet) || 0), 0)
                           )}
                         </strong>
                       </td>
@@ -332,12 +388,17 @@ export default function StatementTransactionsModal({
                 </table>
               </div>
               <p className="statement-drill-ledger-note">
-                Running balance is cumulative net for these transactions in date order (credit − debit).
+                {singleAccountCode
+                  ? `Net and running balance are for account ${singleAccountCode} only (e.g. accrual +6 400 and receipt −3 000 on receivable → total net +3 400).`
+                  : 'Running balance is cumulative net for these transactions in date order (credit − debit).'}
               </p>
             </>
           )}
           <div className="statement-drill-footer">
-            {statementAmount != null && Number.isFinite(Number(statementAmount)) && filtered.length > 0 && (
+            {statementAmount != null &&
+              Number.isFinite(Number(statementAmount)) &&
+              filtered.length > 0 &&
+              !(drillSearch.trim() || drillMonth) && (
               <p className="statement-drill-compare">
                 <span>Statement line: </span>
                 <strong>{moneyCell(statementAmount)}</strong>

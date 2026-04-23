@@ -1,8 +1,24 @@
 import { useMemo, useState } from 'react';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { useQuery } from '@tanstack/react-query';
 import { getJournalEntries } from '@/api/accounting';
-import { getTransactions } from '@/api/finance';
+import { getTransactions, FINANCE_TRANSACTIONS_MAX_LIMIT } from '@/api/finance';
 import { flattenJournalEntriesToLines, journalApiMeta } from '@/utils/journalEntriesNormalize';
+import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
+import { parseLocalDate } from '@/utils/availability';
+import { formatDateNumericDayMonthYear } from '@/utils/formatDate';
+
+function isPostedLedgerLikeRow(r) {
+  if (!r || typeof r !== 'object') return false;
+  return (
+    r.status === 'posted' ||
+    r.ledgerStatus === 'posted' ||
+    Boolean(r.journalEntryId || r.journalId || r.transactionId) ||
+    (Array.isArray(r.entries) && r.entries.length > 0) ||
+    r.totalDebit != null ||
+    r.totalCredit != null
+  );
+}
 
 function money(n) {
   const num = Number(n);
@@ -14,9 +30,30 @@ function isNotFound(err) {
   return err?.response?.status === 404;
 }
 
+/** Calendar day from API (YYYY-MM-DD or ISO); display as DD/MM/YYYY. */
+function formatLedgerTableDate(val) {
+  if (val == null || val === '') return '—';
+  const parsed = parseLocalDate(val);
+  if (parsed) return formatDateNumericDayMonthYear(parsed);
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? String(val) : formatDateNumericDayMonthYear(d);
+}
+
+/** Line `description` is often ""; use non-empty line text, else parent transaction description. */
+function ledgerLineDescription(row) {
+  const fromLine = [row.description, row.memo, row.narration].find((s) => s != null && String(s).trim() !== '');
+  if (fromLine != null) return String(fromLine).trim();
+  if (row._entryDescription != null && String(row._entryDescription).trim() !== '') {
+    return String(row._entryDescription).trim();
+  }
+  return '—';
+}
+
 export default function LedgerPage() {
   const [entity, setEntity] = useState('all');
   const [journalPage, setJournalPage] = useState(1);
+  const [tableSearch, setTableSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
 
   const journalQuery = useQuery({
     queryKey: ['accounting', 'journal-entries', journalPage, entity],
@@ -34,21 +71,66 @@ export default function LedgerPage() {
     queryFn: () =>
       getTransactions({
         page: journalPage,
-        limit: 25,
+        limit: FINANCE_TRANSACTIONS_MAX_LIMIT,
+        includeByAccount: 0,
         ...(entity !== 'all' ? { entity } : {}),
       }),
     retry: false,
   });
 
   const journals = flattenJournalEntriesToLines(journalQuery.data);
-  const fallbackTransactions = useMemo(() => {
-    const rows = Array.isArray(transactionsQuery.data)
-      ? transactionsQuery.data
-      : (transactionsQuery.data?.data ?? transactionsQuery.data?.transactions ?? []);
-    return rows.filter((r) => r?.journalEntryId);
+  /** Finance API returns journal-shaped docs with `entries` (not `lines`); flatten now maps both. */
+  const financeLedgerLines = useMemo(() => {
+    const normalized = normalizeTransactionsFetchResult(transactionsQuery.data).list;
+    const raw = transactionsQuery.data;
+    const direct = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.transactions)
+          ? raw.transactions
+          : Array.isArray(raw?.data?.data)
+            ? raw.data.data
+            : [];
+    const merged = [...normalized, ...direct];
+    const uniq = [];
+    const seen = new Set();
+    for (const r of merged) {
+      if (!r || typeof r !== 'object') continue;
+      const k = String(r._id ?? r.id ?? r.transactionId ?? r.journalEntryId ?? JSON.stringify(r));
+      if (seen.has(k)) continue;
+      seen.add(k);
+      uniq.push(r);
+    }
+    const posted = uniq.filter(isPostedLedgerLikeRow);
+    return flattenJournalEntriesToLines(posted);
   }, [transactionsQuery.data]);
-  const journalRows = journals.length > 0 ? journals : fallbackTransactions;
+  const journalRows = journals.length > 0 ? journals : financeLedgerLines;
   const journalMeta = journalApiMeta(journalQuery.data);
+
+  const displayedJournalRows = useMemo(() => {
+    let rows = journalRows;
+    if (monthFilter) {
+      rows = rows.filter((j) => {
+        const d = String(j.date ?? j.entryDate ?? j.postedAt ?? '').slice(0, 7);
+        if (!d) return true;
+        return d === monthFilter;
+      });
+    }
+    if (!tableSearch.trim()) return rows;
+    const q = tableSearch.trim().toLowerCase();
+    return rows.filter((j) => {
+      const acct =
+        j.accountCode && (j.accountName ?? j.account?.name)
+          ? `${j.accountCode} ${j.accountName ?? j.account?.name}`
+          : String(j.accountName ?? j.account?.name ?? j.accountCode ?? '');
+      return (
+        String(j.reference ?? j.ref ?? '').toLowerCase().includes(q) ||
+        String(ledgerLineDescription(j)).toLowerCase().includes(q) ||
+        acct.toLowerCase().includes(q)
+      );
+    });
+  }, [journalRows, monthFilter, tableSearch]);
 
   function ApiError({ query, label }) {
     if (!query.isError) return null;
@@ -88,33 +170,53 @@ export default function LedgerPage() {
           </button>
         </div>
       </div>
-      <div className="acct-ui-meta">Source: /api/accounting/journal-entries (with finance transaction fallback when empty)</div>
-
+      <DashboardListFilters
+        search={tableSearch}
+        onSearchChange={setTableSearch}
+        searchPlaceholder="Search reference, account, description…"
+        month={monthFilter}
+        onMonthChange={setMonthFilter}
+      />
       <div className="card finance-stmt-card acct-ui-table-card">
         <div className="card-body card-body--no-pad">
           <ApiError query={journalQuery} label="Journal entries" />
+          {journals.length === 0 && <ApiError query={transactionsQuery} label="Finance transactions fallback" />}
           <table className="acct-ui-table">
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Reference</th>
+                <th>Account</th>
                 <th>Description</th>
                 <th className="num">Debit</th>
                 <th className="num">Credit</th>
               </tr>
             </thead>
             <tbody>
-              {journalQuery.isLoading && <tr><td colSpan={5}>Loading…</td></tr>}
+              {journalQuery.isLoading && <tr><td colSpan={6}>Loading…</td></tr>}
               {!journalQuery.isLoading &&
                 !transactionsQuery.isLoading &&
                 journalRows.length === 0 &&
-                !journalQuery.isError && <tr><td colSpan={5}>No journal lines returned.</td></tr>}
+                !journalQuery.isError && <tr><td colSpan={6}>No journal lines returned.</td></tr>}
               {!journalQuery.isLoading &&
-                journalRows.map((j, i) => (
+                !transactionsQuery.isLoading &&
+                journalRows.length > 0 &&
+                displayedJournalRows.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No lines match the current search or month filter.</td>
+                  </tr>
+                )}
+              {!journalQuery.isLoading &&
+                displayedJournalRows.map((j, i) => (
                   <tr key={j._id ?? j.id ?? i}>
-                    <td>{j.date ?? j.entryDate ?? j.postedAt?.slice?.(0, 10) ?? '—'}</td>
+                    <td>{formatLedgerTableDate(j.date ?? j.entryDate ?? j.postedAt)}</td>
                     <td>{j.reference ?? j.ref ?? j.entryNumber ?? j.journalEntryId ?? '—'}</td>
-                    <td>{j.description ?? j.memo ?? j.narration ?? j._entryDescription ?? '—'}</td>
+                    <td>
+                      {j.accountCode && (j.accountName ?? j.account?.name)
+                        ? `${j.accountCode} — ${j.accountName ?? j.account?.name}`
+                        : j.accountName ?? j.account?.name ?? j.accountCode ?? j.account?.code ?? '—'}
+                    </td>
+                    <td>{ledgerLineDescription(j)}</td>
                     <td className="num">
                       {j.debit != null || j.debitAmount != null || j.totalDebit != null
                         ? money(j.debit ?? j.debitAmount ?? j.totalDebit)

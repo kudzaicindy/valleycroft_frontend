@@ -1,202 +1,294 @@
-import { useState, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSalary, createSalary } from '@/api/finance';
 import { getEmployees } from '@/api/staff';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import { transactionCategoryLabel } from '@/constants/transactionCategories';
+import { parseLocalDate } from '@/utils/availability';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
-import './SalaryPage.css';
+
+const LIMIT = 20;
+const EMPLOYEES_LIMIT = 200;
+
+function moneyOrBlank(n) {
+  if (n == null || Number.isNaN(Number(n))) return '';
+  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
+}
+
+function formatTableDate(val) {
+  if (val == null || val === '') return '—';
+  const parsed = parseLocalDate(val);
+  if (parsed) return formatDateDayMonthYear(parsed);
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? String(val) : formatDateDayMonthYear(d);
+}
+
+function empName(emp) {
+  return emp?.name ?? emp?.firstName ?? emp?.email ?? emp?._id ?? '—';
+}
+
+function normalizeSalaryFetch(res) {
+  if (Array.isArray(res)) {
+    return { list: res, total: res.length, page: 1 };
+  }
+  const list = res?.data ?? res?.items ?? res?.salaries ?? res?.payments ?? [];
+  const arr = Array.isArray(list) ? list : [];
+  const total = Number(res?.total ?? res?.count ?? arr.length) || arr.length;
+  const page = Number(res?.page) || 1;
+  return { list: arr, total, page };
+}
 
 export default function SalaryPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
+  const [tableSearch, setTableSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [empId, setEmpId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [amount, setAmount] = useState('');
-  const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [form, setForm] = useState({
+    employeeId: '',
+    notes: '',
+    amount: '',
+    paidOn: new Date().toISOString().slice(0, 10),
+  });
+  const [saveError, setSaveError] = useState(null);
+
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees', 'salary-page'],
+    queryFn: () => getEmployees({ limit: EMPLOYEES_LIMIT }),
+  });
+  const rawEmployees = useMemo(() => {
+    const d = employeesData;
+    if (Array.isArray(d)) return d;
+    return d?.data ?? d?.employees ?? [];
+  }, [employeesData]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['salary', page],
-    queryFn: () => getSalary({ page, limit: 20 }),
-  });
-  const { data: emps } = useQuery({
-    queryKey: ['employees', 'payments-page'],
-    queryFn: () => getEmployees({ limit: 100 }),
-  });
-
-  const rawList = Array.isArray(data) ? data : (data?.data ?? []);
-  const meta = data?.meta ?? {};
-  const empList = Array.isArray(emps) ? emps : (emps?.data ?? emps?.employees ?? []);
-
-  const list = useMemo(() => {
-    let rows = rawList;
-    if (monthFilter.trim()) {
-      const m = monthFilter.trim();
-      rows = rows.filter((s) => String(s.month || '').startsWith(m));
-    }
-    if (!search.trim()) return rows;
-    const q = search.trim().toLowerCase();
-    return rows.filter((s) => {
-      const name = (s.employee && s.employee.name) || s.employeeId || '';
-      return String(name).toLowerCase().includes(q) || String(s.notes || '').toLowerCase().includes(q);
-    });
-  }, [rawList, search, monthFilter]);
-
-  const paymentMutation = useMutation({
-    mutationFn: (body) => createSalary(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salary'] });
-      setModalOpen(false);
-      setNotes('');
-      setAmount('');
-      setEmpId('');
-      setPaidOn(new Date().toISOString().slice(0, 10));
+    queryKey: ['salary', 'payments-page', page],
+    queryFn: async () => {
+      const res = await getSalary({ page, limit: LIMIT });
+      return normalizeSalaryFetch(res);
     },
   });
 
-  function fmt(n) {
-    if (n == null) return '-';
-    return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
-  }
+  const listRaw = data?.list ?? [];
+  const metaTotal = data?.total ?? listRaw.length;
+
+  const employeeNameById = useCallback(
+    (id) => {
+      if (id == null || id === '') return '—';
+      const e = rawEmployees.find((x) => String(x._id ?? x.id) === String(id));
+      return e ? empName(e) : String(id).slice(-8);
+    },
+    [rawEmployees]
+  );
+
+  const paymentPaidTo = useCallback(
+    (p) => {
+      if (p.employee && typeof p.employee === 'object' && p.employee.name) return p.employee.name;
+      return employeeNameById(p.employeeId);
+    },
+    [employeeNameById]
+  );
+
+  const listFiltered = useMemo(() => {
+    let rows = listRaw;
+    if (monthFilter) {
+      rows = rows.filter((p) => {
+        const m = p.month != null && p.month !== '' ? String(p.month).slice(0, 7) : '';
+        const fromPaid =
+          p.paidOn != null && String(p.paidOn).length >= 7 ? String(p.paidOn).slice(0, 7) : '';
+        return m === monthFilter || fromPaid === monthFilter;
+      });
+    }
+    if (!tableSearch.trim()) return rows;
+    const q = tableSearch.trim().toLowerCase();
+    return rows.filter((p) => {
+      const who = String(paymentPaidTo(p)).toLowerCase();
+      const notes = String(p.notes || '').toLowerCase();
+      return who.includes(q) || notes.includes(q);
+    });
+  }, [listRaw, monthFilter, tableSearch, paymentPaidTo]);
+
+  const totals = useMemo(() => {
+    let debit = 0;
+    for (const p of listFiltered) {
+      const a = Number(p.amount);
+      if (Number.isFinite(a)) debit += a;
+    }
+    return { debit, credit: 0, net: debit };
+  }, [listFiltered]);
+
+  const openAdd = useCallback(() => {
+    setForm({
+      employeeId: '',
+      notes: '',
+      amount: '',
+      paidOn: new Date().toISOString().slice(0, 10),
+    });
+    setSaveError(null);
+    setModalOpen(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
+    setSaveError(null);
+  }, []);
+
+  const createMutation = useMutation({
+    mutationFn: (body) => createSalary(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary'] });
+      closeModal();
+    },
+    onError: (err) => {
+      setSaveError(err?.message || 'Could not record payment.');
+    },
+  });
 
   function handleSubmit(e) {
     e.preventDefault();
-    const a = Number(amount);
-    if (!empId || !Number.isFinite(a) || a <= 0) return;
-    const po = paidOn || new Date().toISOString().slice(0, 10);
-    paymentMutation.mutate({
-      employeeId: empId,
-      amount: a,
-      paidOn: po,
-      month: po.length >= 7 ? po.slice(0, 7) : undefined,
-      notes: notes.trim() || 'Wage payment',
+    setSaveError(null);
+    if (!form.employeeId) {
+      setSaveError('Select a worker.');
+      return;
+    }
+    if (!String(form.notes || '').trim()) {
+      setSaveError('Add a short note (e.g. what period this covers).');
+      return;
+    }
+    const amt = Number(form.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setSaveError('Enter a valid amount greater than zero.');
+      return;
+    }
+    const paidOn = form.paidOn || new Date().toISOString().slice(0, 10);
+    createMutation.mutate({
+      employeeId: form.employeeId,
+      amount: amt,
+      paidOn,
+      month: paidOn.length >= 7 ? paidOn.slice(0, 7) : undefined,
+      notes: String(form.notes).trim(),
     });
   }
 
+  const saving = createMutation.isPending;
+  const colCount = 9;
+  const totalPages = Math.max(1, Math.ceil(metaTotal / LIMIT));
+
   return (
-    <div className="salary-payments-page">
+    <div className="page-stack">
       <div className="page-header page-header--compact">
         <div className="page-header-left">
-          <div className="page-title">Payments</div>
-          <div className="page-subtitle">Record and view wage and salary payments</div>
+          <div className="page-title">Worker payments</div>
+          <div className="page-subtitle">
+            Wage and salary payouts recorded in finance (not the general transactions list).
+          </div>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={() => {
-            paymentMutation.reset();
-            setModalOpen(true);
-          }}
-        >
-          <i className="fas fa-plus" /> Record payment
+        <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
+          <i className="fas fa-plus" /> Add payment
         </button>
       </div>
-      {error && (
-        <div className="card card--error">
-          <div className="card-body">{error.message}</div>
-        </div>
-      )}
+      {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
 
-      <div className="salary-pay-toolbar bookings-filters-bar">
-        <input
-          type="search"
-          className="form-control"
-          placeholder="Search by employee or notes…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 280 }}
-        />
-        <input
-          type="month"
-          className="form-control"
-          value={monthFilter}
-          onChange={(e) => setMonthFilter(e.target.value)}
-          style={{ minWidth: 160 }}
-        />
-      </div>
+      <DashboardListFilters
+        search={tableSearch}
+        onSearchChange={setTableSearch}
+        searchPlaceholder="Search worker name or notes…"
+        month={monthFilter}
+        onMonthChange={setMonthFilter}
+      />
 
       {modalOpen && (
         <div
-          className="rooms-events-modal-overlay"
-          role="presentation"
-          onClick={() => setModalOpen(false)}
+          className="transactions-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="salary-modal-title"
+          onClick={closeModal}
         >
-          <div
-            className="rooms-events-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="payment-modal-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="rooms-events-modal-header">
-              <div>
-                <h2 id="payment-modal-title" className="rooms-events-modal-title">
-                  Record payment
-                </h2>
-                <p className="rooms-events-modal-sub">Wage or salary — linked to an employee</p>
-              </div>
-              <button type="button" className="rooms-events-modal-close" onClick={() => setModalOpen(false)} aria-label="Close">
-                <i className="fas fa-times" />
+          <div className="transactions-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="transactions-modal-header">
+              <h3 id="salary-modal-title">Record worker payment</h3>
+              <button type="button" className="transactions-modal-close" onClick={closeModal} aria-label="Close">
+                ×
               </button>
             </div>
-            <div className="rooms-events-modal-body">
-              {paymentMutation.isError && (
-                <div className="card card--error" style={{ marginBottom: 12 }}>
-                  <div className="card-body" style={{ fontSize: 12 }}>
-                    {paymentMutation.error?.message || 'Could not save.'}
+            <div className="transactions-modal-body">
+              <form onSubmit={handleSubmit}>
+                <div className="transactions-form-grid">
+                  <div className="transactions-form-field transactions-form-field--wide">
+                    <label htmlFor="sal-employee">Worker</label>
+                    <select
+                      id="sal-employee"
+                      className="form-control"
+                      required
+                      value={form.employeeId}
+                      onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}
+                    >
+                      <option value="">Select…</option>
+                      {rawEmployees.map((emp) => {
+                        const id = emp._id ?? emp.id;
+                        return (
+                          <option key={String(id)} value={String(id)}>
+                            {empName(emp)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="transactions-form-field transactions-form-field--wide">
+                    <label htmlFor="sal-notes">Notes</label>
+                    <input
+                      id="sal-notes"
+                      className="form-control"
+                      value={form.notes}
+                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                      required
+                      placeholder="Period covered, reference…"
+                    />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label htmlFor="sal-amount">Amount (ZAR)</label>
+                    <input
+                      id="sal-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="form-control"
+                      value={form.amount}
+                      onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label htmlFor="sal-date">Paid on</label>
+                    <input
+                      id="sal-date"
+                      type="date"
+                      className="form-control"
+                      value={form.paidOn}
+                      onChange={(e) => setForm((f) => ({ ...f, paidOn: e.target.value }))}
+                      required
+                    />
                   </div>
                 </div>
-              )}
-              <form className="form-stack" onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Employee *</label>
-                  <select className="form-control" value={empId} onChange={(e) => setEmpId(e.target.value)} required>
-                    <option value="">— Select —</option>
-                    {empList.map((e) => {
-                      const id = e._id ?? e.id;
-                      const name = e.name ?? e.firstName ?? e.email ?? id;
-                      return (
-                        <option key={id} value={id}>
-                          {name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Work done / notes *</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="What was completed"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Amount (R) *</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    className="form-control"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date paid *</label>
-                  <input type="date" className="form-control" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} required />
-                </div>
-                <div className="bookings-add-internal-actions">
-                  <button type="button" className="btn btn-outline" onClick={() => setModalOpen(false)}>
+                <p style={{ marginTop: 10, marginBottom: 0, fontSize: 11, color: 'var(--text-muted)' }}>
+                  Creates a salary payment record for the selected worker. Ledger posting depends on your backend
+                  configuration.
+                </p>
+                {saveError && (
+                  <div className="card card--error" style={{ marginTop: 12 }}>
+                    <div className="card-body" style={{ whiteSpace: 'pre-line', fontSize: 13 }}>
+                      {saveError}
+                    </div>
+                  </div>
+                )}
+                <div className="transactions-modal-actions">
+                  <button type="button" className="btn btn-outline btn-sm" onClick={closeModal} disabled={saving}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={paymentMutation.isPending}>
-                    {paymentMutation.isPending ? 'Saving…' : 'Save'}
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+                    {saving ? 'Saving…' : 'Record payment'}
                   </button>
                 </div>
               </form>
@@ -205,60 +297,112 @@ export default function SalaryPage() {
         </div>
       )}
 
-      <div className="salary-pay-table-panel">
-        <div className="salary-pay-table-wrap">
-          <table className="salary-pay-table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Month</th>
-                <th style={{ textAlign: 'right' }}>Amount</th>
-                <th>Paid on</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading && (
+      <div className="card">
+        <div className="card-body card-body--no-pad">
+          <div className="statement-table-wrap">
+            <table className="statement-table">
+              <thead>
                 <tr>
-                  <td colSpan={5}>Loading…</td>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Category</th>
+                  <th>Description</th>
+                  <th className="statement-table-num">Debit</th>
+                  <th className="statement-table-num">Credit</th>
+                  <th className="statement-table-num">Net</th>
+                  <th className="statement-table-num">Balance</th>
+                  <th />
                 </tr>
-              )}
-              {!isLoading && list.length === 0 && (
-                <tr>
-                  <td colSpan={5}>No records</td>
-                </tr>
-              )}
-              {!isLoading &&
-                list.map((s) => (
-                  <tr key={s._id}>
-                    <td>{(s.employee && s.employee.name) || s.employeeId || '-'}</td>
-                    <td>{s.month || '-'}</td>
-                    <td className="salary-pay-amount">{fmt(s.amount)}</td>
-                    <td>{s.paidOn ? formatDateDayMonthYear(s.paidOn) : '-'}</td>
-                    <td style={{ fontSize: 12, color: 'var(--text-mid)', maxWidth: 280 }}>{s.notes || '-'}</td>
+              </thead>
+              <tbody>
+                {isLoading && (
+                  <tr>
+                    <td colSpan={colCount}>Loading…</td>
                   </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-        {(meta.total || 0) > 20 && (
-          <div className="salary-pay-footer">
-            <span>Page {meta.page || page}</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button type="button" className="btn btn-outline btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Prev
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                disabled={page >= Math.ceil((meta.total || 0) / 20)}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </button>
-            </div>
+                )}
+                {!isLoading && listFiltered.length === 0 && (
+                  <tr>
+                    <td colSpan={colCount}>No worker payments</td>
+                  </tr>
+                )}
+                {!isLoading &&
+                  listFiltered.map((p) => {
+                    const id = p._id ?? p.id ?? `${p.employeeId}-${p.paidOn}-${p.amount}`;
+                    const amount = Number(p.amount);
+                    const debit = Number.isFinite(amount) ? amount : null;
+                    return (
+                      <tr key={String(id)}>
+                        <td>{formatTableDate(p.paidOn)}</td>
+                        <td>
+                          <span className="badge badge-cancelled">expense</span>
+                        </td>
+                        <td>{transactionCategoryLabel('salary')}</td>
+                        <td>
+                          <span style={{ display: 'block', fontWeight: 600 }}>{paymentPaidTo(p)}</span>
+                          {p.notes ? (
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.notes}</span>
+                          ) : null}
+                        </td>
+                        <td className="statement-table-num pl-neg">{moneyOrBlank(debit)}</td>
+                        <td className="statement-table-num pl-pos">—</td>
+                        <td className={'statement-table-num pl-neg'}>{moneyOrBlank(debit)}</td>
+                        <td className="statement-table-num">—</td>
+                        <td />
+                      </tr>
+                    );
+                  })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4}>
+                    <strong>Totals</strong>
+                    {monthFilter || tableSearch.trim() ? (
+                      <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+                        (this page / filters)
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="statement-table-num pl-neg">
+                    <strong>{moneyOrBlank(totals.debit)}</strong>
+                  </td>
+                  <td className="statement-table-num pl-pos">
+                    <strong>—</strong>
+                  </td>
+                  <td className="statement-table-num pl-neg">
+                    <strong>{moneyOrBlank(totals.net)}</strong>
+                  </td>
+                  <td />
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
           </div>
-        )}
+          {metaTotal > LIMIT && (
+            <div className="pagination-bar">
+              <span className="pagination-info">
+                Page {page} of {totalPages}
+              </span>
+              <div className="pagination-btns">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

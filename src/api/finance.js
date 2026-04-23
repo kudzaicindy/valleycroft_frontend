@@ -1,10 +1,10 @@
 import { axiosInstance } from './axiosInstance';
 
-async function getWithAliases(paths, params) {
+async function getWithAliases(paths, params, config) {
   let lastErr;
   for (const path of paths) {
     try {
-      return await axiosInstance.get(path, { params: params || {} });
+      return await axiosInstance.get(path, { ...(config || {}), params: params || {} });
     } catch (err) {
       if (err?.response?.status !== 404) throw err;
       lastErr = err;
@@ -13,8 +13,28 @@ async function getWithAliases(paths, params) {
   throw lastErr || new Error('No matching API route found.');
 }
 
+async function postWithAliases(paths, body, config) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.post(path, body, config || {});
+    } catch (err) {
+      if (err?.response?.status !== 404) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No matching API route found.');
+}
+
+/** GET /api/finance/transactions — server allows `limit` up to this value when date filters are used. */
+export const FINANCE_TRANSACTIONS_MAX_LIMIT = 500;
+
 export function getTransactions(params) {
-  return axiosInstance.get('/api/finance/transactions', { params: params || {} });
+  return getWithAliases(
+    ['/api/finance/transactions', '/api/admin/finance/transactions'],
+    params,
+    { skipAdminNamespaceRewrite: true }
+  );
 }
 
 /** Rolled-up KPIs: income/expense MTD, debtors, bookings snapshot, activity, etc. */
@@ -41,7 +61,11 @@ export function createTransaction(body, { idempotencyKey } = {}) {
   const config = idempotencyKey
     ? { headers: { 'Idempotency-Key': idempotencyKey } }
     : {};
-  return axiosInstance.post('/api/finance/transactions', body, config);
+  return postWithAliases(
+    ['/api/finance/transactions', '/api/admin/finance/transactions'],
+    body,
+    config
+  );
 }
 
 /** Same shape as create; never include read-only `journalEntryId`. */
@@ -79,6 +103,19 @@ export function getBalanceSheet(params) {
   return getWithAliases(
     ['/api/finance/balance-sheet', '/api/accounting/balance-sheet', '/api/statements/balance-sheet'],
     params
+  );
+}
+
+/** Per-account transaction drilldown: statements/accounts/:code/transactions (with accounting alias). */
+export function getAccountTransactions(accountCode, params) {
+  const code = encodeURIComponent(String(accountCode || '').trim());
+  return getWithAliases(
+    [
+      `/api/statements/accounts/${code}/transactions`,
+      `/api/accounting/accounts/${code}/transactions`,
+    ],
+    params,
+    { skipAdminNamespaceRewrite: true }
   );
 }
 

@@ -1,18 +1,11 @@
 /**
  * Reads role from AuthContext (decoded JWT) and redirects:
  * - Not logged in → /login
- * - Wrong role for this path → /login (or role-specific dashboard)
+ * - Wrong role for this path → /login
  */
 
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-
-const ROLE_PREFIX = {
-  admin: '/admin',
-  ceo: '/ceo',
-  finance: '/finance',
-  employee: '/employee',
-};
 
 export function ProtectedRoute({ children, allowedRoles }) {
   const { isAuthenticated, user } = useAuth();
@@ -29,8 +22,7 @@ export function ProtectedRoute({ children, allowedRoles }) {
     : true;
 
   if (!isAllowed) {
-    const fallback = role && ROLE_PREFIX[role] ? ROLE_PREFIX[role] : '/login';
-    return <Navigate to={fallback} replace />;
+    return <Navigate to="/login" state={{ from: pathname }} replace />;
   }
 
   return children;

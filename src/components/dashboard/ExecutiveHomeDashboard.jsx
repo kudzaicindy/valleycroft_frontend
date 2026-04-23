@@ -3,7 +3,9 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getFinanceDashboard } from '@/api/finance';
+import { getGuestBookings } from '@/api/guestBookings';
 import { normalizeFinanceDashboardResponse, fmtRand, mapFinanceQuickLinkHref } from '@/utils/financeDashboardResponse';
+import { FARM_STAYS } from '@/content/farmStays';
 
 /** @typedef {'ceo' | 'finance' | 'admin'} HomeVariant */
 
@@ -12,6 +14,60 @@ function greetingPrefix() {
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+function fmtRandCompact(n) {
+  if (n == null || Number.isNaN(Number(n))) return '—';
+  const v = Number(n);
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${v < 0 ? '-' : ''}R${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${v < 0 ? '-' : ''}R${(abs / 1_000).toFixed(1)}K`;
+  return `${v < 0 ? '-' : ''}R${Math.round(abs)}`;
+}
+
+function monthKey(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function recentMonthKeys(count) {
+  const n = Number.isFinite(Number(count)) ? Math.max(1, Number(count)) : 6;
+  const now = new Date();
+  const out = [];
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push(monthKey(d));
+  }
+  return out;
+}
+
+const MONTH_OPTIONS = [
+  { value: 1, label: 'Jan' },
+  { value: 2, label: 'Feb' },
+  { value: 3, label: 'Mar' },
+  { value: 4, label: 'Apr' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'Jun' },
+  { value: 7, label: 'Jul' },
+  { value: 8, label: 'Aug' },
+  { value: 9, label: 'Sep' },
+  { value: 10, label: 'Oct' },
+  { value: 11, label: 'Nov' },
+  { value: 12, label: 'Dec' },
+];
+
+function formatMonthKeyLabel(key) {
+  const raw = String(key || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return raw || 'Current month';
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return raw;
+  return new Date(y, mm - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
 /** Operations-style stat cards with zeros — used when API has no `operationsDashboard.cards` (not demo numbers). */
@@ -64,27 +120,51 @@ function emptyOperationsStatCards() {
   ];
 }
 
-function financeTilesToStatCards(tilesList) {
+function financeTilesToStatCards(tilesList, dash, occupancy) {
   const tones = ['green', 'gold', 'sage', 'teal'];
   const icons = ['fas fa-chart-line', 'fas fa-file-invoice-dollar', 'fas fa-balance-scale', 'fas fa-truck'];
-  return tilesList.slice(0, 4).map((tile, i) => ({
-    tone: tones[i % tones.length],
-    icon: icons[i % icons.length],
-    label: tile.title,
-    value: <>{tile.primary}</>,
-    trendDir: 'up',
-    trendIcon: 'fas fa-circle',
-    trendText: tile.lines?.length ? tile.lines.join(' · ') : '—',
-  }));
+  const unifiedRevenue = dash?.revenueMtd ?? dash?.incomeMtd;
+  const occupancyPctRaw = Number(occupancy?.occupancyPct ?? occupancy?.pct);
+  const occupancyPct =
+    Number.isFinite(occupancyPctRaw) ? `${Math.round(Math.min(100, Math.max(0, occupancyPctRaw)))}%` : '—';
+  return tilesList.slice(0, 4).map((tile, i) => {
+    const lower = String(tile?.title ?? '').toLowerCase();
+    const isCollectionsTile = lower.includes('collection');
+    const displayValue =
+      isCollectionsTile
+        ? occupancyPct
+        : (lower.includes('receipt') || lower.includes('revenue')) && unifiedRevenue != null
+          ? fmtRand(unifiedRevenue)
+          : tile.primary;
+    const occupancyDetails = [
+      occupancy?.occupiedRooms != null ? `${occupancy.occupiedRooms} occupied` : null,
+      occupancy?.vacantRooms != null ? `${occupancy.vacantRooms} vacant` : null,
+    ].filter(Boolean);
+    const trendText = isCollectionsTile
+      ? occupancyDetails.join(' · ') || 'Rooms occupied now'
+      : tile.lines?.length
+        ? tile.lines.join(' · ')
+        : '—';
+    return {
+      tone: tones[i % tones.length],
+      icon: isCollectionsTile ? 'fas fa-bed' : icons[i % icons.length],
+      label: isCollectionsTile ? 'Occupancy' : tile.title,
+      value: <>{displayValue}</>,
+      trendDir: 'up',
+      trendIcon: 'fas fa-circle',
+      trendText,
+    };
+  });
 }
 
 function financeScalarStatCards(dash) {
+  const receiptsMtd = dash?.revenueMtd ?? dash?.incomeMtd;
   return [
     {
       tone: 'green',
       icon: 'fas fa-rand-sign',
       label: 'Receipts MTD',
-      value: <>{fmtRand(dash?.incomeMtd)}</>,
+      value: <>{fmtRand(receiptsMtd)}</>,
       trendDir: 'up',
       trendIcon: 'fas fa-minus',
       trendText: dash?.periodLabel || 'Month to date',
@@ -131,14 +211,36 @@ export default function ExecutiveHomeDashboard({ variant }) {
     (user && (user.name || user.firstName || user.email || '').toString().trim().split(/\s+/)[0]) || 'there';
 
   const liveEnabled = variant === 'finance' || variant === 'ceo' || variant === 'admin';
+  const showBnbInsights = variant === 'finance' || variant === 'admin';
   const [revenueMonths, setRevenueMonths] = useState(6);
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const [selectedMonth, setSelectedMonth] = useState(String(now.getMonth() + 1));
+  const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()));
+  const selectedMonthNum = Number(selectedMonth);
+  const selectedYearNum = Number(selectedYear);
+  const selectedAnchorDate = useMemo(() => {
+    const year = Number.isFinite(selectedYearNum) ? selectedYearNum : currentYear;
+    const month = Number.isFinite(selectedMonthNum) && selectedMonthNum >= 1 && selectedMonthNum <= 12
+      ? selectedMonthNum - 1
+      : currentMonth;
+    return new Date(year, month, 1);
+  }, [selectedYearNum, selectedMonthNum, currentYear, currentMonth]);
+  const yearOptions = useMemo(() => {
+    const base = currentYear;
+    return Array.from({ length: 7 }, (_, i) => String(base - 5 + i));
+  }, [currentYear]);
 
   const dashQuery = useQuery({
-    queryKey: ['finance', 'dashboard-home', variant, revenueMonths],
+    queryKey: ['finance', 'dashboard-home', variant, revenueMonths, selectedMonth, selectedYear],
     enabled: liveEnabled,
     retry: false,
     queryFn: async () => {
-      const res = await getFinanceDashboard({ revenueMonths });
+      const params = { revenueMonths };
+      if (Number.isFinite(selectedMonthNum)) params.month = selectedMonthNum;
+      if (Number.isFinite(selectedYearNum)) params.year = selectedYearNum;
+      const res = await getFinanceDashboard(params);
       return normalizeFinanceDashboardResponse(res?.data !== undefined ? res.data : res);
     },
   });
@@ -152,15 +254,26 @@ export default function ExecutiveHomeDashboard({ variant }) {
     : [];
   const paymentQueue = Array.isArray(dash?.paymentQueue) ? dash.paymentQueue : [];
   const ledgerSnapshot = root?.ledgerSnapshot ?? null;
+  const cashflowMonthly = root?.cashflowMonthly ?? null;
+  const revenueMonthly = root?.revenueMonthly ?? null;
   const revenueReceiptsMonthly = root?.revenueReceiptsMonthly ?? null;
   const activityToday = Array.isArray(root?.activityToday) ? root.activityToday : dash?.activityToday ?? [];
+  const bnbBookingsQuery = useQuery({
+    queryKey: ['guest-bookings', 'dashboard-bnb-performance', revenueMonths],
+    enabled: liveEnabled,
+    staleTime: 60 * 1000,
+    queryFn: () => getGuestBookings({ limit: 500 }),
+  });
+  const bnbBookingsRaw = Array.isArray(bnbBookingsQuery.data)
+    ? bnbBookingsQuery.data
+    : (bnbBookingsQuery.data?.data ?? []);
 
   const loading = liveEnabled && dashQuery.isPending;
   const settled = liveEnabled && !dashQuery.isPending;
 
   const statCards = useMemo(() => {
     if (variant === 'finance' && Array.isArray(dash?.tilesList) && dash.tilesList.length > 0) {
-      return financeTilesToStatCards(dash.tilesList);
+      return financeTilesToStatCards(dash.tilesList, dash, occupancy);
     }
     if (variant === 'finance') {
       return financeScalarStatCards(dash);
@@ -223,7 +336,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
       ];
     }
     return emptyOperationsStatCards();
-  }, [variant, dash, operationsDashboard]);
+  }, [variant, dash, operationsDashboard, occupancy]);
 
   const ring = useMemo(() => {
     const base = { ...c.ring };
@@ -431,11 +544,20 @@ export default function ExecutiveHomeDashboard({ variant }) {
     const bnbRevenue = firstNum(ledgerSnapshot, ['bnbRevenue', 'BnBRevenue', 'bnbRev', 'bnb']);
     const eventHire = firstNum(ledgerSnapshot, ['eventHire', 'EventHire', 'eventsRevenue', 'eventRevenue']);
     const totalExpenses = firstNum(ledgerSnapshot, ['totalExpenses', 'expenses', 'totalExpense', 'totalExpensesMtd', 'expensesMtd']);
-    const netProfit = firstNum(ledgerSnapshot, ['netProfit', 'NetProfit', 'profit', 'netIncome']) ?? (bnbRevenue != null && eventHire != null && totalExpenses != null ? bnbRevenue + eventHire - totalExpenses : null);
-    const revenueTotal = (bnbRevenue ?? 0) + (eventHire ?? 0);
-    const bnbPct = revenueTotal ? ((bnbRevenue ?? 0) / revenueTotal) * 100 : 0;
-    const eventPct = revenueTotal ? ((eventHire ?? 0) / revenueTotal) * 100 : 0;
-    const expensePct = revenueTotal ? ((totalExpenses ?? 0) / revenueTotal) * 100 : 0;
+    const revenueTotal =
+      bnbRevenue != null || eventHire != null ? Number(bnbRevenue ?? 0) + Number(eventHire ?? 0) : null;
+    const computedNet =
+      revenueTotal != null && totalExpenses != null ? revenueTotal - totalExpenses : null;
+    const apiNet = firstNum(ledgerSnapshot, ['netProfit', 'NetProfit', 'profit', 'netIncome']);
+    const netProfit = computedNet != null ? computedNet : apiNet;
+    // Use a common max baseline so bar lengths are visually comparable and accurate.
+    const bnbAbs = Math.max(0, Number(bnbRevenue ?? 0));
+    const eventAbs = Math.max(0, Number(eventHire ?? 0));
+    const expenseAbs = Math.max(0, Number(totalExpenses ?? 0));
+    const baseline = Math.max(1, bnbAbs, eventAbs, expenseAbs);
+    const bnbPct = (bnbAbs / baseline) * 100;
+    const eventPct = (eventAbs / baseline) * 100;
+    const expensePct = (expenseAbs / baseline) * 100;
     return { bnbRevenue, eventHire, totalExpenses, netProfit, bnbPct, eventPct, expensePct, fmt };
   }, [ledgerSnapshot]);
 
@@ -454,33 +576,295 @@ export default function ExecutiveHomeDashboard({ variant }) {
     };
   }, [ledger]);
 
-  const chartBars = useMemo(() => {
-    const arr =
-      revenueReceiptsMonthly?.months ??
-      revenueReceiptsMonthly?.series ??
-      revenueReceiptsMonthly?.data ??
+  const buildTrend = (chartRoot, limit = 6, anchorDate = null) => {
+    const pickNum = (obj, keys) => {
+      for (const k of keys) {
+        const raw = obj?.[k];
+        if (raw != null && Number.isFinite(Number(raw))) return Number(raw);
+      }
+      return null;
+    };
+
+    let arr =
+      chartRoot?.months ??
+      chartRoot?.series ??
+      chartRoot?.data ??
+      chartRoot?.points ??
+      chartRoot?.items ??
       null;
+
+    // Some responses send parallel arrays instead of row objects.
+    if (!Array.isArray(arr)) {
+      const labels = chartRoot?.labels ?? chartRoot?.monthKeys ?? chartRoot?.monthsList ?? null;
+      const inflows = chartRoot?.inflow ?? chartRoot?.inflows ?? chartRoot?.receipts ?? chartRoot?.revenue ?? null;
+      const outflows = chartRoot?.outflow ?? chartRoot?.outflows ?? chartRoot?.expenses ?? null;
+      const nets = chartRoot?.net ?? chartRoot?.netFlow ?? chartRoot?.netCashflow ?? null;
+      if (Array.isArray(labels) && (Array.isArray(inflows) || Array.isArray(outflows) || Array.isArray(nets))) {
+        const len = labels.length;
+        arr = Array.from({ length: len }, (_, i) => ({
+          label: labels[i],
+          inflow: Array.isArray(inflows) ? inflows[i] : null,
+          outflow: Array.isArray(outflows) ? outflows[i] : null,
+          net: Array.isArray(nets) ? nets[i] : null,
+        }));
+      }
+    }
+
     if (!Array.isArray(arr) || !arr.length) return null;
-    const labels = arr.map((x) => String(x.month ?? x.label ?? x.name ?? '').trim()).filter(Boolean);
-    const values = arr.map((x) => Number(x.value ?? x.amount ?? x.total ?? NaN)).filter((n) => Number.isFinite(n));
-    if (!values.length) return null;
-    const max = Math.max(...values);
-    const pct = max ? values.map((v) => (v / max) * 100) : values.map(() => 0);
-    return { labels: labels.length ? labels.slice(0, 6) : [], values: pct.slice(0, 6) };
-  }, [revenueReceiptsMonthly]);
+
+    const toTime = (x) => {
+      const candidates = [x?.monthKey, x?.key, x?.month, x?.date, x?.period];
+      for (const raw of candidates) {
+        if (!raw) continue;
+        const s = String(raw).trim();
+        const ymMatch = s.match(/^(\d{4})-(\d{2})$/);
+        if (ymMatch) {
+          const y = Number(ymMatch[1]);
+          const m = Number(ymMatch[2]);
+          return new Date(y, m - 1, 1).getTime();
+        }
+        const t = new Date(s).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      return null;
+    };
+
+    const normalized = arr
+      .map((x, idx) => {
+        const label = String(x?.month ?? x?.monthKey ?? x?.label ?? x?.name ?? x?.key ?? '').trim();
+        const inflow =
+          pickNum(x, ['inflow', 'cashInflow', 'cashIn', 'receipts', 'revenue', 'income', 'collections', 'grossIncome']) ??
+          pickNum(x, ['value', 'amount', 'total']);
+        let outflow = pickNum(x, ['outflow', 'cashOutflow', 'cashOut', 'expense', 'expenses', 'refunds', 'cost']);
+        if (outflow != null) outflow = Math.abs(outflow);
+        let net = pickNum(x, ['net', 'netFlow', 'netCashflow', 'netCashFlow', 'netReceipts', 'netCashFlow']);
+        if (net == null && inflow != null && outflow != null) net = inflow - outflow;
+        if (outflow == null && inflow != null && net != null) outflow = inflow - net;
+        return { label, inflow, outflow, net, __idx: idx, __t: toTime(x) };
+      })
+      .filter((p) => p.label && (p.inflow != null || p.outflow != null || p.net != null));
+
+    // Ensure chart months are chronological, then take the most recent N points.
+    normalized.sort((a, b) => {
+      const at = a.__t;
+      const bt = b.__t;
+      if (at != null && bt != null) return at - bt;
+      if (at != null) return -1;
+      if (bt != null) return 1;
+      return a.__idx - b.__idx;
+    });
+
+    const anchorTime = anchorDate instanceof Date && !Number.isNaN(anchorDate.getTime())
+      ? new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1).getTime()
+      : null;
+    const scoped = anchorTime == null ? normalized : normalized.filter((p) => p.__t == null || p.__t <= anchorTime);
+    const points = scoped.slice(-limit).map(({ __idx, __t, ...p }) => p);
+
+    if (!points.length) return null;
+    const seriesValues = points.flatMap((p) => [Number(p.inflow ?? 0), Number(p.outflow ?? 0), Number(p.net ?? 0)]);
+    const minVal = Math.min(0, ...seriesValues);
+    const maxVal = Math.max(1, ...seriesValues);
+    const range = Math.max(1, maxVal - minVal);
+    const n = points.length;
+    const xMin = 0;
+    const xMax = 100;
+    const yMin = 10;
+    const yMax = 80;
+    const toY = (v) => yMax - (((v ?? 0) - minVal) / range) * (yMax - yMin);
+    const yMid = toY(0);
+    const toCoords = (key) =>
+      points.map((p, i) => {
+        const x = n === 1 ? 50 : (i / (n - 1)) * 100;
+        return { x, y: toY(p[key]) };
+      });
+    const toPoints = (key) =>
+      toCoords(key)
+        .map((p) => `${p.x},${p.y}`)
+        .join(' ');
+
+    const avgNet = points.reduce((sum, p) => sum + (p.net ?? 0), 0) / points.length;
+    const netCoords = toCoords('net');
+    const netAreaPoints =
+      netCoords.length > 1
+        ? `${netCoords.map((p) => `${p.x},${p.y}`).join(' ')} ${netCoords[netCoords.length - 1].x},${yMid} ${netCoords[0].x},${yMid}`
+        : '';
+    const latest = points[points.length - 1] ?? null;
+    const yTicks = [maxVal, maxVal - range * 0.25, maxVal - range * 0.5, maxVal - range * 0.75, minVal];
+    return {
+      labels: points.map((p) => p.label),
+      series: points,
+      inflowPoints: toPoints('inflow'),
+      outflowPoints: toPoints('outflow'),
+      netPoints: toPoints('net'),
+      inflowCoords: toCoords('inflow'),
+      outflowCoords: toCoords('outflow'),
+      netCoords,
+      netAreaPoints,
+      xGuides: netCoords.map((p) => p.x),
+      latestInflow: latest?.inflow ?? null,
+      latestOutflow: latest?.outflow ?? null,
+      latestNet: latest?.net ?? null,
+      maxSeries: Math.max(1, ...points.map((p) => Math.max(Math.abs(p.inflow ?? 0), Math.abs(p.outflow ?? 0)))),
+      yTicks,
+      yMid,
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+      avgNet,
+    };
+  };
+
+  const cashTrend = useMemo(
+    () => buildTrend(cashflowMonthly ?? null, revenueMonths, selectedAnchorDate),
+    [cashflowMonthly, revenueMonths, selectedAnchorDate],
+  );
+
+  const revenueExpenseTrend = useMemo(
+    () => buildTrend(revenueMonthly ?? revenueReceiptsMonthly ?? cashflowMonthly ?? null, revenueMonths, selectedAnchorDate),
+    [revenueMonthly, revenueReceiptsMonthly, cashflowMonthly, revenueMonths, selectedAnchorDate],
+  );
 
   const chartFooterRight = useMemo(() => {
-    const arr =
-      revenueReceiptsMonthly?.months ??
-      revenueReceiptsMonthly?.series ??
-      revenueReceiptsMonthly?.data ??
-      null;
-    if (!Array.isArray(arr) || !arr.length) return '—';
-    const values = arr.map((x) => Number(x.value ?? x.amount ?? x.total ?? NaN)).filter((n) => Number.isFinite(n));
-    if (!values.length) return '—';
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    return `Avg ${fmtRand(avg)}/period`;
-  }, [revenueReceiptsMonthly]);
+    const activeTrend = variant === 'finance' ? cashTrend : revenueExpenseTrend;
+    if (!activeTrend) return '—';
+    return `Avg Net ${fmtRand(activeTrend.avgNet)}/period`;
+  }, [variant, cashTrend, revenueExpenseTrend]);
+
+  const financeChartSummary = useMemo(() => {
+    if (variant !== 'finance' || !revenueExpenseTrend?.series?.length) return null;
+    const latest = revenueExpenseTrend.series[revenueExpenseTrend.series.length - 1];
+    const inflow = Number(latest?.inflow ?? 0);
+    const outflow = Math.abs(Number(latest?.outflow ?? 0));
+    const net = Number(latest?.net ?? inflow - outflow);
+    const incomeVsExpenses = inflow > 0 ? ((inflow - outflow) / inflow) * 100 : 0;
+    const netMargin = inflow > 0 ? (net / inflow) * 100 : 0;
+    const cashBalance = ledgerForUi?.netProfit ?? net;
+    return { incomeVsExpenses, netMargin, cashBalance };
+  }, [variant, revenueExpenseTrend, ledgerForUi]);
+
+  const revenueExpTicks = useMemo(() => {
+    if (!revenueExpenseTrend) return [];
+    const max = Number(revenueExpenseTrend.maxSeries ?? 0);
+    return [max, max * 0.75, max * 0.5, max * 0.25, 0];
+  }, [revenueExpenseTrend]);
+
+  const bnbPerformance = useMemo(() => {
+    if (!showBnbInsights) return null;
+    const monthKeys = (() => {
+      const n = Number.isFinite(Number(revenueMonths)) ? Math.max(1, Number(revenueMonths)) : 6;
+      const anchor = selectedAnchorDate;
+      const out = [];
+      for (let i = n - 1; i >= 0; i -= 1) {
+        const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
+        out.push(monthKey(d));
+      }
+      return out;
+    })();
+    const monthSet = new Set(monthKeys);
+    const stayDefs = FARM_STAYS.map((s) => ({
+      key: s.slug,
+      name: s.name,
+      aliases: [s.name, ...(s.legacyNames || [])].map((x) => String(x || '').trim().toLowerCase()).filter(Boolean),
+    }));
+    const unknownKey = 'unknown';
+    const byStay = new Map();
+    const ensure = (key, name) => {
+      if (!byStay.has(key)) {
+        byStay.set(key, {
+          key,
+          name,
+          totalRevenue: 0,
+          monthsBooked: new Set(),
+          monthlyRevenue: new Map(),
+          bookingCount: 0,
+        });
+      }
+      return byStay.get(key);
+    };
+    stayDefs.forEach((s) => ensure(s.key, s.name));
+
+    for (const b of bnbBookingsRaw) {
+      const status = String(b?.status || '').toLowerCase();
+      if (status === 'cancelled') continue;
+      const mk = monthKey(b?.checkIn || b?.eventDate || b?.createdAt);
+      if (!monthSet.has(mk)) continue;
+      const amountRaw = Number(b?.totalAmount ?? b?.amount ?? 0);
+      const amount = Number.isFinite(amountRaw) ? amountRaw : 0;
+
+      const rawName = String(b?.roomName ?? b?.room?.name ?? '').trim().toLowerCase();
+      const matched = stayDefs.find((s) => rawName && s.aliases.includes(rawName));
+      const group = matched ? ensure(matched.key, matched.name) : ensure(unknownKey, 'Unmapped stay');
+
+      group.totalRevenue += amount;
+      group.bookingCount += 1;
+      group.monthsBooked.add(mk);
+      group.monthlyRevenue.set(mk, (group.monthlyRevenue.get(mk) || 0) + amount);
+    }
+
+    const rows = Array.from(byStay.values())
+      .map((s) => {
+        const monthly = monthKeys.map((mk) => Number(s.monthlyRevenue.get(mk) || 0));
+        return {
+          ...s,
+          monthly,
+          unbookedMonths: Math.max(0, monthKeys.length - s.monthsBooked.size),
+        };
+      })
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    const maxRevenue = Math.max(1, ...rows.map((r) => r.totalRevenue));
+    return { monthKeys, rows, maxRevenue };
+  }, [showBnbInsights, bnbBookingsRaw, revenueMonths, selectedAnchorDate]);
+
+  const bnbSnapshot = useMemo(() => {
+    if (!showBnbInsights || !bnbPerformance) return null;
+    const activeMonthKey = String(monthKey(selectedAnchorDate) || bnbPerformance.monthKeys[bnbPerformance.monthKeys.length - 1] || '');
+    const trackedRows = bnbPerformance.rows.filter((r) => r.key !== 'unknown');
+    const bookedCount = trackedRows.reduce((sum, r) => {
+      const idx = bnbPerformance.monthKeys.indexOf(activeMonthKey);
+      if (idx < 0) return sum;
+      return sum + (Number(r.monthly[idx] || 0) > 0 ? 1 : 0);
+    }, 0);
+    const totalBnbs = FARM_STAYS.length;
+    return {
+      monthKey: activeMonthKey,
+      monthLabel: formatMonthKeyLabel(activeMonthKey),
+      bookedCount,
+      totalBnbs,
+      unbookedCount: Math.max(0, totalBnbs - bookedCount),
+    };
+  }, [showBnbInsights, bnbPerformance, selectedAnchorDate]);
+
+  const bnbComparisonSummary = useMemo(() => {
+    if (!showBnbInsights || !bnbPerformance) return null;
+    const trackedRows = bnbPerformance.rows.filter((r) => r.key !== 'unknown');
+    const totalBnbRevenue = trackedRows.reduce((sum, r) => sum + Number(r.totalRevenue || 0), 0);
+    const eventHireRevenue = Number(ledgerForUi?.eventHire ?? 0);
+    const comparisonRowsBase = trackedRows.map((r) => ({
+      key: r.key,
+      name: r.name,
+      revenue: Number(r.totalRevenue || 0),
+      bookingCount: Number(r.bookingCount || 0),
+      unbookedMonths: Number(r.unbookedMonths || 0),
+      occupancyPct: Math.max(0, Math.min(100, ((revenueMonths - Number(r.unbookedMonths || 0)) / Math.max(1, revenueMonths)) * 100)),
+      kind: 'bnb',
+    }));
+    const comparisonRows = comparisonRowsBase.sort((a, b) => Number(b.occupancyPct || 0) - Number(a.occupancyPct || 0));
+    const maxRevenue = Math.max(1, ...comparisonRowsBase.map((r) => r.revenue));
+    const avgOccupancyPct = comparisonRowsBase.length
+      ? comparisonRowsBase.reduce((sum, r) => sum + Number(r.occupancyPct || 0), 0) / comparisonRowsBase.length
+      : 0;
+    return {
+      totalBnbRevenue,
+      eventHireRevenue,
+      comparisonRows,
+      maxRevenue,
+      avgOccupancyPct,
+      top: comparisonRows[0] ?? null,
+      lowest: comparisonRows[comparisonRows.length - 1] ?? null,
+    };
+  }, [showBnbInsights, bnbPerformance, ledgerForUi?.eventHire, revenueMonths]);
 
   const activityCard = useMemo(() => {
     const pickDot = (item) => {
@@ -533,6 +917,58 @@ export default function ExecutiveHomeDashboard({ variant }) {
     };
   }, [activityToday, c.activity, loading]);
 
+  const recentBookingsCard = useMemo(() => {
+    const fromGuestBookings = Array.isArray(bnbBookingsRaw)
+      ? bnbBookingsRaw
+          .map((b, i) => ({
+            id: b?._id ?? b?.id ?? `bk-${i}`,
+            guest: b?.guestName ?? b?.guest?.name ?? b?.customerName ?? b?.name ?? 'Guest',
+            room: b?.roomName ?? b?.room?.name ?? b?.propertyName ?? '—',
+            checkIn: b?.checkIn ?? b?.startDate ?? b?.date ?? b?.createdAt ?? '',
+            amount: b?.totalAmount ?? b?.amount ?? null,
+            status: String(b?.status ?? 'pending'),
+          }))
+          .filter((x) => x.guest && x.checkIn)
+      : [];
+
+    const rows = (fromGuestBookings.length ? fromGuestBookings : movementsToday)
+      .slice()
+      .sort((a, b) => new Date(b?.checkIn ?? b?.createdAt ?? 0).getTime() - new Date(a?.checkIn ?? a?.createdAt ?? 0).getTime())
+      .slice(0, 4);
+
+    if (bnbBookingsQuery.isPending && !rows.length) {
+      return <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading recent bookings…</p>;
+    }
+
+    if (!rows.length) {
+      return <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No recent bookings available.</p>;
+    }
+
+    return (
+      <>
+        {rows.map((row, i) => (
+          <div
+            key={row.id ?? i}
+            style={{ padding: '10px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--linen)' : undefined }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{String(row.guest)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {String(row.room || '—')} · {String(row.checkIn || '').slice(0, 10) || '—'}
+                  {row.amount != null ? ` · ${fmtRand(row.amount)}` : ''}
+                </div>
+              </div>
+              <span className={String(row.status).toLowerCase().includes('cancel') ? 'badge badge-pending' : 'badge badge-confirmed'}>
+                {String(row.status)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </>
+    );
+  }, [bnbBookingsRaw, movementsToday, bnbBookingsQuery.isPending]);
+
   const heroStats = useMemo(() => {
     if (loading) {
       return [
@@ -542,8 +978,9 @@ export default function ExecutiveHomeDashboard({ variant }) {
       ];
     }
     if (variant === 'finance') {
+      const receiptsMtd = dash?.revenueMtd ?? dash?.incomeMtd;
       return [
-        { value: fmtRand(dash?.incomeMtd), label: 'Receipts MTD' },
+        { value: fmtRand(receiptsMtd), label: 'Receipts MTD' },
         { value: dash?.openInvoices != null ? String(dash.openInvoices) : '—', label: 'Open invoices' },
         { value: fmtRand(dash?.debtorsTotal), label: 'Debtors' },
       ];
@@ -563,43 +1000,6 @@ export default function ExecutiveHomeDashboard({ variant }) {
     return 'Live figures from /api/finance/dashboard.';
   }, [dash, loading]);
 
-  const eventsSection = useMemo(() => {
-    const dl = dash?.deadlines;
-    if (Array.isArray(dl) && dl.length > 0) {
-      const rows = dl.slice(0, 4);
-      return (
-        <>
-          {rows.map((d, i) => {
-            const title = d.title ?? d.label ?? d.name ?? 'Deadline';
-            const sub = d.subtitle ?? d.detail ?? d.due ?? d.date ?? '';
-            const badge = d.status ?? d.badge ?? '—';
-            return (
-              <div
-                key={d._id ?? d.id ?? i}
-                style={{ padding: '10px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--linen)' : undefined }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{String(title)}</div>
-                    {sub ? (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{String(sub)}</div>
-                    ) : null}
-                  </div>
-                  <span className="badge badge-pending">{String(badge)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </>
-      );
-    }
-    return (
-      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-        {loading ? 'Loading…' : 'No deadlines in the dashboard feed.'}
-      </p>
-    );
-  }, [dash?.deadlines, loading]);
-
   return (
     <>
       {dashQuery.isError && (
@@ -617,6 +1017,28 @@ export default function ExecutiveHomeDashboard({ variant }) {
           </div>
           <div className="hero-title">{c.hero.title}</div>
           <div className="hero-subtitle">{heroSubtitle}</div>
+          <div className="dashboard-period-filters">
+            <label className="dashboard-period-filter">
+              <span>Month</span>
+              <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={String(m.value)}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="dashboard-period-filter">
+              <span>Year</span>
+              <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="hero-actions">
             {c.hero.actions.map((a) => (
               <Link key={a.to} to={to(a.to)} className={a.btnClass} style={a.linkStyle}>
@@ -656,97 +1078,385 @@ export default function ExecutiveHomeDashboard({ variant }) {
       <div className="grid-cols-3-1">
         <div>
           <div className="grid-2">
-            <div className="card">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">
-                    {c.chart1.title} <span>{revenueMonths === 12 ? '12M' : '6M'}</span>
+            {variant === 'finance' ? (
+              <>
+                <div className="card">
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">Revenue and Expense Summary</div>
+                    </div>
+                    <div className="filter-tabs">
+                      <div
+                        className={`filter-tab ${revenueMonths === 6 ? 'active' : ''}`}
+                        onClick={() => setRevenueMonths(6)}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        6M
+                      </div>
+                      <div
+                        className={`filter-tab ${revenueMonths === 12 ? 'active' : ''}`}
+                        onClick={() => setRevenueMonths(12)}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        12M
+                      </div>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    {loading ? (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
+                    ) : revenueExpenseTrend?.series?.length ? (
+                      <div className="rev-exp-wrap">
+                        <div className="rev-exp-summary-line">
+                          <span>Net margin {(financeChartSummary?.netMargin ?? 0).toFixed(1)}%</span>
+                          <span>Income vs expense {(financeChartSummary?.incomeVsExpenses ?? 0).toFixed(1)}%</span>
+                        </div>
+                        <div className="rev-exp-panel">
+                          <div className="rev-exp-yaxis">
+                            {revenueExpTicks.map((tick, i) => (
+                              <span key={`rev-tick-${i}`} className="rev-exp-ylabel">
+                                {fmtRandCompact(tick)}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="rev-exp-bars">
+                            {revenueExpenseTrend.series.map((p, i) => {
+                              const incomePct = ((Math.max(0, Number(p?.inflow ?? 0)) / revenueExpenseTrend.maxSeries) * 100) || 0;
+                              const expensePct = ((Math.max(0, Math.abs(Number(p?.outflow ?? 0))) / revenueExpenseTrend.maxSeries) * 100) || 0;
+                              return (
+                                <div className="rev-exp-col" key={`rv-${p.label}-${i}`}>
+                                  <div className="rev-exp-track">
+                                    <div className="rev-exp-bar rev-exp-bar--income" style={{ height: `${incomePct}%` }} />
+                                    <div className="rev-exp-bar rev-exp-bar--expense" style={{ height: `${expensePct}%` }} />
+                                  </div>
+                                  <div className="rev-exp-label">{String(p.label).slice(0, 3)}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="rev-exp-legend">
+                          <span><i className="fas fa-square rev-exp-dot rev-exp-dot--income" /> Revenue</span>
+                          <span><i className="fas fa-square rev-exp-dot rev-exp-dot--expense" /> Expenses</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                        No monthly cashflow series in the dashboard response for this range.
+                      </p>
+                    )}
                   </div>
                 </div>
-                <div className="filter-tabs">
-                  <div
-                    className={`filter-tab ${revenueMonths === 6 ? 'active' : ''}`}
-                    onClick={() => setRevenueMonths(6)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    6M
+
+                <div className="card">
+                  <div className="card-header">
+                    <div className="card-title">Cash Flow Trend</div>
                   </div>
-                  <div
-                    className={`filter-tab ${revenueMonths === 12 ? 'active' : ''}`}
-                    onClick={() => setRevenueMonths(12)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    12M
+                  <div className="card-body">
+                    {loading ? (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
+                    ) : cashTrend?.labels?.length ? (
+                      <div className="line-chart-wrap">
+                        <div className="line-chart-panel">
+                          <div className="line-chart-yaxis">
+                            {cashTrend.yTicks?.map((tick, i) => (
+                              <span key={`tick-${i}`} className="line-chart-ylabel">
+                                {fmtRandCompact(tick)}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="line-chart-canvas">
+                            <svg viewBox="0 0 100 100" className="line-chart-svg" aria-label="Cash flow trend">
+                              {[0, 1, 2, 3, 4].map((i) => {
+                                const y = (cashTrend.yMin ?? 12) + (((cashTrend.yMax ?? 88) - (cashTrend.yMin ?? 12)) * i) / 4;
+                                return (
+                                  <line key={`y-${i}`} x1={cashTrend.xMin ?? 8} y1={y} x2={cashTrend.xMax ?? 92} y2={y} className="line-chart-guide" />
+                                );
+                              })}
+                              {cashTrend.xGuides?.map((x, i) => (
+                                <line
+                                  key={`x-${i}`}
+                                  x1={x}
+                                  y1={cashTrend.yMin ?? 12}
+                                  x2={x}
+                                  y2={cashTrend.yMax ?? 88}
+                                  className="line-chart-guide line-chart-guide--x"
+                                />
+                              ))}
+                              <line x1={cashTrend.xMin ?? 8} y1={cashTrend.yMid} x2={cashTrend.xMax ?? 92} y2={cashTrend.yMid} className="line-chart-zero" />
+                              <line x1={cashTrend.xMin ?? 8} y1={cashTrend.yMin ?? 12} x2={cashTrend.xMin ?? 8} y2={cashTrend.yMax ?? 88} className="line-chart-axis" />
+                              <line x1={cashTrend.xMin ?? 8} y1={cashTrend.yMax ?? 88} x2={cashTrend.xMax ?? 92} y2={cashTrend.yMax ?? 88} className="line-chart-axis" />
+                              <polyline points={cashTrend.inflowPoints} className="line-chart-line line-chart-line--in" />
+                              <polyline points={cashTrend.outflowPoints} className="line-chart-line line-chart-line--out" />
+                              <polyline points={cashTrend.netPoints} className="line-chart-line line-chart-line--net" />
+                              {cashTrend.inflowCoords?.map((p, i) => (
+                                <circle key={`in-${i}`} cx={p.x} cy={p.y} r="1.35" className="line-chart-point line-chart-point--in">
+                                  <title>{`${cashTrend.labels?.[i] ?? ''}: In ${fmtRand(cashTrend.series?.[i]?.inflow)}`}</title>
+                                </circle>
+                              ))}
+                              {cashTrend.outflowCoords?.map((p, i) => (
+                                <circle key={`out-${i}`} cx={p.x} cy={p.y} r="1.35" className="line-chart-point line-chart-point--out">
+                                  <title>{`${cashTrend.labels?.[i] ?? ''}: Out ${fmtRand(Math.abs(cashTrend.series?.[i]?.outflow ?? 0))}`}</title>
+                                </circle>
+                              ))}
+                              {cashTrend.netCoords?.map((p, i) => (
+                                <circle key={`net-${i}`} cx={p.x} cy={p.y} r="1.35" className="line-chart-point line-chart-point--net">
+                                  <title>{`${cashTrend.labels?.[i] ?? ''}: Net ${fmtRand(cashTrend.series?.[i]?.net)}`}</title>
+                                </circle>
+                              ))}
+                              {cashTrend.labels?.map((label, i) => (
+                                <text key={`xlabel-${i}`} x={cashTrend.xGuides?.[i] ?? 0} y="94" className="line-chart-xlabel" textAnchor="middle">
+                                  {label.slice(0, 3)}
+                                </text>
+                              ))}
+                            </svg>
+                          </div>
+                        </div>
+                        <div className="line-chart-legend line-chart-legend--aligned">
+                          <span><i className="fas fa-circle line-chart-dot line-chart-dot--in" /> Cash Inflow</span>
+                          <span><i className="fas fa-circle line-chart-dot line-chart-dot--out" /> Cash Outflow</span>
+                          <span><i className="fas fa-circle line-chart-dot line-chart-dot--net" /> Net Cash Flow</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                        No monthly cashflow series in the dashboard response for this range.
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.chart1.footerLeft}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{chartFooterRight}</span>
+                    </div>
                   </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="card">
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">
+                        {c.chart1.title} <span>{revenueMonths === 12 ? '12M' : '6M'}</span>
+                      </div>
+                    </div>
+                    <div className="filter-tabs">
+                      <div
+                        className={`filter-tab ${revenueMonths === 6 ? 'active' : ''}`}
+                        onClick={() => setRevenueMonths(6)}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        6M
+                      </div>
+                      <div
+                        className={`filter-tab ${revenueMonths === 12 ? 'active' : ''}`}
+                        onClick={() => setRevenueMonths(12)}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        12M
+                      </div>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    {loading ? (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
+                    ) : revenueExpenseTrend?.labels?.length ? (
+                      <div className="line-chart-wrap">
+                        <div className="line-chart-panel">
+                          <div className="line-chart-yaxis">
+                            {revenueExpenseTrend.yTicks?.map((tick, i) => (
+                              <span key={`tick-${i}`} className="line-chart-ylabel">
+                                {fmtRandCompact(tick)}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="line-chart-canvas">
+                            <svg viewBox="0 0 100 100" className="line-chart-svg" aria-label="Revenue trend">
+                              {[0, 1, 2, 3, 4].map((i) => {
+                                const y = (revenueExpenseTrend.yMin ?? 12) + (((revenueExpenseTrend.yMax ?? 88) - (revenueExpenseTrend.yMin ?? 12)) * i) / 4;
+                                return (
+                                  <line key={`y-${i}`} x1={revenueExpenseTrend.xMin ?? 8} y1={y} x2={revenueExpenseTrend.xMax ?? 92} y2={y} className="line-chart-guide" />
+                                );
+                              })}
+                              {revenueExpenseTrend.xGuides?.map((x, i) => (
+                                <line
+                                  key={`x-${i}`}
+                                  x1={x}
+                                  y1={revenueExpenseTrend.yMin ?? 12}
+                                  x2={x}
+                                  y2={revenueExpenseTrend.yMax ?? 88}
+                                  className="line-chart-guide line-chart-guide--x"
+                                />
+                              ))}
+                              <line x1={revenueExpenseTrend.xMin ?? 8} y1={revenueExpenseTrend.yMid} x2={revenueExpenseTrend.xMax ?? 92} y2={revenueExpenseTrend.yMid} className="line-chart-zero" />
+                              <line x1={revenueExpenseTrend.xMin ?? 8} y1={revenueExpenseTrend.yMin ?? 12} x2={revenueExpenseTrend.xMin ?? 8} y2={revenueExpenseTrend.yMax ?? 88} className="line-chart-axis" />
+                              <line x1={revenueExpenseTrend.xMin ?? 8} y1={revenueExpenseTrend.yMax ?? 88} x2={revenueExpenseTrend.xMax ?? 92} y2={revenueExpenseTrend.yMax ?? 88} className="line-chart-axis" />
+                              <polyline points={revenueExpenseTrend.inflowPoints} className="line-chart-line line-chart-line--in" />
+                              <polyline points={revenueExpenseTrend.outflowPoints} className="line-chart-line line-chart-line--out" />
+                              <polyline points={revenueExpenseTrend.netPoints} className="line-chart-line line-chart-line--net" />
+                              {revenueExpenseTrend.inflowCoords?.map((p, i) => (
+                                <circle key={`in-${i}`} cx={p.x} cy={p.y} r="1.35" className="line-chart-point line-chart-point--in">
+                                  <title>{`${revenueExpenseTrend.labels?.[i] ?? ''}: Revenue ${fmtRand(revenueExpenseTrend.series?.[i]?.inflow)}`}</title>
+                                </circle>
+                              ))}
+                              {revenueExpenseTrend.outflowCoords?.map((p, i) => (
+                                <circle key={`out-${i}`} cx={p.x} cy={p.y} r="1.35" className="line-chart-point line-chart-point--out">
+                                  <title>{`${revenueExpenseTrend.labels?.[i] ?? ''}: Expenses ${fmtRand(Math.abs(revenueExpenseTrend.series?.[i]?.outflow ?? 0))}`}</title>
+                                </circle>
+                              ))}
+                              {revenueExpenseTrend.netCoords?.map((p, i) => (
+                                <circle key={`net-${i}`} cx={p.x} cy={p.y} r="1.35" className="line-chart-point line-chart-point--net">
+                                  <title>{`${revenueExpenseTrend.labels?.[i] ?? ''}: Net ${fmtRand(revenueExpenseTrend.series?.[i]?.net)}`}</title>
+                                </circle>
+                              ))}
+                              {revenueExpenseTrend.labels?.map((label, i) => (
+                                <text key={`xlabel-${i}`} x={revenueExpenseTrend.xGuides?.[i] ?? 0} y="94" className="line-chart-xlabel" textAnchor="middle">
+                                  {label.slice(0, 3)}
+                                </text>
+                              ))}
+                            </svg>
+                          </div>
+                        </div>
+                        <div className="line-chart-legend line-chart-legend--aligned">
+                          <span><i className="fas fa-circle line-chart-dot line-chart-dot--in" /> Revenue</span>
+                          <span><i className="fas fa-circle line-chart-dot line-chart-dot--out" /> Expenses</span>
+                          <span><i className="fas fa-circle line-chart-dot line-chart-dot--net" /> Net</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                        No monthly revenue series in the dashboard response for this range.
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.chart1.footerLeft}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{chartFooterRight}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="card-header">
+                    <div className="card-title">{ring.title}</div>
+                    {ring.badge ? <span className={ring.badgeClass}>{ring.badge}</span> : null}
+                  </div>
+                  <div className="card-body">
+                    <div className="kpi-ring-wrap">
+                      <svg className="donut-svg" width={90} height={90} viewBox="0 0 90 90">
+                        <circle cx={45} cy={45} r={36} fill="none" stroke="var(--linen)" strokeWidth={10} />
+                        <circle
+                          cx={45}
+                          cy={45}
+                          r={36}
+                          fill="none"
+                          stroke={ring.stroke}
+                          strokeWidth={10}
+                          strokeDasharray={ring.dashArray}
+                          strokeDashoffset={ring.dashOffset}
+                          strokeLinecap="round"
+                        />
+                        <text
+                          x={45}
+                          y={50}
+                          textAnchor="middle"
+                          fontSize={16}
+                          fontWeight={700}
+                          fill={ring.textFill}
+                          fontFamily="Cormorant Garamond, serif"
+                        >
+                          {ring.centerText}
+                        </text>
+                      </svg>
+                      <div className="kpi-ring-info">{ring.info}</div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {showBnbInsights ? (
+            <div className="card finance-bnb-performance-card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">{variant === 'admin' ? 'Property & BnB Performance' : 'BnB Revenue & Bookings by Month'}</div>
+                  <div className="bnb-perf-subtitle">Period: {revenueMonths} months ending {formatMonthKeyLabel(monthKey(selectedAnchorDate))}</div>
                 </div>
               </div>
               <div className="card-body">
-                {loading ? (
-                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
-                ) : chartBars?.labels?.length ? (
-                  <div className="bar-chart">
-                    {chartBars.labels.map((label, i) => {
-                      const h = chartBars.values?.[i];
-                      const height = h != null ? `${h}%` : '0%';
-                      const tone = i === 2 || i === 5 ? 'gold' : 'forest';
+                {bnbBookingsQuery.isPending ? (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                    Loading BnB performance…
+                  </p>
+                ) : bnbComparisonSummary ? (
+                  <div className="bnb-perf-wrap">
+                    <div className="bnb-perf-help">
+                      Bars show occupancy coverage for each stay (months with bookings in this selected period).
+                    </div>
+                    <div className="bnb-perf-summary-grid">
+                      <div className="bnb-perf-summary">
+                        <span className="bnb-perf-summary-label">BnB Revenue ({revenueMonths}M)</span>
+                        <strong>{fmtRandCompact(bnbComparisonSummary.totalBnbRevenue)}</strong>
+                      </div>
+                      {variant === 'finance' ? (
+                        <div className="bnb-perf-summary">
+                          <span className="bnb-perf-summary-label">Event Hire (current month)</span>
+                          <strong>{fmtRandCompact(bnbComparisonSummary.eventHireRevenue)}</strong>
+                        </div>
+                      ) : (
+                        <div className="bnb-perf-summary">
+                          <span className="bnb-perf-summary-label">Average occupancy ({revenueMonths}M)</span>
+                          <strong>{`${Math.round(Number(bnbComparisonSummary.avgOccupancyPct || 0))}%`}</strong>
+                        </div>
+                      )}
+                      <div className="bnb-perf-summary">
+                        <span className="bnb-perf-summary-label">Top performer</span>
+                        <strong>{bnbComparisonSummary.top?.name ?? '—'}</strong>
+                      </div>
+                      <div className="bnb-perf-summary">
+                        <span className="bnb-perf-summary-label">Lowest performer</span>
+                        <strong>{bnbComparisonSummary.lowest?.name ?? '—'}</strong>
+                      </div>
+                    </div>
+
+                    {bnbComparisonSummary.comparisonRows.map((row) => {
+                      const widthPct = Number(row.occupancyPct || 0);
+                      const isTop = row.key === bnbComparisonSummary.top?.key;
+                      const isLow = row.key === bnbComparisonSummary.lowest?.key;
                       return (
-                        <div key={`${label}-${i}`} className="bar-wrap">
-                          <div className={`bar-col ${tone}`} style={{ height }} />
-                          <div className="bar-label">{label}</div>
+                        <div className="bnb-perf-row bnb-perf-row--comparison" key={row.key}>
+                          <div className="bnb-perf-head">
+                            <span className="bnb-perf-name">
+                              {row.name}
+                              {isTop ? <span className="bnb-perf-rank bnb-perf-rank--top">Top</span> : null}
+                              {isLow ? <span className="bnb-perf-rank bnb-perf-rank--low">Low</span> : null}
+                            </span>
+                            <span className="bnb-perf-meta">
+                              {fmtRandCompact(row.revenue)}
+                              {` · ${Math.round(Number(row.occupancyPct || 0))}% occupancy coverage · ${row.bookingCount} booking${row.bookingCount === 1 ? '' : 's'} in ${revenueMonths}M`}
+                            </span>
+                          </div>
+                          <div className="bnb-perf-compare-track">
+                            <span
+                              className="bnb-perf-compare-fill"
+                              style={{ width: `${Math.max(0, Math.min(100, widthPct))}%` }}
+                              title={`${row.name} · ${fmtRand(row.revenue)}`}
+                            />
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-                    No monthly revenue series in the dashboard response for this range.
+                    No BnB comparison data yet.
                   </p>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.chart1.footerLeft}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{chartFooterRight}</span>
-                </div>
               </div>
             </div>
-            <div className="card">
-              <div className="card-header">
-                <div className="card-title">{ring.title}</div>
-                {ring.badge ? <span className={ring.badgeClass}>{ring.badge}</span> : null}
-              </div>
-              <div className="card-body">
-                <div className="kpi-ring-wrap">
-                  <svg className="donut-svg" width={90} height={90} viewBox="0 0 90 90">
-                    <circle cx={45} cy={45} r={36} fill="none" stroke="var(--linen)" strokeWidth={10} />
-                    <circle
-                      cx={45}
-                      cy={45}
-                      r={36}
-                      fill="none"
-                      stroke={ring.stroke}
-                      strokeWidth={10}
-                      strokeDasharray={ring.dashArray}
-                      strokeDashoffset={ring.dashOffset}
-                      strokeLinecap="round"
-                    />
-                    <text
-                      x={45}
-                      y={50}
-                      textAnchor="middle"
-                      fontSize={16}
-                      fontWeight={700}
-                      fill={ring.textFill}
-                      fontFamily="Cormorant Garamond, serif"
-                    >
-                      {ring.centerText}
-                    </text>
-                  </svg>
-                  <div className="kpi-ring-info">{ring.info}</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          ) : null}
 
           <div className="card" style={{ marginTop: 0 }}>
             <div className="card-header">
@@ -783,6 +1493,16 @@ export default function ExecutiveHomeDashboard({ variant }) {
               </Link>
             </div>
             <div className="card-body">
+              {showBnbInsights && bnbSnapshot ? (
+                <div className="ledger-bnb-booking-strip">
+                  <span className="ledger-bnb-pill">
+                    Active stays this month: {bnbSnapshot.bookedCount}/{bnbSnapshot.totalBnbs} ({bnbSnapshot.monthLabel})
+                  </span>
+                  <span className="ledger-bnb-pill ledger-bnb-pill--muted">
+                    No booking this month: {bnbSnapshot.unbookedCount}/{bnbSnapshot.totalBnbs}
+                  </span>
+                </div>
+              ) : null}
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>BnB Revenue</span>
@@ -862,9 +1582,9 @@ export default function ExecutiveHomeDashboard({ variant }) {
 
           <div className="card">
             <div className="card-header">
-              <div className="card-title">{c.events.title}</div>
+              <div className="card-title">Recent bookings</div>
             </div>
-            <div className="card-body">{c.events.body}</div>
+            <div className="card-body">{recentBookingsCard}</div>
           </div>
         </div>
       </div>

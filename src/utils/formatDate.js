@@ -18,6 +18,21 @@ export function formatDateDayMonthYear(value) {
 }
 
 /**
+ * Numeric day / month / year, e.g. "21/04/2026" (leading zeros on day and month).
+ * @param {string | number | Date | null | undefined} value
+ * @returns {string}
+ */
+export function formatDateNumericDayMonthYear(value) {
+  if (value == null || value === '') return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return typeof value === 'string' ? value : '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear());
+  return `${day}/${month}/${year}`;
+}
+
+/**
  * Month and year only, e.g. "March 2026".
  * @param {string | number | Date | null | undefined} value
  * @returns {string}

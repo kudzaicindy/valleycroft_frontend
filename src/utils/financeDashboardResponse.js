@@ -122,12 +122,12 @@ export function tilesToList(tiles) {
       keys.delete(k);
     }
   }
-  for (const k of Array.from(keys).sort()) {
-    // Some server payloads include helper fields like exported statement labels.
-    // These shouldn't render as dashboard KPI tiles.
-    if (k && typeof k === 'string' && k.toLowerCase().includes('export')) continue;
-    const slot = formatControlCentreTile(k, tiles[k]);
-    if (slot) ordered.push(slot);
+  for (const k of Array.from(keys).sort()) {
+    // Some server payloads include helper fields like exported statement labels.
+    // These shouldn't render as dashboard KPI tiles.
+    if (k && typeof k === 'string' && k.toLowerCase().includes('export')) continue;
+    const slot = formatControlCentreTile(k, tiles[k]);
+    if (slot) ordered.push(slot);
   }
   return ordered;
 }
@@ -181,12 +181,19 @@ export function normalizeFinanceDashboardResponse(payload) {
   const dueWeekCount = firstNum(invCc, ['dueThisWeekCount']) ?? firstNum(invK, ['dueThisWeekCount']);
   const overdueCount = firstNum(invCc, ['overdueInvoicesCount']) ?? firstNum(invK, ['overdueInvoicesCount']);
 
-  const incomeMtd =
+  const revenueMtd =
+    firstNum(kpis, ['revenueMtd', 'revenue_mtd']) ??
+    firstNum(m, ['revenueMtd', 'revenue_mtd']);
+  const incomeMtdRaw =
     firstNum(kpis, ['receiptsMtd', 'incomeMtd', 'revenueMtd']) ??
     firstNum(m, ['receiptsMtd', 'incomeMtd', 'revenueMtd', 'income_mtd', 'revenue_mtd', 'totalIncomeMtd']);
+  // Receipts MTD should mirror Revenue when revenue is provided by API.
+  const incomeMtd = revenueMtd ?? incomeMtdRaw;
   const expenseMtd = firstNum(m, ['expenseMtd', 'expense_mtd', 'totalExpenseMtd', 'expensesMtd', 'expenseMonth']);
-  let netMtd = firstNum(m, ['netMtd', 'net_mtd', 'netIncomeMtd', 'profitMtd', 'netMonth']);
-  if (netMtd == null && incomeMtd != null && expenseMtd != null) netMtd = incomeMtd - expenseMtd;
+  const apiNetMtd = firstNum(m, ['netMtd', 'net_mtd', 'netIncomeMtd', 'profitMtd', 'netMonth']);
+  /** When both MTD legs exist, derive net from them so UI matches receipts − expenses (API `netMtd` is often accrual or stale). */
+  let netMtd =
+    incomeMtd != null && expenseMtd != null ? incomeMtd - expenseMtd : apiNetMtd != null ? apiNetMtd : null;
 
   const priorIncomeMtd = firstNum(m, [
     'priorIncomeMtd',
@@ -239,6 +246,7 @@ export function normalizeFinanceDashboardResponse(payload) {
 
   return {
     incomeMtd,
+    revenueMtd,
     expenseMtd,
     netMtd,
     priorIncomeMtd,

@@ -2,7 +2,10 @@ import { Fragment, useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getBalanceSheet } from '@/api/finance';
 import FinanceLegacyReportsBanner from '@/components/dashboard/FinanceLegacyReportsBanner';
-import { MONTH_SHORT, defaultReportYear, endOfMonthDate, yearOptions } from '@/utils/financePeriods';
+import StatementAmountCell from '@/components/dashboard/StatementAmountCell';
+import StatementTransactionsModal from '@/components/dashboard/StatementTransactionsModal';
+import { MONTH_SHORT, defaultReportYear, endOfMonthDate, monthRange, yearOptions } from '@/utils/financePeriods';
+import { balanceSheetLineAccountCodes } from '@/utils/statementDrilldown';
 import {
   groupBalanceSheetItems,
   normalizeBalanceSheetRows,
@@ -33,10 +36,31 @@ function sectionHeaderClass(key) {
   return 'acct-ui-section acct-ui-section--neutral';
 }
 
+function mapSectionRows(sectionKey, sectionLabel, rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((line) => {
+      if (!line || typeof line !== 'object') return null;
+      return {
+        section: sectionLabel,
+        group: sectionLabel,
+        type: line.accountType || line.account_type || sectionKey,
+        subtype: line.subType || line.sub_type || line.accountSubType || line.account_sub_type || line.accountType || line.account_type || sectionKey,
+        code: String(line.accountCode ?? line.account_code ?? line.code ?? ''),
+        accountName: String(line.accountName ?? line.account_name ?? line.name ?? '—'),
+        name: String(line.accountName ?? line.account_name ?? line.name ?? '—'),
+        category: line.subType || line.sub_type || line.accountSubType || line.account_sub_type || line.accountType || line.account_type || sectionKey,
+        amount: Number(line.balance ?? line.amount ?? line.value ?? 0) || 0,
+      };
+    })
+    .filter(Boolean);
+}
+
 export default function BalanceSheet() {
   const [year, setYear] = useState(defaultReportYear);
   const [monthIndex, setMonthIndex] = useState(() => new Date().getMonth());
   const [entity, setEntity] = useState('all');
+  const [drill, setDrill] = useState(null);
   const years = useMemo(() => yearOptions({ back: 8, forward: 1 }), []);
 
   const asAt = useMemo(() => endOfMonthDate(year, monthIndex), [year, monthIndex]);
@@ -46,16 +70,85 @@ export default function BalanceSheet() {
   });
 
   const payload = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  const reportPayload = useMemo(() => {
+    const d = payload?.data && typeof payload.data === 'object' && !Array.isArray(payload.data) ? payload.data : null;
+    const candidates = [
+      d?.accounting,
+      payload?.accounting,
+      d,
+      payload,
+    ].filter((x) => x && typeof x === 'object' && !Array.isArray(x));
+
+    function hasRenderableBalanceSheetShape(x) {
+      if (!x || typeof x !== 'object') return false;
+      if (Array.isArray(x.assets) || Array.isArray(x.liabilities) || Array.isArray(x.equity)) return true;
+      if (x.presentation && typeof x.presentation === 'object' && Array.isArray(x.presentation.sections)) return true;
+      return false;
+    }
+
+    return candidates.find(hasRenderableBalanceSheetShape) || candidates[0] || {};
+  }, [payload]);
+
   const asAtLabel =
-    payload.asAt ||
-    (payload.presentation && typeof payload.presentation === 'object' ? payload.presentation.asAt : null) ||
+    reportPayload.asAt ||
+    (reportPayload.presentation && typeof reportPayload.presentation === 'object' ? reportPayload.presentation.asAt : null) ||
     asAt;
 
-  const rawItems = useMemo(() => normalizeBalanceSheetRows(data), [data]);
-  const groups = useMemo(() => groupBalanceSheetItems(rawItems), [rawItems]);
+  const statementTitle =
+    (reportPayload.presentation && typeof reportPayload.presentation === 'object' && reportPayload.presentation.statementTitle) ||
+    reportPayload.statementName ||
+    'Statement of financial position';
+
+  const presentationGroups = useMemo(() => {
+    const sections =
+      reportPayload.presentation &&
+      typeof reportPayload.presentation === 'object' &&
+      Array.isArray(reportPayload.presentation.sections)
+        ? reportPayload.presentation.sections
+        : [];
+    if (!sections.length) return [];
+    return sections.map((sec) => {
+      const rawKey = String(sec?.key || '').toLowerCase();
+      const key =
+        rawKey === 'assets' || rawKey === 'liabilities' || rawKey === 'equity'
+          ? rawKey
+          : (/asset/.test(rawKey) ? 'assets' : /liabilit/.test(rawKey) ? 'liabilities' : /equit/.test(rawKey) ? 'equity' : rawKey || 'other');
+      const rows = Array.isArray(sec?.lines)
+        ? sec.lines.map((line) => ({
+            section: sec.label || key,
+            group: sec.label || key,
+            type: line?.accountType || key,
+            subtype: line?.subType || line?.sub_type || line?.accountSubType || line?.account_sub_type || line?.accountType || key,
+            code: String(line?.accountCode ?? line?.code ?? ''),
+            accountName: String(line?.accountName ?? line?.name ?? '—'),
+            name: String(line?.accountName ?? line?.name ?? '—'),
+            category: line?.subType || line?.sub_type || line?.accountSubType || line?.account_sub_type || line?.accountType || key,
+            amount: Number(line?.balance ?? line?.amount ?? line?.value ?? 0) || 0,
+          }))
+        : [];
+      return { key, label: sec?.label || key, rows, total: Number(sec?.total ?? 0) || 0 };
+    });
+  }, [reportPayload]);
+
+  const rawItems = useMemo(() => {
+    const normalized = normalizeBalanceSheetRows(reportPayload);
+    if (Array.isArray(normalized) && normalized.length > 0) return normalized;
+    // Hard fallback for payloads that still carry explicit section arrays.
+    return [
+      ...mapSectionRows('assets', 'Assets', reportPayload.assets),
+      ...mapSectionRows('liabilities', 'Liabilities', reportPayload.liabilities),
+      ...mapSectionRows('equity', 'Owner\'s equity', reportPayload.equity),
+    ];
+  }, [reportPayload]);
+  const normalizedGroups = useMemo(() => groupBalanceSheetItems(rawItems), [rawItems]);
+  const groups = presentationGroups.length > 0 ? presentationGroups : normalizedGroups;
 
   const apiSectionTotals = useMemo(() => {
-    const flat = readDoubleEntryBalanceSheetTotals(payload);
+    const flat =
+      readDoubleEntryBalanceSheetTotals(reportPayload) ||
+      readDoubleEntryBalanceSheetTotals(
+        reportPayload.presentation && typeof reportPayload.presentation === 'object' ? reportPayload.presentation : null
+      );
     if (flat && (flat.assets != null || flat.liabilities != null || flat.equity != null)) {
       return {
         assets: flat.assets,
@@ -64,11 +157,11 @@ export default function BalanceSheet() {
       };
     }
     return {
-      assets: readBalanceSheetSectionTotal(payload.assets),
-      liabilities: readBalanceSheetSectionTotal(payload.liabilities),
-      equity: readBalanceSheetSectionTotal(payload.equity),
+      assets: readBalanceSheetSectionTotal(reportPayload.assets),
+      liabilities: readBalanceSheetSectionTotal(reportPayload.liabilities),
+      equity: readBalanceSheetSectionTotal(reportPayload.equity),
     };
-  }, [payload]);
+  }, [reportPayload]);
 
   const sectionTotal = useCallback(
     (g) => {
@@ -81,6 +174,7 @@ export default function BalanceSheet() {
               ? apiSectionTotals.equity
               : null;
       if (fromApi != null) return fromApi;
+      if (g.total != null && Number.isFinite(Number(g.total))) return Number(g.total);
       return sumBalanceSheetLines(g.rows);
     },
     [apiSectionTotals]
@@ -101,11 +195,24 @@ export default function BalanceSheet() {
     return g ? sectionTotal(g) : apiSectionTotals.equity ?? 0;
   }, [groups, sectionTotal, apiSectionTotals.equity]);
 
+  const equationFromApi =
+    reportPayload.equation && typeof reportPayload.equation === 'object'
+      ? reportPayload.equation
+      : reportPayload.presentation && typeof reportPayload.presentation === 'object' && reportPayload.presentation.equation
+        ? reportPayload.presentation.equation
+        : null;
   const rightside = liabilitiesTotal + equityTotal;
-  const difference = assetsTotal - rightside;
-  const balanced = Math.abs(difference) < 0.005;
+  const computedDifference = assetsTotal - rightside;
+  const difference =
+    equationFromApi && equationFromApi.difference != null ? Number(equationFromApi.difference) || 0 : computedDifference;
+  const balanced =
+    equationFromApi && equationFromApi.balanced != null
+      ? Boolean(equationFromApi.balanced)
+      : Math.abs(difference) < 0.005;
 
   const colCount = 5;
+  const drillMonthRange = useMemo(() => monthRange(year, monthIndex), [year, monthIndex]);
+  const tableHasData = !isLoading && groups.length > 0;
 
   return (
     <div className="finance-statement-page acct-ui-page acct-ui-page--balance-sheet">
@@ -113,7 +220,7 @@ export default function BalanceSheet() {
 
       <div className="acct-ui-topbar">
         <div className="acct-ui-topbar-title-wrap">
-          <div className="acct-ui-topbar-title">Statement of financial position</div>
+          <div className="acct-ui-topbar-title">{statementTitle}</div>
           <div className="acct-ui-topbar-sub">Balance sheet — assets, liabilities, and equity as at the period end</div>
         </div>
         <div className="acct-ui-controls">
@@ -145,6 +252,20 @@ export default function BalanceSheet() {
 
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
 
+      <StatementTransactionsModal
+        open={!!drill}
+        onClose={() => setDrill(null)}
+        title={drill?.title ?? ''}
+        subtitle={drill?.subtitle}
+        start={drill?.start ?? ''}
+        end={drill?.end ?? ''}
+        category={drill?.category ?? null}
+        type={drill?.type ?? null}
+        accountCodes={drill?.accountCodes ?? null}
+        statementAmount={drill?.statementAmount ?? null}
+        sumMode={drill?.sumMode ?? 'abs'}
+      />
+
       <div className="card finance-stmt-card acct-ui-table-card">
         <div className="card-body card-body--no-pad">
           <div className="acct-ui-table-wrap">
@@ -167,23 +288,75 @@ export default function BalanceSheet() {
                       <tr className={sectionHeaderClass(g.key)}>
                         <td colSpan={colCount}>{g.label}</td>
                       </tr>
-                      {g.rows.map((row, idx) => (
-                        <tr
-                          key={`${g.key}-${idx}`}
-                          className={row._bsSubtotal ? 'acct-ui-bs-subtotal-row' : ''}
-                        >
-                          <td className="acct-ui-td-code">{row.code || row.accountCode || '—'}</td>
-                          <td className="acct-ui-td-account">{rowLabel(row)}</td>
-                          <td className="acct-ui-td-muted">{row.category || row.group || '—'}</td>
-                          <td className="acct-ui-td-muted">{row.type || row.section || '—'}</td>
-                          <td className="num">{money(row.amount ?? row.value ?? null)}</td>
-                        </tr>
-                      ))}
+                      {g.rows.map((row, idx) => {
+                        const amt = row.amount ?? row.value ?? null;
+                        const acctCodes = balanceSheetLineAccountCodes(row);
+                        const label = row.accountName || row.name || rowLabel(row);
+                        return (
+                          <tr
+                            key={`${g.key}-${idx}`}
+                            className={row._bsSubtotal ? 'acct-ui-bs-subtotal-row' : ''}
+                          >
+                            <td className="acct-ui-td-code">{row.code || row.accountCode || '—'}</td>
+                            <td className="acct-ui-td-account">{label}</td>
+                            <td className="acct-ui-td-muted">{row.subtype || row.type || row.category || row.group || '—'}</td>
+                            <td className="acct-ui-td-muted">{row.type || row.section || '—'}</td>
+                            <StatementAmountCell
+                              alignClass="num"
+                              loading={isLoading}
+                              hasData={tableHasData}
+                              rawValue={amt}
+                              display={money(amt)}
+                              emptyIncludesZero={false}
+                              onDrill={
+                                row._bsSubtotal || !acctCodes.length
+                                  ? undefined
+                                  : () =>
+                                      setDrill({
+                                        title: `Balance sheet — ${label}`,
+                                        subtitle: `${MONTH_SHORT[monthIndex]} ${year} · code ${acctCodes.join(', ')}`,
+                                        start: drillMonthRange.start,
+                                        end: drillMonthRange.end,
+                                        category: null,
+                                        type: null,
+                                        accountCodes: acctCodes,
+                                        statementAmount: Number(amt) || 0,
+                                        sumMode: 'abs',
+                                      })
+                              }
+                            />
+                          </tr>
+                        );
+                      })}
                       <tr className="acct-ui-section-total-row">
                         <td colSpan={4}>
                           <strong>Total {g.label}</strong>
                         </td>
-                        <td className="num"><strong>{money(sectionTotal(g))}</strong></td>
+                        <StatementAmountCell
+                          alignClass="num"
+                          className=""
+                          loading={isLoading}
+                          hasData={tableHasData}
+                          rawValue={sectionTotal(g)}
+                          display={<strong>{money(sectionTotal(g))}</strong>}
+                          emptyIncludesZero={false}
+                          onDrill={
+                            tableHasData
+                              ? () =>
+                                  setDrill({
+                                    title: `Balance sheet — Total ${g.label}`,
+                                    subtitle: `All accounts · ${MONTH_SHORT[monthIndex]} ${year}`,
+                                    start: drillMonthRange.start,
+                                    end: drillMonthRange.end,
+                                    category: null,
+                                    type: null,
+                                    accountCodes: null,
+                                    statementAmount: sectionTotal(g),
+                                    sumMode: 'signed',
+                                  })
+                              : undefined
+                          }
+                        />
                       </tr>
                     </Fragment>
                   ))}

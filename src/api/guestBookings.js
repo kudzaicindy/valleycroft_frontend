@@ -25,3 +25,8 @@ export function getGuestBookings(params) {
 export function updateGuestBooking(id, body) {
   return axiosInstance.put(`/api/guest-bookings/${id}`, body);
 }
+
+/** DELETE /api/guest-bookings/:id — remove (Admin) */
+export function deleteGuestBooking(id) {
+  return axiosInstance.delete(`/api/guest-bookings/${id}`);
+}

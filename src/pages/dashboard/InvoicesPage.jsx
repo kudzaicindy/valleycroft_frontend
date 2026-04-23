@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { getInvoices } from '@/api/invoices';
 
 const LIMIT = 20;
@@ -7,12 +8,32 @@ function fmt(n) { return n == null ? '—' : 'R ' + Number(n).toLocaleString('en
 
 export default function InvoicesPage() {
   const [page, setPage] = useState(1);
+  const [tableSearch, setTableSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const { data, isLoading, error } = useQuery({
     queryKey: ['invoices', page],
     queryFn: () => getInvoices({ page, limit: LIMIT }),
   });
-  const list = Array.isArray(data) ? data : (data?.data ?? []);
+  const listRaw = Array.isArray(data) ? data : (data?.data ?? []);
   const meta = data?.meta ?? {};
+  const list = useMemo(() => {
+    let rows = listRaw;
+    if (monthFilter) {
+      rows = rows.filter((i) => {
+        const d = String(i.dueDate ?? i.issueDate ?? i.createdAt ?? '').slice(0, 7);
+        if (!d) return true;
+        return d === monthFilter;
+      });
+    }
+    if (!tableSearch.trim()) return rows;
+    const q = tableSearch.trim().toLowerCase();
+    return rows.filter(
+      (i) =>
+        String(i.invoiceNumber || i._id || '').toLowerCase().includes(q) ||
+        String(i.type || '').toLowerCase().includes(q) ||
+        String(i.status || '').toLowerCase().includes(q)
+    );
+  }, [listRaw, monthFilter, tableSearch]);
 
   return (
     <div className="page-stack">
@@ -24,6 +45,13 @@ export default function InvoicesPage() {
         <button type="button" className="btn btn-primary btn-sm"><i className="fas fa-plus" /> New</button>
       </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
+      <DashboardListFilters
+        search={tableSearch}
+        onSearchChange={setTableSearch}
+        searchPlaceholder="Search number, type, status…"
+        month={monthFilter}
+        onMonthChange={setMonthFilter}
+      />
       <div className="card">
         <div className="card-body card-body--no-pad">
           <div className="statement-table-wrap">

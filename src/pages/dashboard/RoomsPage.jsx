@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { resolveApiBaseUrl } from '@/api/resolveApiBaseUrl';
+import { useAuth } from '@/context/AuthContext';
 import {
   getRooms,
   getRoom,
@@ -166,13 +167,18 @@ function buildCalendarCells(viewMonth) {
 
 export default function RoomsPage() {
   const location = useLocation();
-  const isAdmin = location.pathname.startsWith('/admin');
+  const { user } = useAuth();
+  const isAdminPath = location.pathname.startsWith('/admin');
+  const isAdminRole = String(user?.role || '').toLowerCase() === 'admin';
+  const isAdmin = isAdminPath || isAdminRole;
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [selectedId, setSelectedId] = useState(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const t = new Date();
     return new Date(t.getFullYear(), t.getMonth(), 1);
@@ -273,11 +279,20 @@ export default function RoomsPage() {
     const t = new Date();
     setCalendarMonth(new Date(t.getFullYear(), t.getMonth(), 1));
     const onKey = (e) => {
-      if (e.key === 'Escape') setSelectedId(null);
+      if (e.key !== 'Escape') return;
+      if (deleteConfirmOpen) {
+        setDeleteConfirmOpen(false);
+        return;
+      }
+      if (calendarOpen) {
+        setCalendarOpen(false);
+        return;
+      }
+      setSelectedId(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId]);
+  }, [selectedId, calendarOpen, deleteConfirmOpen]);
 
   const modalBookings = useMemo(() => {
     if (!selectedId) return [];
@@ -369,6 +384,7 @@ export default function RoomsPage() {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', id] });
       queryClient.invalidateQueries({ queryKey: ['room-bookings', id] });
+      setDeleteConfirmOpen(false);
       setSelectedId(null);
     },
   });
@@ -476,16 +492,18 @@ export default function RoomsPage() {
 
   function handleDeleteSelectedSpace() {
     if (!selectedRoom) return;
+    setDeleteConfirmOpen(true);
+  }
+
+  function confirmDeleteSelectedSpace() {
+    if (!selectedRoom) return;
     const id = selectedRoom._id ?? selectedRoom.id;
     if (!id || deleteRoomMutation.isPending) return;
-    const label = selectedRoom.name || 'this space';
-    const ok = window.confirm(`Delete "${label}"? This cannot be undone.`);
-    if (!ok) return;
     deleteRoomMutation.mutate(id);
   }
 
   return (
-    <div className="rooms-page rooms-page--reference">
+    <div className={`rooms-page rooms-page--reference rooms-page--modal-details ${isAdmin ? 'rooms-page--admin' : ''}`}>
       <header className="rooms-page-header">
         <div className="rooms-page-header-inner">
           <div className="rooms-page-title-wrap">
@@ -556,7 +574,10 @@ export default function RoomsPage() {
                     key={id}
                     type="button"
                     className={`rooms-card rooms-card--opens-calendar ${selectedId === id ? 'selected' : ''}`}
-                    onClick={() => setSelectedId(id)}
+                    onClick={() => {
+                      setSelectedId(id);
+                      setCalendarOpen(false);
+                    }}
                     title={`Open booking calendar — ${roomLabel}`}
                     aria-label={`${roomLabel}: open guest booking calendar`}
                   >
@@ -622,7 +643,10 @@ export default function RoomsPage() {
                         key={id}
                         type="button"
                         className={`rooms-list-row rooms-list-row--opens-calendar ${selectedId === id ? 'selected' : ''}`}
-                        onClick={() => setSelectedId(id)}
+                        onClick={() => {
+                          setSelectedId(id);
+                          setCalendarOpen(false);
+                        }}
                         title={`Open booking calendar — ${listRoomLabel}`}
                         aria-label={`${listRoomLabel}: open guest booking calendar`}
                       >
@@ -939,8 +963,14 @@ export default function RoomsPage() {
               </div>
 
               <div className="rooms-detail-actions">
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => {}}>
-                  Book this space
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    setCalendarOpen(true);
+                  }}
+                >
+                  View calendar
                 </button>
                 <button
                   type="button"
@@ -982,10 +1012,10 @@ export default function RoomsPage() {
         </aside>
       </div>
 
-      {selectedId && (
+      {selectedId && calendarOpen && (
         <div
           className="rooms-events-modal-overlay"
-          onClick={() => setSelectedId(null)}
+          onClick={() => setCalendarOpen(false)}
           role="presentation"
         >
           <div className="rooms-events-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="rooms-events-title">
@@ -996,7 +1026,7 @@ export default function RoomsPage() {
                 </h2>
                 <p className="rooms-events-modal-sub">Guest bookings calendar</p>
               </div>
-              <button type="button" className="rooms-events-modal-close" onClick={() => setSelectedId(null)} aria-label="Close">
+              <button type="button" className="rooms-events-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Close">
                 <i className="fas fa-times" />
               </button>
             </div>
@@ -1060,6 +1090,245 @@ export default function RoomsPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedId && selectedRoom && !calendarOpen && (
+        <div className="rooms-events-modal-overlay" onClick={() => setSelectedId(null)} role="presentation">
+          <div className="rooms-events-modal rooms-detail-edit-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="room-detail-modal-title">
+            <div className="rooms-events-modal-header">
+              <div>
+                <h2 id="room-detail-modal-title" className="rooms-events-modal-title">
+                  {selectedRoom.name || 'Room details'}
+                </h2>
+                <p className="rooms-events-modal-sub">Room details and updates</p>
+              </div>
+              <button type="button" className="rooms-events-modal-close" onClick={() => setSelectedId(null)} aria-label="Close">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <div className="rooms-events-modal-body">
+              <div className="rooms-detail-compact-card">
+                <div className="rooms-detail-corner-thumb-wrap" aria-hidden>
+                  <div className="rooms-detail-corner-thumb" style={{ backgroundImage: `url(${getRoomImage(selectedRoom)})` }} />
+                </div>
+                <div className="review-block rooms-detail-compact-data">
+                  <div className="review-block-header rooms-detail-card-header">
+                    <span>Space details</span>
+                    <span className="rooms-detail-rate-chip">R {fmtNum(selectedRoom.pricePerNight)}/night</span>
+                  </div>
+                  <div className="rooms-detail-kv-grid">
+                    <div className="review-row"><div className="rv-label">Capacity</div><div className="rv-val">{selectedRoom.capacity ?? '—'}</div></div>
+                    <div className="review-row"><div className="rv-label">Bed</div><div className="rv-val">{selectedRoom.bedConfig || selectedRoom.beds || '—'}</div></div>
+                    <div className="review-row"><div className="rv-label">Bathroom</div><div className="rv-val">{selectedRoom.bathroom ?? '—'}</div></div>
+                    <div className="review-row"><div className="rv-label">View</div><div className="rv-val">{selectedRoom.view ?? '—'}</div></div>
+                  </div>
+                </div>
+              </div>
+
+              {isAdmin && (
+                <div className="review-block">
+                  <div className="review-block-header">Edit space (admin)</div>
+                  <form className="form-stack" onSubmit={handleAdminRoomSave}>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-name-modal">Space name *</label>
+                      <input id="room-edit-name-modal" className="form-control" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-category-modal">Space category</label>
+                      <select id="room-edit-category-modal" className="form-control" value={editSpaceCategory} onChange={(e) => setEditSpaceCategory(e.target.value)}>
+                        <option value="room">Room</option>
+                        <option value="event">Event Hire</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-type-modal">Type</label>
+                      <select id="room-edit-type-modal" className="form-control" value={editType} onChange={(e) => setEditType(e.target.value)}>
+                        {ROOM_TYPE_OPTIONS.filter((o) => o.value).map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-cap-modal">Capacity (guests)</label>
+                      <input id="room-edit-cap-modal" type="number" min={1} className="form-control" value={editCapacity} onChange={(e) => setEditCapacity(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-beds-modal">Bed configuration</label>
+                      <input id="room-edit-beds-modal" className="form-control" value={editBeds} onChange={(e) => setEditBeds(e.target.value)} placeholder="e.g. King + single" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-bath-modal">Bathroom</label>
+                      <input id="room-edit-bath-modal" className="form-control" value={editBathroom} onChange={(e) => setEditBathroom(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-view-modal">View</label>
+                      <input id="room-edit-view-modal" className="form-control" value={editView} onChange={(e) => setEditView(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-price-modal">Price per night (R)</label>
+                      <input id="room-edit-price-modal" type="number" min={0} step={1} className="form-control" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-upload-modal">Upload photos</label>
+                      <input
+                        ref={editFileInputRef}
+                        id="room-edit-upload-modal"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="form-control"
+                        onChange={(e) => setEditImageFiles(Array.from(e.target.files || []))}
+                      />
+                      {editImageFiles.length > 0 ? (
+                        <div className="rooms-admin-upload-meta">
+                          <span>{editImageFiles.length} file(s) selected</span>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            onClick={() => {
+                              setEditImageFiles([]);
+                              if (editFileInputRef.current) editFileInputRef.current.value = '';
+                            }}
+                          >
+                            Clear uploads
+                          </button>
+                        </div>
+                      ) : null}
+                      {editPreviewUrls.length > 0 ? (
+                        <div className="rooms-admin-upload-previews">
+                          {editPreviewUrls.map((url, i) => (
+                            <img key={`${url}-${i}`} src={url} alt="" className="rooms-admin-upload-thumb" />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-images-modal">Extra image URLs (optional, one per line)</label>
+                      <textarea
+                        id="room-edit-images-modal"
+                        className="form-control"
+                        rows={3}
+                        value={editImagesText}
+                        onChange={(e) => setEditImagesText(e.target.value)}
+                        placeholder="https://… or /uploads/…"
+                      />
+                    </div>
+                    {adminRoomSaveMutation.isError && (
+                      <div className="card card--error" style={{ marginBottom: 8 }}>
+                        <div className="card-body" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                          {adminRoomSaveMutation.error?.message || 'Could not save space.'}
+                        </div>
+                      </div>
+                    )}
+                    <div className="bookings-add-internal-actions">
+                      <button type="submit" className="btn btn-primary btn-sm" disabled={adminRoomSaveMutation.isPending}>
+                        {adminRoomSaveMutation.isPending ? 'Saving…' : 'Save space'}
+                      </button>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setCalendarOpen(true)}>
+                        View calendar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={handleDeleteSelectedSpace}
+                        disabled={deleteRoomMutation.isPending}
+                        style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                      >
+                        {deleteRoomMutation.isPending ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && selectedRoom && (
+        <div className="rooms-events-modal-overlay" onClick={() => setDeleteConfirmOpen(false)} role="presentation">
+          <div
+            className="rooms-events-modal rooms-delete-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rooms-delete-confirm-title"
+          >
+            <div className="rooms-events-modal-header">
+              <div>
+                <h2 id="rooms-delete-confirm-title" className="rooms-events-modal-title">Delete space?</h2>
+                <p className="rooms-events-modal-sub">
+                  This will permanently remove <strong>{selectedRoom.name || 'this space'}</strong>.
+                </p>
+              </div>
+              <button type="button" className="rooms-events-modal-close" onClick={() => setDeleteConfirmOpen(false)} aria-label="Close">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <div className="rooms-events-modal-body">
+              <p className="rooms-delete-confirm-text">
+                This action cannot be undone. Any future selection and updates for this room/event space will no longer be available.
+              </p>
+              <div className="bookings-add-internal-actions">
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setDeleteConfirmOpen(false)} disabled={deleteRoomMutation.isPending}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                  onClick={confirmDeleteSelectedSpace}
+                  disabled={deleteRoomMutation.isPending}
+                >
+                  {deleteRoomMutation.isPending ? 'Deleting…' : 'Delete permanently'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && selectedRoom && (
+        <div className="rooms-events-modal-overlay" onClick={() => setDeleteConfirmOpen(false)} role="presentation">
+          <div
+            className="rooms-events-modal rooms-delete-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rooms-delete-confirm-title"
+          >
+            <div className="rooms-events-modal-header">
+              <div>
+                <h2 id="rooms-delete-confirm-title" className="rooms-events-modal-title">Delete space?</h2>
+                <p className="rooms-events-modal-sub">
+                  This will permanently remove <strong>{selectedRoom.name || 'this space'}</strong>.
+                </p>
+              </div>
+              <button type="button" className="rooms-events-modal-close" onClick={() => setDeleteConfirmOpen(false)} aria-label="Close">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <div className="rooms-events-modal-body">
+              <p className="rooms-delete-confirm-text">
+                This action cannot be undone. Any future selection and updates for this room/event space will no longer be available.
+              </p>
+              <div className="bookings-add-internal-actions">
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setDeleteConfirmOpen(false)} disabled={deleteRoomMutation.isPending}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                  onClick={confirmDeleteSelectedSpace}
+                  disabled={deleteRoomMutation.isPending}
+                >
+                  {deleteRoomMutation.isPending ? 'Deleting…' : 'Delete permanently'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

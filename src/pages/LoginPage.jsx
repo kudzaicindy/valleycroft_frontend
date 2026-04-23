@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { login as apiLogin } from '@/api/auth';
 import { resolveApiBaseUrl } from '@/api/resolveApiBaseUrl';
@@ -18,7 +18,7 @@ const schema = z.object({
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login: setToken, isAuthenticated, user } = useAuth();
+  const { login: setToken, isAuthenticated, user, logout } = useAuth();
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -32,11 +32,6 @@ export default function LoginPage() {
   });
 
   const from = location.state?.from ?? '/admin';
-
-  if (isAuthenticated && user?.role) {
-    const home = ROLE_HOME[user.role?.toLowerCase()];
-    return <Navigate to={home ?? '/admin/dashboard'} replace />;
-  }
 
   async function onSubmit(values) {
     setError(null);
@@ -75,6 +70,9 @@ export default function LoginPage() {
     }
   }
 
+  const roleKey = user?.role?.toLowerCase?.();
+  const signedInHome = roleKey ? ROLE_HOME[roleKey] : null;
+
   return (
     <div className="login-page relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#f4f7f2] via-[#f8faf7] to-[#e9f0e4] px-4 py-8">
       <div className="login-page__blob login-page__blob--top pointer-events-none absolute -top-28 -left-20 h-72 w-72 rounded-full bg-[#6b8b52]/20 blur-3xl" />
@@ -83,6 +81,31 @@ export default function LoginPage() {
       <Link to="/" className="login-back">
         Back to home
       </Link>
+
+      {isAuthenticated && user?.role && (
+        <div
+          className="relative z-[1] mx-auto mb-4 w-full max-w-5xl rounded-xl border border-[#cfdbca] bg-white/95 px-4 py-3 text-sm text-[#2d3f2f] shadow-sm backdrop-blur-sm"
+          role="status"
+        >
+          <span className="font-medium">You are signed in.</span>{' '}
+          {signedInHome && (
+            <Link to={signedInHome} className="font-semibold text-[#2f5a1f] underline underline-offset-2">
+              Open your dashboard
+            </Link>
+          )}
+          <span className="mx-2 text-[#9aaa9c]">·</span>
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              navigate('/login', { replace: true });
+            }}
+            className="font-semibold text-[#8b4513] underline underline-offset-2"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
 
       <div className="relative mx-auto flex w-full max-w-5xl shrink-0 items-center justify-center">
         <div className="login-card grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-[#d8e3cf] bg-white shadow-[0_16px_50px_rgba(28,53,16,0.16)] lg:grid-cols-2">

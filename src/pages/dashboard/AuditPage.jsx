@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAuditLog } from '@/api/audit';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 
 const PAGE_SIZE = 20;
 function fmt(s) {
@@ -10,6 +11,7 @@ function fmt(s) {
 export default function AuditPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const { data, isLoading, error } = useQuery({
     queryKey: ['audit', page],
@@ -32,6 +34,14 @@ export default function AuditPage() {
       const af = actionFilter.trim().toLowerCase();
       rows = rows.filter((a) => String(a.action || '').toLowerCase() === af);
     }
+    if (monthFilter) {
+      rows = rows.filter((a) => {
+        const ts = String(a.timestamp ?? a.createdAt ?? '').replace(' ', 'T');
+        const d = ts.slice(0, 7);
+        if (!d || d.length < 7) return true;
+        return d === monthFilter;
+      });
+    }
     if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
     return rows.filter(
@@ -41,7 +51,7 @@ export default function AuditPage() {
         String(a.entity || '').toLowerCase().includes(q) ||
         String(a.entityId || a.before || '').toLowerCase().includes(q)
     );
-  }, [rawList, search, actionFilter]);
+  }, [rawList, search, actionFilter, monthFilter]);
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -56,14 +66,13 @@ export default function AuditPage() {
           <div className="card-body">{error.message}</div>
         </div>
       )}
-      <div className="bookings-filters-bar" style={{ marginBottom: 12 }}>
-        <input
-          type="search"
-          className="form-control"
-          placeholder="Search user, action, entity…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 280 }}
+      <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <DashboardListFilters
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search user, action, entity…"
+          month={monthFilter}
+          onMonthChange={setMonthFilter}
         />
         <select className="form-control" value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} style={{ minWidth: 180 }}>
           <option value="">All actions</option>

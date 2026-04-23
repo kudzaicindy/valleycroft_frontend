@@ -1,6 +1,6 @@
 import { TRANSACTION_CATEGORY_OPTIONS } from '@/constants/transactionCategories';
 import { monthRange } from '@/utils/financePeriods';
-import { getTransactionDebitCreditAccounts } from '@/utils/transactionLedgerUi';
+import { collectTransactionSurfaceAccountCodes } from '@/utils/transactionLedgerUi';
 
 const KNOWN_CATEGORY = new Set(TRANSACTION_CATEGORY_OPTIONS.map((o) => o.value));
 
@@ -56,6 +56,82 @@ export function extractAccountCodesFromStatementLineKey(key) {
   return [];
 }
 
+/** Default GL when API keys do not embed a code (align with typical ValleyCroft seed). */
+const DEFAULT_CASH_ACCOUNT = '1001';
+const DEFAULT_REVENUE_ACCOUNT = '4001';
+const DEFAULT_OPEX_ACCOUNT = '6000';
+const DEFAULT_EQUITY_ACCOUNT = '3000';
+
+/**
+ * GL code(s) to drill for a cash-flow detail row so `GET /api/finance/transactions?accountCode=` can filter.
+ * Uses embedded digits in the key, `cashAcc_*` rows, then name heuristics; falls back to cash account.
+ * @param {string | null | undefined} key
+ * @returns {string[]}
+ */
+export function cashflowStatementLineAccountCodes(key) {
+  const fromDigits = extractAccountCodesFromStatementLineKey(key);
+  if (fromDigits.length) return fromDigits;
+  const raw = String(key || '');
+  const cashAcc = raw.match(/^cashAcc_(.+)$/i);
+  if (cashAcc && /^\d+$/.test(String(cashAcc[1]).trim())) return [String(cashAcc[1]).trim()];
+
+  const k = raw.toLowerCase();
+  if (/^cash_/.test(k) || /(net_change|opening|closing|beginning|ending)/.test(k)) return [DEFAULT_CASH_ACCOUNT];
+  if (/(owners_contribution|owner.?s_contribution|capital_contribution)/.test(k)) return [DEFAULT_EQUITY_ACCOUNT];
+  if (/(loan_proceeds|borrowing|proceeds_from_debt)/.test(k)) return [DEFAULT_CASH_ACCOUNT];
+  if (/(repayment|dividend|redemption|buyback|distribution)/.test(k)) return [DEFAULT_CASH_ACCOUNT];
+  if (
+    /(rental|revenue|income|deposit|advance|fee|other_income|admin)/.test(k) &&
+    !/(paid|expense|cost|out|repayment|dividend_paid|contribution)/.test(k)
+  ) {
+    return [DEFAULT_REVENUE_ACCOUNT];
+  }
+  if (
+    /(paid|supplier|expense|utility|electricity|water|gas|wage|salary|maintenance|cleaning|fuel|charge|interest_paid|tax)/.test(k)
+  ) {
+    return [DEFAULT_OPEX_ACCOUNT];
+  }
+  if (/(purchase|equipment|building|loan|invest|disposal|sale_of)/.test(k)) return [DEFAULT_CASH_ACCOUNT];
+  return [DEFAULT_CASH_ACCOUNT];
+}
+
+/** Subtotals / net cash / net change — show primary cash account activity for the period. */
+export function cashflowSummaryCashAccountCodes() {
+  return [DEFAULT_CASH_ACCOUNT];
+}
+
+/**
+ * P&amp;L row key → GL for transaction drill when the key has no embedded account digits.
+ * @param {string | null | undefined} key
+ * @param {'income' | 'expense'} section
+ * @returns {string[]}
+ */
+export function incomeStatementLineAccountCodes(key, section) {
+  const fromDigits = extractAccountCodesFromStatementLineKey(key);
+  if (fromDigits.length) return fromDigits;
+  const raw = String(key ?? '').trim();
+  if (/^\d{4,}$/.test(raw)) return [raw];
+  const sec = String(section || '').toLowerCase();
+  if (sec === 'expense') return [DEFAULT_OPEX_ACCOUNT];
+  if (sec === 'income') return [DEFAULT_REVENUE_ACCOUNT];
+  return [];
+}
+
+/**
+ * Balance sheet detail row → GL codes for drill (skips synthetic subtotal rows).
+ * @param {object | null | undefined} row
+ * @returns {string[]}
+ */
+export function balanceSheetLineAccountCodes(row) {
+  if (!row || typeof row !== 'object' || row._bsSubtotal) return [];
+  const c = String(row.accountCode ?? row.code ?? '').trim();
+  if (!c) return [];
+  const fromDigits = extractAccountCodesFromStatementLineKey(c);
+  if (fromDigits.length) return fromDigits;
+  if (/^\d{4,}$/.test(c)) return [c];
+  return [];
+}
+
 function normAcct(c) {
   return String(c ?? '').trim();
 }
@@ -66,13 +142,10 @@ function normAcct(c) {
  */
 export function transactionTouchesAccountCodes(t, accountCodes) {
   if (!accountCodes?.length) return true;
-  const { debitCode, creditCode } = getTransactionDebitCreditAccounts(t);
-  const d = normAcct(debitCode);
-  const cr = normAcct(creditCode);
-  return accountCodes.some((code) => {
-    const x = normAcct(code);
-    return Boolean(x) && (d === x || cr === x);
-  });
+  const want = new Set(accountCodes.map(normAcct).filter(Boolean));
+  if (!want.size) return true;
+
+  return collectTransactionSurfaceAccountCodes(t).some((c) => want.has(normAcct(c)));
 }
 
 /**

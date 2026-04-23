@@ -1,12 +1,14 @@
 import { useMemo, useState, useCallback } from 'react';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import './InventoryPage.css';
 
+/** Optional `asOfMonth` (YYYY-MM) for month filter demo rows. */
 const DEMO_STOCK = [
-  { id: '1', kind: 'consumable', name: 'Toilet Paper Rolls', qty: '6 units', level: 12, band: 'low', emoji: '🧻' },
-  { id: '2', kind: 'consumable', name: 'Fresh Linen Sets', qty: '24 sets', level: 68, band: 'ok', emoji: '🛏️' },
-  { id: '3', kind: 'consumable', name: 'Cleaning Supplies', qty: 'Mixed', level: 45, band: 'ok', emoji: '🧴' },
-  { id: '4', kind: 'consumable', name: 'Coffee & Tea', qty: 'Pantry', level: 8, band: 'low', emoji: '☕' },
-  { id: '5', kind: 'equipment', name: 'Commercial mower', qty: '1 unit', level: 72, band: 'ok', emoji: '🛞' },
+  { id: '1', kind: 'consumable', name: 'Toilet Paper Rolls', qty: '6 units', level: 12, band: 'low', emoji: '🧻', asOfMonth: '2026-04' },
+  { id: '2', kind: 'consumable', name: 'Fresh Linen Sets', qty: '24 sets', level: 68, band: 'ok', emoji: '🛏️', asOfMonth: '2026-04' },
+  { id: '3', kind: 'consumable', name: 'Cleaning Supplies', qty: 'Mixed', level: 45, band: 'ok', emoji: '🧴', asOfMonth: '2026-03' },
+  { id: '4', kind: 'consumable', name: 'Coffee & Tea', qty: 'Pantry', level: 8, band: 'low', emoji: '☕', asOfMonth: '2026-03' },
+  { id: '5', kind: 'equipment', name: 'Commercial mower', qty: '1 unit', level: 72, band: 'ok', emoji: '🛞', asOfMonth: '2026-04' },
 ];
 
 function bandFromLevel(level) {
@@ -18,6 +20,7 @@ function bandFromLevel(level) {
 export default function InventoryPage() {
   const [items, setItems] = useState(() => DEMO_STOCK.map((x) => ({ ...x })));
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [bandFilter, setBandFilter] = useState('');
   const [kindFilter, setKindFilter] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -35,10 +38,13 @@ export default function InventoryPage() {
     let r = items;
     if (kindFilter) r = r.filter((x) => (x.kind || 'consumable') === kindFilter);
     if (bandFilter) r = r.filter((x) => x.band === bandFilter);
+    if (monthFilter) {
+      r = r.filter((x) => !x.asOfMonth || x.asOfMonth === monthFilter);
+    }
     if (!search.trim()) return r;
     const q = search.trim().toLowerCase();
     return r.filter((x) => x.name.toLowerCase().includes(q));
-  }, [items, search, bandFilter, kindFilter]);
+  }, [items, search, bandFilter, kindFilter, monthFilter]);
 
   const closeModal = useCallback(() => {
     setAddOpen(false);
@@ -94,7 +100,8 @@ export default function InventoryPage() {
 
   const filteredCount = rows.length;
   const totalCount = items.length;
-  const showFilterHint = filteredCount !== totalCount || search.trim() || bandFilter || kindFilter;
+  const showFilterHint =
+    filteredCount !== totalCount || search.trim() || bandFilter || kindFilter || monthFilter;
 
   return (
     <div className="inventory-page">
@@ -113,17 +120,14 @@ export default function InventoryPage() {
       </header>
 
       <div className="inventory-toolbar">
-        <div className="inventory-search-wrap">
-          <i className="fas fa-search" aria-hidden />
-          <input
-            type="search"
-            className="inventory-search"
-            placeholder="Search by item name…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search inventory"
-          />
-        </div>
+        <DashboardListFilters
+          embedded
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search by item name…"
+          month={monthFilter}
+          onMonthChange={setMonthFilter}
+        />
         <select
           className="inventory-filter"
           value={kindFilter}
@@ -153,6 +157,7 @@ export default function InventoryPage() {
           {kindFilter === 'equipment' ? ' · equipment' : ''}
           {bandFilter === 'low' ? ' · low stock filter' : ''}
           {bandFilter === 'ok' ? ' · adequate filter' : ''}
+          {monthFilter ? ' · month filter' : ''}
         </p>
       )}
 

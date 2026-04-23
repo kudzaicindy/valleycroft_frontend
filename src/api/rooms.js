@@ -1,6 +1,105 @@
 import { axiosInstance } from './axiosInstance';
 import { resolveApiBaseUrl } from './resolveApiBaseUrl';
 
+async function getWithAliases(paths, params) {
+  let lastError;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.get(path, { params, skipAdminNamespaceRewrite: true });
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404 || status === 405) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError || new Error('Request failed');
+}
+
+async function postWithAliases(paths, body) {
+  let lastError;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.post(path, body, { skipAdminNamespaceRewrite: true });
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404 || status === 405) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError || new Error('Request failed');
+}
+
+async function putWithAliases(paths, body) {
+  let lastError;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.put(path, body, { skipAdminNamespaceRewrite: true });
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404 || status === 405) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError || new Error('Request failed');
+}
+
+async function putWithAliasesFetch(paths, body, token) {
+  const authToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null);
+  const base = resolveApiBaseUrl().replace(/\/+$/, '');
+  let lastError;
+
+  for (const path of paths) {
+    const res = await fetch(`${base}${path}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 404 || res.status === 405) {
+      lastError = new Error(`Request failed (${res.status})`);
+      continue;
+    }
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && data.success === false)) {
+      throw new Error(data?.message || `Update failed (${res.status})`);
+    }
+
+    return data?.data !== undefined ? data.data : data;
+  }
+
+  throw lastError || new Error('Request failed');
+}
+
+async function deleteWithAliases(paths) {
+  let lastError;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.delete(path, { skipAdminNamespaceRewrite: true });
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 404 || status === 405) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError || new Error('Request failed');
+}
+
 /**
  * Normalize upload API response to URL/path strings for PUT /api/rooms/:id { images }.
  * Handles { urls }, { images }, arrays, or a full room object with images.
@@ -35,7 +134,13 @@ export async function uploadRoomImages(roomId, files) {
 
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const base = resolveApiBaseUrl().replace(/\/$/, '');
-  const paths = [`/api/rooms/${encodeURIComponent(roomId)}/images`, `/api/rooms/${encodeURIComponent(roomId)}/photos`];
+  const id = encodeURIComponent(roomId);
+  const paths = [
+    `/api/admin/rooms/${id}/images`,
+    `/api/admin/rooms/${id}/photos`,
+    `/api/rooms/${id}/images`,
+    `/api/rooms/${id}/photos`,
+  ];
 
   let lastStatus = 0;
   for (const path of paths) {
@@ -71,7 +176,7 @@ export async function uploadRoomImages(roomId, files) {
  * Optional params: checkIn, checkOut (YYYY-MM-DD) — when provided, each room includes availableForDates: true | false for that range.
  */
 export function getRooms(params = {}) {
-  return axiosInstance.get('/api/rooms', { params });
+  return getWithAliases(['/api/admin/rooms', '/api/rooms'], params);
 }
 
 /**
@@ -79,7 +184,7 @@ export function getRooms(params = {}) {
  * Optional params: checkIn, checkOut (YYYY-MM-DD) — when provided, response includes availableForDates and optionally bookedBy.
  */
 export function getRoom(id, params = {}) {
-  return axiosInstance.get(`/api/rooms/${id}`, { params });
+  return getWithAliases([`/api/admin/rooms/${id}`, `/api/rooms/${id}`], params);
 }
 
 /**
@@ -88,17 +193,21 @@ export function getRoom(id, params = {}) {
  * Response: { success, data: [ { _id, guestName, guestEmail, guestPhone, checkIn, checkOut, status, trackingCode, totalAmount, deposit } ] }
  */
 export function getRoomBookings(roomId, params = {}) {
-  return axiosInstance.get(`/api/rooms/${roomId}/bookings`, { params });
+  return getWithAliases([`/api/admin/rooms/${roomId}/bookings`, `/api/rooms/${roomId}/bookings`], params);
 }
 
 export function createRoom(body) {
-  return axiosInstance.post('/api/rooms', body);
+  return postWithAliases(['/api/admin/rooms', '/api/rooms'], body);
 }
 
-export function updateRoom(id, body) {
-  return axiosInstance.put(`/api/rooms/${id}`, body);
+export function updateRoom(id, body, token) {
+  return putWithAliasesFetch(
+    [`/api/admin/rooms/${id}`, `/api/rooms/${id}`],
+    body,
+    token
+  );
 }
 
 export function deleteRoom(id) {
-  return axiosInstance.delete(`/api/rooms/${id}`);
+  return deleteWithAliases([`/api/admin/rooms/${id}`, `/api/rooms/${id}`]);
 }

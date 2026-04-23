@@ -269,7 +269,7 @@ export default function ChartOfAccountsPage() {
   const transactionsQuery = useQuery({
     queryKey: ['transactions', 'chart-of-accounts', TX_PAGE, TX_LIMIT, '', '', ''],
     queryFn: async () => {
-      const res = await getTransactions({ page: TX_PAGE, limit: TX_LIMIT });
+      const res = await getTransactions({ page: TX_PAGE, limit: TX_LIMIT, includeByAccount: 0 });
       return normalizeTransactionsFetchResult(res);
     },
   });

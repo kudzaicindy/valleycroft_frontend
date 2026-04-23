@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTransactions,
@@ -9,7 +9,8 @@ import {
 import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
-import { newIdempotencyKey, isTransactionLedgerPosted } from '@/utils/transactionLedgerUi';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import { newIdempotencyKey } from '@/utils/transactionLedgerUi';
 import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 
 const LIMIT = 20;
@@ -41,6 +42,8 @@ const emptyForm = () => ({
 export default function RefundsPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [tableSearch, setTableSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -49,7 +52,7 @@ export default function RefundsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', 'refunds', page],
     queryFn: async () => {
-      const res = await getTransactions({ page, limit: LIMIT, category: 'refund' });
+      const res = await getTransactions({ page, limit: LIMIT, category: 'refund', includeByAccount: 0 });
       return normalizeTransactionsFetchResult(res);
     },
   });
@@ -57,6 +60,19 @@ export default function RefundsPage() {
   const listRaw = data?.list ?? [];
   const list = listRaw.filter((t) => t.category === 'refund');
   const meta = data?.meta ?? {};
+
+  const listFiltered = useMemo(() => {
+    let rows = list;
+    if (monthFilter) rows = rows.filter((t) => String(t.date ?? '').slice(0, 7) === monthFilter);
+    if (!tableSearch.trim()) return rows;
+    const q = tableSearch.trim().toLowerCase();
+    return rows.filter(
+      (t) =>
+        String(t.description || '').toLowerCase().includes(q) ||
+        String(t.reference || '').toLowerCase().includes(q) ||
+        String(t.booking != null ? t.booking : '').toLowerCase().includes(q)
+    );
+  }, [list, monthFilter, tableSearch]);
 
   const openAdd = useCallback(() => {
     setEditingId(null);
@@ -155,7 +171,7 @@ export default function RefundsPage() {
   }
 
   const saving = createMutation.isPending || updateMutation.isPending;
-  const colCount = 7;
+  const colCount = 6;
 
   return (
     <div className="page-stack">
@@ -172,6 +188,14 @@ export default function RefundsPage() {
         </button>
       </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
+
+      <DashboardListFilters
+        search={tableSearch}
+        onSearchChange={setTableSearch}
+        searchPlaceholder="Search description, reference, booking…"
+        month={monthFilter}
+        onMonthChange={setMonthFilter}
+      />
 
       {modalOpen && (
         <div
@@ -322,7 +346,6 @@ export default function RefundsPage() {
                   <th>Reference</th>
                   <th className="statement-table-num">Debit</th>
                   <th className="statement-table-num">Credit</th>
-                  <th>Ledger</th>
                   <th />
                 </tr>
               </thead>
@@ -332,16 +355,18 @@ export default function RefundsPage() {
                     <td colSpan={colCount}>Loading…</td>
                   </tr>
                 )}
-                {!isLoading && list.length === 0 && (
+                {!isLoading && listFiltered.length === 0 && (
                   <tr>
-                    <td colSpan={colCount}>No refund transactions yet. Add one to post it like any other entry.</td>
+                    <td colSpan={colCount}>
+                      {list.length === 0
+                        ? 'No refund transactions yet. Add one to post it like any other entry.'
+                        : 'No refunds match the current search or month filter.'}
+                    </td>
                   </tr>
                 )}
                 {!isLoading &&
-                  list.map((t) => {
+                  listFiltered.map((t) => {
                     const id = t._id ?? t.id;
-                    const jid = t.journalEntryId;
-                    const posted = isTransactionLedgerPosted(t);
                     const rowDebit = t.debit ?? t.amount;
                     const rowCredit = t.credit ?? t.amount;
                     return (
@@ -351,21 +376,6 @@ export default function RefundsPage() {
                         <td>{t.reference || '—'}</td>
                         <td className="statement-table-num pl-neg">{moneyOrBlank(rowDebit)}</td>
                         <td className="statement-table-num pl-pos">{moneyOrBlank(rowCredit)}</td>
-                        <td>
-                          {posted ? (
-                            <span
-                              className="transactions-ledger-pill"
-                              title={jid ? String(jid) : t.ledgerStatus || 'Posted'}
-                            >
-                              <i className="fas fa-book" aria-hidden />
-                              Posted
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 12, color: 'var(--text-muted, #6b7a72)' }} title="Unposted">
-                              —
-                            </span>
-                          )}
-                        </td>
                         <td>
                           <div className="transactions-table-actions">
                             <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(t)}>

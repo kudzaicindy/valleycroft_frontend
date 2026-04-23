@@ -1,16 +1,37 @@
 import { useMemo, useState } from 'react';
 import { formatMonthYear } from '@/utils/formatDate';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 
 const DEMO_LAST_REPORT = new Date(2026, 2, 1);
 
+/** `lastRunMonth` is YYYY-MM for month filter (demo). */
 const ALL_REPORTS = [
-  { icon: 'fas fa-calendar-week', name: 'Weekly Summary', desc: 'Bookings, income, expenses & staff attendance for the current week.', color: 'var(--forest)' },
-  { icon: 'fas fa-calendar-alt', name: 'Monthly Report', desc: 'Full financial summary, occupancy rates & operational overview.', color: 'var(--gold)' },
-  { icon: 'fas fa-chart-line', name: 'Quarterly Analysis', desc: 'Business performance trends over Q1 2026 with YoY comparisons.', color: 'var(--sage)' },
+  {
+    icon: 'fas fa-calendar-week',
+    name: 'Weekly Summary',
+    desc: 'Bookings, income, expenses & staff attendance for the current week.',
+    color: 'var(--forest)',
+    lastRunMonth: '2026-03',
+  },
+  {
+    icon: 'fas fa-calendar-alt',
+    name: 'Monthly Report',
+    desc: 'Full financial summary, occupancy rates & operational overview.',
+    color: 'var(--gold)',
+    lastRunMonth: '2026-03',
+  },
+  {
+    icon: 'fas fa-chart-line',
+    name: 'Quarterly Analysis',
+    desc: 'Business performance trends over Q1 2026 with YoY comparisons.',
+    color: 'var(--sage)',
+    lastRunMonth: '2026-01',
+  },
 ];
 
 export default function ReportsPage() {
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState('');
 
   const reports = useMemo(() => {
@@ -18,10 +39,11 @@ export default function ReportsPage() {
     if (periodFilter === 'weekly') r = r.filter((x) => x.name.includes('Weekly'));
     if (periodFilter === 'monthly') r = r.filter((x) => x.name.includes('Monthly'));
     if (periodFilter === 'quarterly') r = r.filter((x) => x.name.includes('Quarterly'));
+    if (monthFilter) r = r.filter((x) => (x.lastRunMonth || '') === monthFilter);
     if (!search.trim()) return r;
     const q = search.trim().toLowerCase();
     return r.filter((x) => x.name.toLowerCase().includes(q) || x.desc.toLowerCase().includes(q));
-  }, [search, periodFilter]);
+  }, [search, periodFilter, monthFilter]);
 
   return (
     <>
@@ -39,14 +61,13 @@ export default function ReportsPage() {
           </button>
         </div>
       </div>
-      <div className="bookings-filters-bar" style={{ marginBottom: 12 }}>
-        <input
-          type="search"
-          className="form-control"
-          placeholder="Search reports…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 280 }}
+      <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <DashboardListFilters
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search reports…"
+          month={monthFilter}
+          onMonthChange={setMonthFilter}
         />
         <select className="form-control" value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} style={{ minWidth: 160 }}>
           <option value="">All periods</option>

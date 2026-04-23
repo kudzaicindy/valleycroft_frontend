@@ -1,25 +1,18 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { getBookings } from '@/api/bookings';
-import { createTransaction } from '@/api/finance';
-import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
-import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
-import { formatTransactionMutationMessage } from '@/utils/apiError';
+import { getPendingBookingDebtors, recordDebtorPayment } from '@/api/debtors';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { parseLocalDate } from '@/utils/availability';
-import { newIdempotencyKey } from '@/utils/transactionLedgerUi';
 import {
   bookingReferenceDisplay,
   bookingTotalAmount,
   bookingGuestLabel,
 } from '@/utils/bookingDisplay';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { listFromSuccessEnvelope } from '@/utils/apiEnvelope';
 
-const LIMIT = 150;
-
-const ELIGIBLE_STATUS = new Set(['confirmed', 'checked-in', 'checked-out']);
+const LIMIT = 300;
 
 function statusStr(s) {
   if (s == null) return '';
@@ -30,8 +23,8 @@ function statusStr(s) {
 
 function statusBadgeClass(s) {
   const v = statusStr(s).toLowerCase();
-  if (v === 'confirmed') return 'badge-confirmed';
-  if (v === 'checked-in' || v === 'checked-out') return 'badge-confirmed';
+  if (v === 'paid') return 'badge-paid';
+  if (v === 'partial' || v === 'outstanding') return 'badge-pending';
   return 'badge-pending';
 }
 
@@ -62,22 +55,63 @@ function dateRangeLabel(b) {
   return '—';
 }
 
+function toPaymentRow(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const booking =
+    raw.guestBookingRef ||
+    raw.guest_booking_ref ||
+    raw.booking ||
+    raw.guestBooking ||
+    raw.guest_booking ||
+    raw.bookingDetails ||
+    {};
+  const invoice = raw.invoiceRef || raw.invoice_ref || raw.invoice || null;
+  const debtorId = raw._id ?? raw.id ?? raw.debtorId ?? raw.debtor_id;
+  const amountOwed = Number(raw.amountOwed ?? raw.amount_owed ?? raw.totalAmount ?? bookingTotalAmount(booking) ?? 0) || 0;
+  const amountPaid = Number(raw.amountPaid ?? raw.amount_paid ?? 0) || 0;
+  const balance = Number(raw.balance ?? Math.max(0, amountOwed - amountPaid)) || 0;
+  return {
+    ...booking,
+    _raw: raw,
+    debtorId: debtorId != null ? String(debtorId) : '',
+    guestName: raw.name || raw.guestName || booking.guestName || raw.guest?.name || bookingGuestLabel(booking),
+    guestEmail: raw.contactEmail || raw.guestEmail || booking.guestEmail || raw.guest?.email || '',
+    guestPhone: raw.contactPhone || raw.guestPhone || booking.guestPhone || '',
+    reference:
+      booking.trackingCode ||
+      raw.trackingCode ||
+      raw.reference ||
+      raw.bookingReference ||
+      booking.reference ||
+      booking.bookingReference ||
+      raw.invoice?.invoiceNumber ||
+      '',
+    description: raw.description || '',
+    status: raw.status || 'outstanding',
+    amountOwed,
+    amountPaid,
+    balance,
+    invoiceId: invoice?._id ? String(invoice._id) : '',
+    invoiceStatus: invoice?.status || '',
+    invoiceDueDate: invoice?.dueDate || '',
+    invoiceTotal: Number(invoice?.total ?? 0) || 0,
+  };
+}
+
 function defaultPaymentForm(booking) {
-  const id = booking?._id ?? booking?.id;
+  const debtorId = booking?.debtorId || '';
   const ref = booking ? bookingReferenceDisplay(booking) : '';
   const guest = booking ? bookingGuestLabel(booking) : '';
-  const total = booking ? bookingTotalAmount(booking) : 0;
+  const outstanding = booking ? Number(booking.balance ?? 0) || 0 : 0;
   const today = new Date().toISOString().slice(0, 10);
   return {
-    amount: total > 0 ? String(total) : '',
+    amount: outstanding > 0 ? String(outstanding) : '',
     date: today,
-    debitAccount: '1020',
-    creditAccount: '1010',
     reference: ref && ref !== '—' ? `PAY-BOOK-${String(ref).replace(/\s+/g, '').slice(0, 14)}` : '',
-    description: booking
+    note: booking
       ? `Guest payment — ${guest} (${ref})`
       : '',
-    booking: id != null ? String(id) : '',
+    debtorId,
   };
 }
 
@@ -85,49 +119,63 @@ export default function BookingPaymentsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentBooking, setPaymentBooking] = useState(null);
   const [form, setForm] = useState(() => defaultPaymentForm(null));
   const [saveError, setSaveError] = useState(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['bookings', 'finance-payments', LIMIT],
-    queryFn: () => getBookings({ page: 1, limit: LIMIT }),
+    queryKey: ['debtors', 'pending-bookings', LIMIT],
+    queryFn: () => getPendingBookingDebtors({ page: 1, limit: LIMIT }),
   });
 
   const rawList = useMemo(() => listFromSuccessEnvelope(data), [data]);
-
-  const eligible = useMemo(() => {
-    return rawList.filter((b) => ELIGIBLE_STATUS.has(statusStr(b).toLowerCase()));
-  }, [rawList]);
+  const eligible = useMemo(() => rawList.map(toPaymentRow).filter(Boolean), [rawList]);
 
   const list = useMemo(() => {
-    if (!search.trim()) return eligible;
+    let rows = eligible;
+    if (monthFilter) {
+      rows = rows.filter((b) => {
+        const ci = b.checkIn || b.eventDate;
+        const m = ci != null && String(ci).length >= 7 ? String(ci).slice(0, 7) : '';
+        if (!m) return true;
+        return m === monthFilter;
+      });
+    }
+    if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
-    return eligible.filter(
+    return rows.filter(
       (b) =>
         bookingGuestLabel(b).toLowerCase().includes(q) ||
         String(b.guestEmail || '')
           .toLowerCase()
           .includes(q) ||
+        String(b.guestPhone || '')
+          .toLowerCase()
+          .includes(q) ||
         bookingReferenceDisplay(b).toLowerCase().includes(q) ||
         roomLabel(b).toLowerCase().includes(q)
     );
-  }, [eligible, search]);
+  }, [eligible, search, monthFilter]);
 
-  /** Confirmed-only list for the primary picker; current modal booking is appended if opened from a table row with another status. */
-  const confirmedForSelect = useMemo(
-    () => eligible.filter((b) => statusStr(b).toLowerCase() === 'confirmed'),
-    [eligible]
-  );
+  const outstandingBookings = useMemo(() => {
+    return eligible
+      .map((b) => ({ booking: b, outstanding: Number(b.balance ?? 0) || 0 }))
+      .filter((x) => x.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding);
+  }, [eligible]);
 
   const bookingSelectOptions = useMemo(() => {
-    const ids = new Set(confirmedForSelect.map((b) => String(b._id ?? b.id)));
+    // Primary picker should prioritize bookings that still owe money.
+    const fromOutstanding = outstandingBookings.map((x) => x.booking);
+    const base = fromOutstanding.length > 0 ? fromOutstanding : eligible;
+    const ids = new Set(base.map((b) => String(b._id ?? b.id)));
     const cur = paymentBooking;
     const curId = cur ? String(cur._id ?? cur.id) : '';
-    if (cur && curId && !ids.has(curId)) return [...confirmedForSelect, cur];
-    return confirmedForSelect;
-  }, [confirmedForSelect, paymentBooking]);
+    if (cur && curId && !ids.has(curId)) return [...base, cur];
+    return base;
+  }, [outstandingBookings, eligible, paymentBooking]);
 
   const openPayment = useCallback((b) => {
     setPaymentBooking(b);
@@ -159,45 +207,43 @@ export default function BookingPaymentsPage() {
   }, [paymentModalOpen, closePayment]);
 
   const createMutation = useMutation({
-    mutationFn: ({ body, idempotencyKey }) => createTransaction(body, { idempotencyKey }),
+    mutationFn: async ({ debtorId, body }) => {
+      return recordDebtorPayment(debtorId, body);
+    },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debtors'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       closePayment();
     },
     onError: (err) => {
-      setSaveError(formatTransactionMutationMessage(err).join('\n'));
+      setSaveError(err?.message || 'Could not record payment.');
     },
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setSaveError(null);
-    if (!form.booking?.trim()) {
-      setSaveError('Select a confirmed booking before saving.');
+    if (!form.debtorId?.trim()) {
+      setSaveError('Select a booking debtor before saving.');
       return;
     }
     try {
-      const body = buildTransactionWritePayload({
-        type: 'income',
-        category: 'booking',
-        description: form.description,
-        amount: form.amount,
-        debitAccount: form.debitAccount,
-        creditAccount: form.creditAccount,
-        date: form.date,
-        reference: form.reference,
-        booking: form.booking,
-      });
-      createMutation.mutate({ body, idempotencyKey: newIdempotencyKey() });
+      const amount = Number(form.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setSaveError('Amount must be greater than zero.');
+        return;
+      }
+      const body = {
+        amount,
+        note: form.note || '',
+        ...(form.date ? { paidAt: new Date(`${form.date}T12:00:00`).toISOString() } : {}),
+      };
+      createMutation.mutate({ debtorId: form.debtorId, body, booking: paymentBooking });
     } catch (ve) {
-      if (ve?.code === 'VALIDATION') setSaveError(ve.message);
-      else setSaveError(ve?.message || 'Invalid form.');
+      setSaveError(ve?.message || 'Invalid form.');
     }
   };
-
-  const bankCashOptions = ACCOUNT_OPTIONS.filter((o) => o.value === '1000' || o.value === '1020');
 
   return (
     <div className="page-stack booking-payments-page">
@@ -205,15 +251,14 @@ export default function BookingPaymentsPage() {
         <div className="page-header-left">
           <div className="page-title">Booking payments</div>
           <div className="page-subtitle">
-            Record cash or bank receipts against confirmed stays. Each save posts a{' '}
-            <strong>transaction</strong> (Dr bank/cash, Cr accounts receivable) linked to the booking
+            Record receipts against booking debtors with outstanding balances
             {String(user?.role || '').toLowerCase() === 'finance' ? (
               <>
                 {' '}
-                — same screen as Finance → <Link to="/finance/transactions">Transactions</Link>.
+                — pending list is sourced from <code>/api/debtors/pending-bookings</code>.
               </>
             ) : (
-              <> — Finance can review entries under Transactions.</>
+              <> — Finance can review and settle outstanding booking debtors.</>
             )}
           </div>
         </div>
@@ -231,21 +276,16 @@ export default function BookingPaymentsPage() {
       <div className="card">
         <div className="card-body">
           <div className="booking-payments-toolbar">
-            <label className="booking-payments-search-label" htmlFor="bp-search">
-              Search bookings
-            </label>
-            <input
-              id="bp-search"
-              type="search"
-              className="form-control booking-payments-search"
-              placeholder="Guest, email, reference, room…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <DashboardListFilters
+              embedded
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Guest name, email, phone, reference, room…"
+              month={monthFilter}
+              onMonthChange={setMonthFilter}
             />
             <p className="booking-payments-hint">
-              Showing {list.length} of {eligible.length} eligible reservations (confirmed, checked-in, or checked-out).
-              Revenue is usually recognised when a booking is confirmed (Dr revenue / Cr receivable); use this screen when
-              money is received (Dr bank / Cr receivable).
+              Showing {list.length} of {eligible.length} booking debtors with balances pending.
             </p>
           </div>
         </div>
@@ -259,8 +299,8 @@ export default function BookingPaymentsPage() {
                   <th>Status</th>
                   <th>Dates</th>
                   <th>Room / type</th>
-                  <th className="statement-table-num">Total</th>
-                  <th className="statement-table-num">Deposit</th>
+                  <th className="statement-table-num">Amount owed</th>
+                  <th className="statement-table-num">Balance</th>
                   <th />
                 </tr>
               </thead>
@@ -273,8 +313,7 @@ export default function BookingPaymentsPage() {
                 {!isLoading && list.length === 0 ? (
                   <tr>
                     <td colSpan={8}>
-                      No eligible bookings in this list. Reservations must be at least <strong>confirmed</strong> before
-                      you record payments here (operations confirms them in the admin bookings workflow).
+                      No pending booking debtors found.
                     </td>
                   </tr>
                 ) : null}
@@ -285,10 +324,11 @@ export default function BookingPaymentsPage() {
                       <tr key={id || JSON.stringify(b)}>
                         <td className="booking-payments-ref">{bookingReferenceDisplay(b)}</td>
                         <td>
-                          <div className="booking-payments-guest">{bookingGuestLabel(b)}</div>
-                          {b.guestEmail ? (
-                            <div className="booking-payments-email">{b.guestEmail}</div>
-                          ) : null}
+                          <div className="booking-payments-guest">
+                            {String(b.guestName || '').trim() || bookingGuestLabel(b)}
+                          </div>
+                          {b.guestEmail ? <div className="booking-payments-email">{b.guestEmail}</div> : null}
+                          {b.guestPhone ? <div className="booking-payments-email">{b.guestPhone}</div> : null}
                         </td>
                         <td>
                           <span className={'badge ' + statusBadgeClass(b.status)}>{statusStr(b.status) || '—'}</span>
@@ -300,8 +340,8 @@ export default function BookingPaymentsPage() {
                             <span className="booking-payments-type">{String(b.type)}</span>
                           ) : null}
                         </td>
-                        <td className="statement-table-num">{fmtMoney(bookingTotalAmount(b))}</td>
-                        <td className="statement-table-num">{fmtMoney(b.deposit)}</td>
+                        <td className="statement-table-num">{fmtMoney(b.amountOwed)}</td>
+                        <td className="statement-table-num"><strong>{fmtMoney(b.balance)}</strong></td>
                         <td className="booking-payments-actions">
                           <button type="button" className="btn btn-primary btn-sm" onClick={() => openPayment(b)}>
                             Record payment
@@ -334,15 +374,15 @@ export default function BookingPaymentsPage() {
             <div className="transactions-modal-body">
               <div className="form-group" style={{ marginBottom: 14 }}>
                 <label className="form-label" htmlFor="bp-booking-select">
-                  Confirmed booking *
+                  Booking with outstanding balance *
                 </label>
                 <select
                   id="bp-booking-select"
                   className="form-control"
-                  value={form.booking}
+                  value={form.debtorId}
                   onChange={(e) => {
                     const id = e.target.value;
-                    const b = bookingSelectOptions.find((x) => String(x._id ?? x.id) === id);
+                    const b = bookingSelectOptions.find((x) => String(x.debtorId) === id);
                     if (b) {
                       setPaymentBooking(b);
                       setForm(defaultPaymentForm(b));
@@ -353,35 +393,79 @@ export default function BookingPaymentsPage() {
                     setSaveError(null);
                   }}
                 >
-                  <option value="">Choose a confirmed booking…</option>
+                  <option value="">Choose a booking…</option>
                   {bookingSelectOptions.map((b) => {
                     const bid = b._id ?? b.id;
+                    const nm = String(b.guestName || '').trim() || bookingGuestLabel(b);
+                    const em = String(b.guestEmail || '').trim();
+                    const ph = String(b.guestPhone || '').trim();
+                    const guestLine = [nm, em || null, ph || null].filter(Boolean).join(' · ');
                     return (
-                      <option key={bid} value={String(bid)}>
-                        {bookingReferenceDisplay(b)} — {bookingGuestLabel(b)}
-                        {statusStr(b).toLowerCase() !== 'confirmed' ? ` (${statusStr(b)})` : ''}
+                      <option key={bid} value={String(b.debtorId || bid)}>
+                        {guestLine}
+                        {bookingReferenceDisplay(b) !== '—' ? ` (${bookingReferenceDisplay(b)})` : ''}
+                        {statusStr(b.status) ? ` — ${statusStr(b.status)}` : ''}
                       </option>
                     );
                   })}
                 </select>
-                {confirmedForSelect.length === 0 && (
+                {bookingSelectOptions.length === 0 && (
                   <p className="booking-payments-hint" style={{ marginTop: 8 }}>
-                    No <strong>confirmed</strong> bookings in the current list. Confirm a reservation in Bookings first, or use a row that is
-                    already confirmed below.
+                    No eligible bookings with balances found in the current list.
                   </p>
                 )}
               </div>
+              {outstandingBookings.length > 0 ? (
+                <div className="form-group" style={{ marginBottom: 14 }}>
+                  <div className="form-label">Unpaid / outstanding booking guests</div>
+                  <div style={{ display: 'grid', gap: 8, maxHeight: 180, overflowY: 'auto', paddingRight: 2 }}>
+                    {outstandingBookings.map(({ booking: b, outstanding }) => {
+                      const bid = String(b._id ?? b.id ?? '');
+                      return (
+                        <button
+                          key={`out-${bid}`}
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ justifyContent: 'space-between' }}
+                          onClick={() => {
+                            setPaymentBooking(b);
+                            setForm(defaultPaymentForm(b));
+                            setSaveError(null);
+                          }}
+                        >
+                          <span style={{ textAlign: 'left' }}>
+                            <div>{String(b.guestName || '').trim() || bookingGuestLabel(b)}</div>
+                            {b.guestEmail ? <div className="text-muted">{b.guestEmail}</div> : null}
+                            {b.guestPhone ? <div className="text-muted">{b.guestPhone}</div> : null}
+                          </span>
+                          <strong>{fmtMoney(outstanding)}</strong>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="booking-payments-hint" style={{ marginTop: 8 }}>
+                    Quick-pick guests with outstanding balances. The amount field auto-fills with the selected balance.
+                  </p>
+                </div>
+              ) : null}
               {paymentBooking ? (
                 <div className="booking-payments-modal-summary">
                   <div>
-                    <strong>{bookingGuestLabel(paymentBooking)}</strong>
-                    <span className="booking-payments-modal-ref">{bookingReferenceDisplay(paymentBooking)}</span>
+                    <strong>
+                      {String(paymentBooking.guestName || '').trim() || bookingGuestLabel(paymentBooking)}
+                    </strong>
                   </div>
+                  {paymentBooking.guestEmail ? (
+                    <div className="booking-payments-email">{paymentBooking.guestEmail}</div>
+                  ) : null}
+                  {paymentBooking.guestPhone ? (
+                    <div className="booking-payments-email">{paymentBooking.guestPhone}</div>
+                  ) : null}
                   <div className="booking-payments-modal-meta">
-                    Booking total {fmtMoney(bookingTotalAmount(paymentBooking))}
-                    {paymentBooking.deposit != null && Number(paymentBooking.deposit) > 0
-                      ? ` · Deposit recorded R ${Number(paymentBooking.deposit).toLocaleString('en-ZA')}`
-                      : null}
+                    Ref {bookingReferenceDisplay(paymentBooking)} · Amount owed {fmtMoney(paymentBooking.amountOwed)} ·
+                    Balance {fmtMoney(paymentBooking.balance)}
+                    {paymentBooking.invoiceStatus ? ` · Invoice ${paymentBooking.invoiceStatus}` : ''}
+                    {paymentBooking.invoiceDueDate ? ` · Due ${String(paymentBooking.invoiceDueDate).slice(0, 10)}` : ''}
                   </div>
                 </div>
               ) : (
@@ -415,44 +499,13 @@ export default function BookingPaymentsPage() {
                       onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
                     />
                   </div>
-                  <div className="transactions-form-field">
-                    <label htmlFor="bp-debit">Receive into (debit)</label>
-                    <select
-                      id="bp-debit"
-                      className="form-control"
-                      value={form.debitAccount}
-                      onChange={(e) => setForm((f) => ({ ...f, debitAccount: e.target.value }))}
-                    >
-                      {bankCashOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="transactions-form-field">
-                    <label htmlFor="bp-credit">Clear receivable (credit)</label>
-                    <select
-                      id="bp-credit"
-                      className="form-control"
-                      value={form.creditAccount}
-                      onChange={(e) => setForm((f) => ({ ...f, creditAccount: e.target.value }))}
-                    >
-                      {ACCOUNT_OPTIONS.filter((o) => o.value === '1010').map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="transactions-form-field transactions-form-field--wide">
-                    <label htmlFor="bp-desc">Description</label>
+                    <label htmlFor="bp-desc">Note</label>
                     <input
                       id="bp-desc"
                       className="form-control"
-                      required
-                      value={form.description}
-                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                      value={form.note}
+                      onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                     />
                   </div>
                   <div className="transactions-form-field transactions-form-field--wide">
@@ -467,8 +520,8 @@ export default function BookingPaymentsPage() {
                   </div>
                 </div>
                 <p className="chart-of-accounts-api-note">
-                  Creates <code>POST /api/finance/transactions</code> with <code>type: income</code>,{' '}
-                  <code>category: booking</code>, and <code>booking</code> set to this reservation id.
+                  Saves via <code>POST /api/debtors/:id/payments</code> and relies on backend journal posting for the
+                  double-entry transaction.
                 </p>
                 {saveError && (
                   <div className="card card--error" style={{ marginTop: 12 }}>
@@ -487,7 +540,7 @@ export default function BookingPaymentsPage() {
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary btn-sm" disabled={createMutation.isPending}>
-                    {createMutation.isPending ? 'Saving…' : 'Create transaction'}
+                    {createMutation.isPending ? 'Saving…' : 'Record payment'}
                   </button>
                 </div>
               </form>

@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import LoginPage from '@/pages/LoginPage';
+import AdminLayout from '@/pages/admin/AdminLayout';
+import CeoLayout from '@/pages/ceo/CeoLayout';
+import FinanceLayout from '@/pages/finance/FinanceLayout';
+import EmployeeLayout from '@/pages/employee/EmployeeLayout';
 
 const STALE_TIME = 1000 * 60 * 5;
 
@@ -17,13 +21,9 @@ const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const BookingPage = lazy(() => import('@/pages/BookingPage'));
 const BookingTrackPage = lazy(() => import('@/pages/BookingTrackPage'));
 
-const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'));
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
-const CeoLayout = lazy(() => import('@/pages/ceo/CeoLayout'));
 const CeoDashboard = lazy(() => import('@/pages/ceo/CeoDashboard'));
-const FinanceLayout = lazy(() => import('@/pages/finance/FinanceLayout'));
 const FinanceDashboard = lazy(() => import('@/pages/finance/FinanceDashboard'));
-const EmployeeLayout = lazy(() => import('@/pages/employee/EmployeeLayout'));
 const EmployeeDashboard = lazy(() => import('@/pages/employee/EmployeeDashboard'));
 const EmployeeLogsPlaceholder = lazy(() => import('@/pages/employee/EmployeeLogsPlaceholder'));
 const MyTasksPage = lazy(() => import('@/pages/employee/MyTasksPage'));
@@ -133,6 +133,7 @@ function App() {
                 <Route path="dashboard" element={<FinanceDashboard />} />
                 <Route path="transactions" element={<TransactionsPage />} />
                 <Route path="booking-payments" element={<BookingPaymentsPage />} />
+                <Route path="payments" element={<BookingPaymentsPage />} />
                 <Route path="salary" element={<SalaryPage />} />
                 <Route path="suppliers" element={<SuppliersPage />} />
                 <Route path="debtors" element={<DebtorsPage />} />

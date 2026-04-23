@@ -38,8 +38,8 @@ export const dashboardNavConfig = {
         items: [
           { icon: 'fas fa-th-large', label: 'Dashboard', path: 'dashboard' },
           { icon: 'fas fa-exchange-alt', label: 'Transactions', path: 'transactions' },
-          { icon: 'fas fa-hand-holding-usd', label: 'Booking payments', path: 'booking-payments' },
-          { icon: 'fas fa-money-bill-wave', label: 'Payments', path: 'salary' },
+          { icon: 'fas fa-hand-holding-usd', label: 'Payments', path: 'payments' },
+          { icon: 'fas fa-money-bill-wave', label: 'Worker payments', path: 'salary' },
           { icon: 'fas fa-truck', label: 'Suppliers', path: 'suppliers' },
           { icon: 'fas fa-user-clock', label: 'Debtors', path: 'debtors' },
           { icon: 'fas fa-file-invoice', label: 'Invoices', path: 'invoices' },
@@ -65,7 +65,6 @@ export const dashboardNavConfig = {
         label: 'Operations (read-only)',
         items: [
           { icon: 'fas fa-calendar-check', label: 'Bookings', path: 'bookings' },
-          { icon: 'fas fa-calculator', label: 'Finance', path: 'finance' },
         ],
       },
       {
@@ -136,7 +135,8 @@ const pageTitlesByRole = {
   finance: {
     dashboard: "Finance Dashboard",
     transactions: "Transactions",
-    salary: "Payments",
+    payments: "Payments",
+    salary: "Worker payments",
     suppliers: "Suppliers",
     debtors: "Debtors",
     invoices: "Invoices",
@@ -188,6 +188,7 @@ export const pageDescriptions = {
     dashboard: "Income vs expense summary, month-to-date totals",
     transactions: "Add income/expense, view and filter all entries",
     'booking-payments': "Record guest payments for confirmed bookings as finance transactions",
+    payments: "Record guest payments for confirmed bookings as finance transactions",
     salary: "Record wage and salary payments, filter by employee or month",
     suppliers: "Supplier list, add payment, payment history per supplier",
     debtors: "Outstanding debtors, mark partial/paid, aging summary",

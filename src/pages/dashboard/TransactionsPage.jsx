@@ -6,6 +6,7 @@ import {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  FINANCE_TRANSACTIONS_MAX_LIMIT,
 } from '@/api/finance';
 import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel } from '@/constants/transactionCategories';
 import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
@@ -13,10 +14,13 @@ import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
 import { parseLocalDate } from '@/utils/availability';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
-import { newIdempotencyKey, isTransactionLedgerPosted, getTransactionRowDebitCreditNet } from '@/utils/transactionLedgerUi';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import { newIdempotencyKey, getTransactionRowDebitCreditNet } from '@/utils/transactionLedgerUi';
 import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 
 const LIMIT = 20;
+/** When URL has a date range, request up to the finance route max so the table matches statement drill-down. */
+const LIST_LIMIT_WITH_RANGE = FINANCE_TRANSACTIONS_MAX_LIMIT;
 
 function moneyOrBlank(n) {
   if (n == null || Number.isNaN(Number(n))) return '';
@@ -53,6 +57,7 @@ export default function TransactionsPage() {
   const qpType = searchParams.get('type') || '';
   const [page, setPage] = useState(1);
   const [tableSearch, setTableSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -61,9 +66,11 @@ export default function TransactionsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', page, qpStart, qpEnd, qpCategory],
     queryFn: async () => {
+      const hasDateRange = Boolean(qpStart && qpEnd);
       const res = await getTransactions({
         page,
-        limit: LIMIT,
+        limit: hasDateRange ? LIST_LIMIT_WITH_RANGE : LIMIT,
+        includeByAccount: 0,
         ...(qpStart ? { start: qpStart } : {}),
         ...(qpEnd ? { end: qpEnd } : {}),
         ...(qpCategory ? { category: qpCategory } : {}),
@@ -77,16 +84,20 @@ export default function TransactionsPage() {
     return listRaw.filter((t) => (t.type || '') === qpType);
   }, [listRaw, qpType]);
   const listDisplayed = useMemo(() => {
-    if (!tableSearch.trim()) return list;
+    let rows = list;
+    if (monthFilter) {
+      rows = rows.filter((t) => String(t.date ?? '').slice(0, 7) === monthFilter);
+    }
+    if (!tableSearch.trim()) return rows;
     const q = tableSearch.trim().toLowerCase();
-    return list.filter(
+    return rows.filter(
       (t) =>
         String(t.description || '').toLowerCase().includes(q) ||
         String(t.reference || '').toLowerCase().includes(q) ||
         String(transactionCategoryLabel(t.category) || '').toLowerCase().includes(q) ||
         String(t.type || '').toLowerCase().includes(q)
     );
-  }, [list, tableSearch]);
+  }, [list, tableSearch, monthFilter]);
   const meta = data?.meta ?? {};
 
   const openAdd = useCallback(() => {
@@ -185,15 +196,30 @@ export default function TransactionsPage() {
   }
 
   const saving = createMutation.isPending || updateMutation.isPending;
-  const colCount = 10;
+  const colCount = 9;
   const totals = meta?.totals ?? {};
+  const totalsShown = useMemo(() => {
+    if (!tableSearch.trim() && !monthFilter) return totals;
+    let debit = 0;
+    let credit = 0;
+    let net = 0;
+    for (const t of listDisplayed) {
+      const { rowDebit, rowCredit, rowNet } = getTransactionRowDebitCreditNet(t);
+      debit += Number(rowDebit) || 0;
+      credit += Number(rowCredit) || 0;
+      net += Number(rowNet) || 0;
+    }
+    return { debit, credit, net };
+  }, [listDisplayed, tableSearch, monthFilter, totals]);
 
   return (
     <div className="page-stack">
       <div className="page-header page-header--compact">
         <div className="page-header-left">
           <div className="page-title">Transactions</div>
-          <div className="page-subtitle">Income and expense entries (posted to the ledger when accounting is configured)</div>
+          <div className="page-subtitle">
+            Income and expense entries (posted to the ledger when accounting is configured)
+          </div>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
           <i className="fas fa-plus" /> Add
@@ -201,16 +227,13 @@ export default function TransactionsPage() {
       </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
 
-      <div className="bookings-filters-bar" style={{ marginBottom: 12 }}>
-        <input
-          type="search"
-          className="form-control"
-          placeholder="Search description, reference, category…"
-          value={tableSearch}
-          onChange={(e) => setTableSearch(e.target.value)}
-          style={{ maxWidth: 320 }}
-        />
-      </div>
+      <DashboardListFilters
+        search={tableSearch}
+        onSearchChange={setTableSearch}
+        searchPlaceholder="Search description, reference, category…"
+        month={monthFilter}
+        onMonthChange={setMonthFilter}
+      />
 
       {modalOpen && (
         <div
@@ -414,7 +437,6 @@ export default function TransactionsPage() {
                   <th>Type</th>
                   <th>Category</th>
                   <th>Description</th>
-                  <th>Ledger</th>
                   <th className="statement-table-num">Debit</th>
                   <th className="statement-table-num">Credit</th>
                   <th className="statement-table-num">Net</th>
@@ -436,8 +458,6 @@ export default function TransactionsPage() {
                 {!isLoading &&
                   listDisplayed.map((t) => {
                     const id = t._id ?? t.id;
-                    const jid = t.journalEntryId;
-                    const posted = isTransactionLedgerPosted(t);
                     const refundLike = t.category === 'refund';
                     const { rowDebit, rowCredit, rowNet } = getTransactionRowDebitCreditNet(t);
                     const runningNet = t.netBalance ?? ((Number(t.creditBalance) || 0) - (Number(t.debitBalance) || 0));
@@ -460,21 +480,6 @@ export default function TransactionsPage() {
                         </td>
                         <td>{transactionCategoryLabel(t.category)}</td>
                         <td>{t.description || '—'}</td>
-                        <td>
-                          {posted ? (
-                            <span
-                              className="transactions-ledger-pill"
-                              title={jid ? String(jid) : t.ledgerStatus || 'Posted'}
-                            >
-                              <i className="fas fa-book" aria-hidden />
-                              Posted
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 12, color: 'var(--text-muted, #6b7a72)' }} title="Unposted">
-                              —
-                            </span>
-                          )}
-                        </td>
                         <td className="statement-table-num pl-neg">{moneyOrBlank(rowDebit)}</td>
                         <td className="statement-table-num pl-pos">{moneyOrBlank(rowCredit)}</td>
                         <td className={'statement-table-num ' + ((Number(rowNet) || 0) >= 0 ? 'pl-pos' : 'pl-neg')}>
@@ -504,11 +509,18 @@ export default function TransactionsPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5}><strong>Totals</strong></td>
-                  <td className="statement-table-num pl-neg"><strong>{moneyOrBlank(totals.debit)}</strong></td>
-                  <td className="statement-table-num pl-pos"><strong>{moneyOrBlank(totals.credit)}</strong></td>
-                  <td className={'statement-table-num ' + ((Number(totals.net ?? 0)) >= 0 ? 'pl-pos' : 'pl-neg')}>
-                    <strong>{moneyOrBlank(totals.net)}</strong>
+                  <td colSpan={4}>
+                    <strong>Totals</strong>
+                    {tableSearch.trim() || monthFilter ? (
+                      <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+                        (filtered view on this page)
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="statement-table-num pl-neg"><strong>{moneyOrBlank(totalsShown.debit)}</strong></td>
+                  <td className="statement-table-num pl-pos"><strong>{moneyOrBlank(totalsShown.credit)}</strong></td>
+                  <td className={'statement-table-num ' + ((Number(totalsShown.net ?? 0)) >= 0 ? 'pl-pos' : 'pl-neg')}>
+                    <strong>{moneyOrBlank(totalsShown.net)}</strong>
                   </td>
                   <td />
                   <td />

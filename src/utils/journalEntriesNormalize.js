@@ -65,7 +65,8 @@ export function flattenJournalEntriesToLines(payload) {
   const out = [];
   for (const entry of entries) {
     if (!entry || typeof entry !== 'object') continue;
-    const lines = entry.lines;
+    /** Backend may send `lines` (journal) or `entries` (posted financial / same as finance API). */
+    const lines = entry.lines ?? entry.entries;
     if (!Array.isArray(lines)) continue;
 
     const entryId = entry._id ?? entry.id;

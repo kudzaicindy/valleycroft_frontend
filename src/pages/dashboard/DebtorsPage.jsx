@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDebtors, updateDebtor } from '@/api/debtors';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 
 const LIMIT = 20;
 function fmt(n) { return n == null ? '—' : 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 }); }
@@ -8,6 +9,8 @@ function fmt(n) { return n == null ? '—' : 'R ' + Number(n).toLocaleString('en
 export default function DebtorsPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [tableSearch, setTableSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [selectedDebtor, setSelectedDebtor] = useState(null);
   const [payAmount, setPayAmount] = useState('');
   const [payReference, setPayReference] = useState('');
@@ -94,6 +97,13 @@ export default function DebtorsPage() {
         <button type="button" className="btn btn-primary btn-sm"><i className="fas fa-plus" /> Add</button>
       </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
+      <DashboardListFilters
+        search={tableSearch}
+        onSearchChange={setTableSearch}
+        searchPlaceholder="Search name, contact, status…"
+        month={monthFilter}
+        onMonthChange={setMonthFilter}
+      />
       <div className="card">
         <div className="card-body card-body--no-pad">
           <div className="statement-table-wrap">

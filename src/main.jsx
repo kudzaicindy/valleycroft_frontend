@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@/styles/globalBase.css'
 import './index.css'
+import '@/styles/Dashboard.css'
 import App from './App.jsx'
 
 /* Remotion ad iframe: class before paint; skip StrictMode here to avoid dev double-mount + subtree churn during capture. */

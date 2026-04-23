@@ -122,6 +122,34 @@ export function cashflowMetrics(data) {
   };
 }
 
+/**
+ * Net for operating / investing / financing when API omits `total` and `net` but sends numeric line fields
+ * (e.g. `cash_received_from_customers`) or `inflows` / `outflows`.
+ */
+function readCashflowActivitiesNet(section) {
+  if (!section || typeof section !== 'object' || Array.isArray(section)) return null;
+  if (section.total != null && Number.isFinite(Number(section.total))) return Number(section.total) || 0;
+  if (section.net != null && Number.isFinite(Number(section.net))) return Number(section.net) || 0;
+  if (section.inflows != null || section.outflows != null) {
+    const inf = Number(section.inflows);
+    const outf = Number(section.outflows);
+    if (Number.isFinite(inf) || Number.isFinite(outf)) {
+      return (Number.isFinite(inf) ? inf : 0) - (Number.isFinite(outf) ? outf : 0);
+    }
+  }
+  const skip = new Set(['breakdown', 'transactions', 'transaction_details', 'transaction_count']);
+  let sum = 0;
+  let any = false;
+  for (const [k, v] of Object.entries(section)) {
+    if (skip.has(k)) continue;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      sum += v;
+      any = true;
+    }
+  }
+  return any ? sum : null;
+}
+
 export function cashflowStatementMetrics(data) {
   const d = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
   if (!d || typeof d !== 'object') {
@@ -133,21 +161,28 @@ export function cashflowStatementMetrics(data) {
     inflowT != null && outflowT != null
       ? (Number(inflowT) || 0) - (Number(outflowT) || 0)
       : null;
+  const operatingFromActivities = readCashflowActivitiesNet(d.operating_activities);
   const operating = Number(
     d.operating?.total ??
-    d.operating_activities?.total ??
-    d.operating_activities?.net ??
-    (operatingFromCashIO != null ? operatingFromCashIO : 0)
+      d.operating_activities?.total ??
+      d.operating_activities?.net ??
+      (operatingFromCashIO != null ? operatingFromCashIO : null) ??
+      operatingFromActivities ??
+      0
   ) || 0;
   const investing = Number(
     d.investing?.total ??
-    d.investing_activities?.total ??
-    0
+      d.investing_activities?.total ??
+      d.investing_activities?.net ??
+      readCashflowActivitiesNet(d.investing_activities) ??
+      0
   ) || 0;
   const financing = Number(
     d.financing?.total ??
-    d.financing_activities?.total ??
-    0
+      d.financing_activities?.total ??
+      d.financing_activities?.net ??
+      readCashflowActivitiesNet(d.financing_activities) ??
+      0
   ) || 0;
   const netChange = d.netChange != null
     ? (Number(d.netChange) || 0)
@@ -185,7 +220,62 @@ export function cashflowSectionRows(data, sectionKey) {
     }));
 }
 
-function normalizeCashflowRows(value) {
+/**
+ * APIs often send payment / purchase lines as positive magnitudes. Map to signed cash flow
+ * so UI can split inflows (>= 0) vs outflows (< 0).
+ * @param {string} key
+ * @param {number} raw
+ * @param {'operating' | 'investing' | 'financing' | null | undefined} section
+ */
+function signedCashflowLineAmount(key, raw, section) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n === 0) return n;
+  const k = String(key).toLowerCase();
+  if (!section) return n;
+
+  if (section === 'operating') {
+    if (
+      /(received|receipt|inflow|from_customers|customers|advance_received|interest_received|dividends_received)/i.test(k) &&
+      !/(paid|purchase|expense|supplier)/i.test(k)
+    ) {
+      return n < 0 ? -Math.abs(n) : n;
+    }
+    if (
+      /(paid|payable|purchase|supplier|suppliers|expense|outflow|tax|wage|salary|cost|interest_paid|dividend_paid|refund_paid|repayment)/i.test(k) ||
+      /(individual_expenses|operating_expenses|cash_paid)/i.test(k)
+    ) {
+      return n > 0 ? -Math.abs(n) : n;
+    }
+    return n;
+  }
+
+  if (section === 'investing') {
+    if (
+      /(proceeds|from_sale|sale_of|disposal|maturity|inflow|received|recovery)/i.test(k) &&
+      !/(purchase|paid|loans_given|loan_to)/i.test(k)
+    ) {
+      return n < 0 ? Math.abs(n) : n;
+    }
+    if (/(purchase|equipment|building|loans_given|loan_to|acquisition|capital_expenditure|outflow|investment_in)/i.test(k)) {
+      return n > 0 ? -Math.abs(n) : n;
+    }
+    return n;
+  }
+
+  if (section === 'financing') {
+    if (/(repayment|paid|dividend|redemption|buyback|outflow|distribution|withdrawal)/i.test(k)) {
+      return n > 0 ? -Math.abs(n) : n;
+    }
+    if (/(contribution|proceeds|borrowing|loan|inflow|issued|capital)/i.test(k)) {
+      return n < 0 ? Math.abs(n) : n;
+    }
+    return n;
+  }
+
+  return n;
+}
+
+function normalizeCashflowRows(value, { section } = {}) {
   const CASHFLOW_LABEL_OVERRIDES = {
     netIncome: 'Rent paid',
   };
@@ -195,8 +285,9 @@ function normalizeCashflowRows(value) {
       .map((r, i) => {
         const key = r.key ?? r.code ?? r.accountCode ?? r.name ?? r.label ?? `row_${i}`;
         const label = r.label ?? r.name ?? r.accountName ?? CASHFLOW_LABEL_OVERRIDES[String(key)] ?? toTitleFromKey(key);
-        const amount = Number(r.amount ?? r.value ?? r.total ?? 0);
-        if (!Number.isFinite(amount)) return null;
+        const raw = Number(r.amount ?? r.value ?? r.total ?? 0);
+        if (!Number.isFinite(raw)) return null;
+        const amount = signedCashflowLineAmount(String(key), raw, section);
         return { key: String(key), label: String(label), amount };
       })
       .filter(Boolean);
@@ -204,11 +295,15 @@ function normalizeCashflowRows(value) {
   if (typeof value === 'object') {
     return Object.entries(value)
       .filter(([k, v]) => k !== 'total' && Number.isFinite(Number(v)))
-      .map(([k, v]) => ({
-        key: String(k),
-        label: CASHFLOW_LABEL_OVERRIDES[String(k)] ?? toTitleFromKey(k),
-        amount: Number(v) || 0,
-      }));
+      .map(([k, v]) => {
+        const raw = Number(v) || 0;
+        const amount = signedCashflowLineAmount(String(k), raw, section);
+        return {
+          key: String(k),
+          label: CASHFLOW_LABEL_OVERRIDES[String(k)] ?? toTitleFromKey(k),
+          amount,
+        };
+      });
   }
   return [];
 }
@@ -250,7 +345,8 @@ export function cashflowDetailedSections(data) {
     d?.operating ??
     d?.operating_activities?.lines ??
     (!skipOperatingAggRows ? d?.operating_activities : null) ??
-    d?.detailed_breakdown?.income?.categories
+    d?.detailed_breakdown?.income?.categories,
+    { section: 'operating' }
   );
   const cashInByCategory = Array.isArray(d?.byCategory?.cashIn)
     ? d.byCategory.cashIn.map((r) => ({
@@ -280,26 +376,29 @@ export function cashflowDetailedSections(data) {
         amount: -(Math.abs(Number(r.total ?? r.amount ?? 0) || 0)),
       }))
     : [];
-  const operatingMerged = [
-    ...operating,
-    ...cashInByCategory,
-    ...cashOutByCategory,
-    ...cashInflowCategories,
-    ...cashOutflowCategories,
-  ];
+  // Use a single operating breakdown source to avoid duplicate counting.
+  // Some payloads include both `operating` lines and category summaries for the same cash movement.
+  const operatingMerged =
+    operating.length > 0
+      ? operating
+      : cashInflowCategories.length > 0 || cashOutflowCategories.length > 0
+        ? [...cashInflowCategories, ...cashOutflowCategories]
+        : [...cashInByCategory, ...cashOutByCategory];
   const operatingIncome = operatingMerged.filter((r) => r.amount >= 0);
   const operatingExpense = operatingMerged.filter((r) => r.amount < 0);
   const investing = normalizeCashflowRows(
     d?.investing?.lines ??
     d?.investing ??
     d?.investing_activities?.lines ??
-    d?.investing_activities
+    d?.investing_activities,
+    { section: 'investing' }
   );
   const financing = normalizeCashflowRows(
     d?.financing?.lines ??
     d?.financing ??
     d?.financing_activities?.lines ??
-    d?.financing_activities
+    d?.financing_activities,
+    { section: 'financing' }
   );
   const cashAccounts = [
     ...normalizeCashflowRows(
@@ -493,6 +592,9 @@ export function normalizeBalanceSheetRows(data) {
   if (Array.isArray(data)) return data;
   let d = data && typeof data === 'object' && data.data && !Array.isArray(data.data) ? data.data : data;
   if (!d || typeof d !== 'object') return [];
+  if (d.accounting && typeof d.accounting === 'object' && !Array.isArray(d.accounting)) {
+    d = d.accounting;
+  }
   if (Array.isArray(d.items)) return d.items;
   if (Array.isArray(d.lineItems)) return d.lineItems;
 
@@ -503,6 +605,23 @@ export function normalizeBalanceSheetRows(data) {
     out.push(...mapBalanceSheetAccountArray(d.assets, 'assets', 'Assets'));
     out.push(...mapBalanceSheetAccountArray(d.liabilities, 'liabilities', 'Liabilities'));
     out.push(...mapBalanceSheetAccountArray(d.equity, 'equity', 'Equity'));
+    return out;
+  }
+
+  // Presentation-first shape:
+  // { presentation: { sections: [ { key, label, lines:[{accountCode, accountName, balance}] } ] } }
+  const sections =
+    d.presentation && typeof d.presentation === 'object' && Array.isArray(d.presentation.sections)
+      ? d.presentation.sections
+      : null;
+  if (sections && sections.length > 0) {
+    const out = [];
+    for (const sec of sections) {
+      const sectionLabel = sec?.label || toTitleFromKey(sec?.key || '');
+      const sectionKey = String(sec?.key || '').toLowerCase();
+      const lines = Array.isArray(sec?.lines) ? sec.lines : [];
+      out.push(...mapBalanceSheetAccountArray(lines, sectionKey || 'other', sectionLabel || 'Section'));
+    }
     return out;
   }
 
@@ -518,9 +637,17 @@ export function normalizeBalanceSheetRows(data) {
  */
 export function readDoubleEntryBalanceSheetTotals(d) {
   if (!d || typeof d !== 'object') return null;
-  const a = d.totalAssets;
-  const l = d.totalLiabilities;
-  const e = d.totalEquity;
+  const src =
+    d.accounting && typeof d.accounting === 'object' && !Array.isArray(d.accounting)
+      ? d.accounting
+      : d;
+  const pres =
+    src.presentation && typeof src.presentation === 'object' && !Array.isArray(src.presentation)
+      ? src.presentation
+      : null;
+  const a = src.totalAssets ?? pres?.totalAssets;
+  const l = src.totalLiabilities ?? pres?.totalLiabilities;
+  const e = src.totalEquity ?? pres?.totalEquity;
   if (a == null && l == null && e == null) return null;
   return {
     assets: a != null ? Number(a) : null,

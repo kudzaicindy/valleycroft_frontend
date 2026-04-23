@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getEmployees, getWorklogs, createWorklog } from '@/api/staff';
 import { createSalary, getSalary } from '@/api/finance';
+import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import './StaffPage.css';
 
@@ -70,6 +71,8 @@ export default function StaffPage() {
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [payFormError, setPayFormError] = useState('');
   const [paySearch, setPaySearch] = useState('');
+  const [payMonthFilter, setPayMonthFilter] = useState('');
+  const [logMonthFilter, setLogMonthFilter] = useState('');
 
   useEffect(() => {
     if (!addLogModalOpen && !payModalOpen) return undefined;
@@ -103,26 +106,38 @@ export default function StaffPage() {
     return d?.data ?? [];
   }, [salaryData]);
 
-  function employeeNameById(id) {
+  const employeeNameById = useCallback((id) => {
     if (id == null || id === '') return '—';
     const e = rawEmployees.find((x) => String(x._id ?? x.id) === String(id));
     return e ? empName(e) : String(id).slice(-8);
-  }
+  }, [rawEmployees]);
 
-  function paymentPaidTo(p) {
-    if (p.employee && typeof p.employee === 'object' && p.employee.name) return p.employee.name;
-    return employeeNameById(p.employeeId);
-  }
+  const paymentPaidTo = useCallback(
+    (p) => {
+      if (p.employee && typeof p.employee === 'object' && p.employee.name) return p.employee.name;
+      return employeeNameById(p.employeeId);
+    },
+    [employeeNameById]
+  );
 
   const filteredPayments = useMemo(() => {
-    if (!paySearch.trim()) return paymentsRaw;
+    let rows = paymentsRaw;
+    if (payMonthFilter) {
+      rows = rows.filter((p) => {
+        const m =
+          p.month != null && p.month !== '' ? String(p.month).slice(0, 7) : String(p.paidOn ?? '').slice(0, 7);
+        if (!m) return true;
+        return m === payMonthFilter;
+      });
+    }
+    if (!paySearch.trim()) return rows;
     const q = paySearch.trim().toLowerCase();
-    return paymentsRaw.filter((p) => {
+    return rows.filter((p) => {
       const who = String(paymentPaidTo(p)).toLowerCase();
       const notes = String(p.notes || '').toLowerCase();
       return who.includes(q) || notes.includes(q);
     });
-  }, [paymentsRaw, paySearch, rawEmployees]);
+  }, [paymentsRaw, paySearch, payMonthFilter, paymentPaidTo]);
 
   const { data: allWorklogsData, isLoading: allLogsLoading } = useQuery({
     queryKey: ['worklogs', 'admin-all'],
@@ -140,6 +155,13 @@ export default function StaffPage() {
     if (logEmployeeFilter) {
       rows = rows.filter((w) => String(w.employeeId ?? w.employee?._id ?? w.employee) === logEmployeeFilter);
     }
+    if (logMonthFilter) {
+      rows = rows.filter((w) => {
+        const d = String(w.workDate ?? w.date ?? w.createdAt ?? '').slice(0, 7);
+        if (!d || d.length < 7) return true;
+        return d === logMonthFilter;
+      });
+    }
     if (!logSearch.trim()) return rows;
     const q = logSearch.trim().toLowerCase();
     return rows.filter((w) => {
@@ -147,7 +169,7 @@ export default function StaffPage() {
       const done = String(w.workDone || '').toLowerCase();
       return name.includes(q) || done.includes(q);
     });
-  }, [allLogsRaw, logSearch, logEmployeeFilter, rawEmployees]);
+  }, [allLogsRaw, logSearch, logEmployeeFilter, logMonthFilter, employeeNameById]);
 
   const wagePaymentMutation = useMutation({
     mutationFn: (body) => createSalary(body),
@@ -284,13 +306,13 @@ export default function StaffPage() {
 
         <div className="bookings-main">
           <div className="bookings-filters-bar">
-            <input
-              type="search"
-              className="form-control"
-              placeholder="Search by worker name or work description…"
-              value={logSearch}
-              onChange={(e) => setLogSearch(e.target.value)}
-              style={{ maxWidth: 280 }}
+            <DashboardListFilters
+              embedded
+              search={logSearch}
+              onSearchChange={setLogSearch}
+              searchPlaceholder="Search by worker name or work description…"
+              month={logMonthFilter}
+              onMonthChange={setLogMonthFilter}
             />
             <select
               className="form-control"
@@ -542,7 +564,7 @@ export default function StaffPage() {
 
       <div className="acct-ui-meta">
         {filteredPayments.length} record{filteredPayments.length === 1 ? '' : 's'}
-        {paySearch.trim() ? ` · filtered by search` : ''}
+        {paySearch.trim() || payMonthFilter ? ` · filtered` : ''}
       </div>
 
       {(employeesError || salaryError) && (
@@ -554,17 +576,14 @@ export default function StaffPage() {
       <div className="card finance-stmt-card acct-ui-table-card">
         <div className="card-body card-body--no-pad">
           <div className="staff-pay-table-toolbar">
-            <label className="staff-pay-toolbar-label">
-              <span>Search</span>
-              <input
-                type="search"
-                className="form-control form-control-sm"
-                placeholder="Worker or notes…"
-                value={paySearch}
-                onChange={(e) => setPaySearch(e.target.value)}
-                aria-label="Search payments"
-              />
-            </label>
+            <DashboardListFilters
+              embedded
+              search={paySearch}
+              onSearchChange={setPaySearch}
+              searchPlaceholder="Worker or notes…"
+              month={payMonthFilter}
+              onMonthChange={setPayMonthFilter}
+            />
           </div>
           <div className="statement-table-wrap staff-pay-table-scroll">
             {salaryLoading && (
