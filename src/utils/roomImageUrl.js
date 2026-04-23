@@ -25,7 +25,8 @@ function encodeKeySegments(key) {
 export function resolveRoomImageUrl(src) {
   if (src == null || src === '') return '';
   const s = String(src).trim();
-  if (/^https?:\/\//i.test(s) || /^data:/i.test(s)) return s;
+  if (/^https?:\/\//i.test(s)) return encodeURI(s);
+  if (/^data:/i.test(s)) return s;
   const configuredS3Base =
     typeof import.meta !== 'undefined' && import.meta.env?.VITE_S3_PUBLIC_HTTP_BASE
       ? String(import.meta.env.VITE_S3_PUBLIC_HTTP_BASE).trim().replace(/\/$/, '')
@@ -44,6 +45,15 @@ export function resolveRoomImageUrl(src) {
     }
     // Room/public image keys are stored in S3 (e.g. /public/... or /rooms/...).
     if (s.startsWith('/public/') || s.startsWith('/rooms/')) {
+      return `${s3Base}${encodeURI(s)}`;
+    }
+    // Legacy DB image keys are root-level filenames (e.g. /house%201living%20room.jpeg).
+    // Treat these as S3 object keys, not frontend-static assets.
+    if (
+      /^\/house(?:%20|\s|[-_])?/i.test(s) ||
+      /%20/.test(s) ||
+      /\.(jpe?g|png|webp|gif)$/i.test(s)
+    ) {
       return `${s3Base}${encodeURI(s)}`;
     }
     return configuredS3Base ? `${configuredS3Base}${encodeURI(s)}` : encodeURI(s);
