@@ -1,15 +1,10 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import { getEquipment, getStock } from '@/api/inventory';
+import { INVENTORY_DEMO_STOCK } from '@/utils/inventoryDemoData';
+import { normalizeInventoryPayload } from '@/utils/inventoryData';
 import './InventoryPage.css';
-
-/** Optional `asOfMonth` (YYYY-MM) for month filter demo rows. */
-const DEMO_STOCK = [
-  { id: '1', kind: 'consumable', name: 'Toilet Paper Rolls', qty: '6 units', level: 12, band: 'low', emoji: '🧻', asOfMonth: '2026-04' },
-  { id: '2', kind: 'consumable', name: 'Fresh Linen Sets', qty: '24 sets', level: 68, band: 'ok', emoji: '🛏️', asOfMonth: '2026-04' },
-  { id: '3', kind: 'consumable', name: 'Cleaning Supplies', qty: 'Mixed', level: 45, band: 'ok', emoji: '🧴', asOfMonth: '2026-03' },
-  { id: '4', kind: 'consumable', name: 'Coffee & Tea', qty: 'Pantry', level: 8, band: 'low', emoji: '☕', asOfMonth: '2026-03' },
-  { id: '5', kind: 'equipment', name: 'Commercial mower', qty: '1 unit', level: 72, band: 'ok', emoji: '🛞', asOfMonth: '2026-04' },
-];
 
 function bandFromLevel(level) {
   const n = Number(level);
@@ -18,7 +13,24 @@ function bandFromLevel(level) {
 }
 
 export default function InventoryPage() {
-  const [items, setItems] = useState(() => DEMO_STOCK.map((x) => ({ ...x })));
+  const inventoryQuery = useQuery({
+    queryKey: ['inventory', 'stock-and-equipment'],
+    retry: false,
+    queryFn: async () => {
+      const [stockResult, equipmentResult] = await Promise.allSettled([getStock(), getEquipment()]);
+      const stockRes = stockResult.status === 'fulfilled' ? stockResult.value : null;
+      const equipmentRes = equipmentResult.status === 'fulfilled' ? equipmentResult.value : null;
+      return normalizeInventoryPayload(stockRes?.data ?? stockRes, equipmentRes?.data ?? equipmentRes);
+    },
+  });
+  const sourceItems = useMemo(() => {
+    const apiItems = Array.isArray(inventoryQuery.data) ? inventoryQuery.data : [];
+    return apiItems.length ? apiItems : INVENTORY_DEMO_STOCK.map((x) => ({ ...x }));
+  }, [inventoryQuery.data]);
+  const [items, setItems] = useState(() => sourceItems);
+  useEffect(() => {
+    setItems(sourceItems.map((x) => ({ ...x })));
+  }, [sourceItems]);
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [bandFilter, setBandFilter] = useState('');
@@ -109,7 +121,9 @@ export default function InventoryPage() {
         <div className="inventory-header-text">
           <h1 className="page-title">Inventory &amp; equipment</h1>
           <p className="page-subtitle">
-            Consumables and equipment in one register — local until your inventory API is connected.
+            Consumables and equipment in one register.
+            {inventoryQuery.isPending ? ' Loading from inventory API…' : ''}
+            {inventoryQuery.isError ? ' Inventory API unavailable, showing fallback data.' : ''}
           </p>
         </div>
         <div className="inventory-header-actions">

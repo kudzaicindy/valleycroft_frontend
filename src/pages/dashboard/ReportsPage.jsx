@@ -29,6 +29,17 @@ const ALL_REPORTS = [
   },
 ];
 
+const RECENT_RUNS = [
+  { report: 'Weekly Summary', period: 'Week 13, 2026', generatedAt: '2026-03-31 08:45', format: 'PDF', status: 'Completed' },
+  { report: 'Monthly Report', period: 'March 2026', generatedAt: '2026-03-30 17:10', format: 'PDF', status: 'Completed' },
+  { report: 'Quarterly Analysis', period: 'Q1 2026', generatedAt: '2026-03-29 14:22', format: 'PDF', status: 'Completed' },
+];
+
+const DELIVERY_QUEUE = [
+  { report: 'Monthly Report', recipient: 'ceo@valleycroft.co.za', schedule: '1st of month · 08:00', nextRun: '2026-05-01 08:00', status: 'Active' },
+  { report: 'Weekly Summary', recipient: 'ops@valleycroft.co.za', schedule: 'Mondays · 07:30', nextRun: '2026-04-27 07:30', status: 'Active' },
+];
+
 export default function ReportsPage() {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
@@ -96,22 +107,64 @@ export default function ReportsPage() {
       </div>
       <div className="card">
         <div className="card-header">
-          <div className="card-title">
-            12-Month Revenue Comparison <span>2025 vs 2026</span>
-          </div>
+          <div className="card-title">Recent report runs</div>
         </div>
-        <div className="card-body">
-          <div className="bar-chart" style={{ height: 160, gap: 16 }}>
-            {['52%', '68%', '72%', '58%', '65%', '70%'].map((h, i) => (
-              <div key={i} className="bar-wrap">
-                <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: '100%' }}>
-                  <div className="bar-col forest" style={{ height: h, width: 14 }} />
-                  <div className="bar-col gold" style={{ height: `${parseFloat(h) + 8}%`, width: 14 }} />
-                </div>
-                <div className="bar-label">{['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'][i]}</div>
-              </div>
-            ))}
-          </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Report</th>
+                <th>Period</th>
+                <th>Generated</th>
+                <th>Format</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {RECENT_RUNS.map((row) => (
+                <tr key={`${row.report}-${row.generatedAt}`}>
+                  <td><strong>{row.report}</strong></td>
+                  <td>{row.period}</td>
+                  <td>{row.generatedAt}</td>
+                  <td>{row.format}</td>
+                  <td>
+                    <span className="badge badge-confirmed">{row.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">Scheduled report delivery</div>
+        </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Report</th>
+                <th>Recipient</th>
+                <th>Schedule</th>
+                <th>Next run</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DELIVERY_QUEUE.map((row) => (
+                <tr key={`${row.report}-${row.recipient}`}>
+                  <td><strong>{row.report}</strong></td>
+                  <td>{row.recipient}</td>
+                  <td>{row.schedule}</td>
+                  <td>{row.nextRun}</td>
+                  <td>
+                    <span className="badge badge-confirmed">{row.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </>

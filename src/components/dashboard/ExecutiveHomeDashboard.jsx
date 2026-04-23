@@ -4,7 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getFinanceDashboard } from '@/api/finance';
 import { getGuestBookings } from '@/api/guestBookings';
+import { getEquipment, getStock } from '@/api/inventory';
 import { normalizeFinanceDashboardResponse, fmtRand, mapFinanceQuickLinkHref } from '@/utils/financeDashboardResponse';
+import { getInventorySnapshotForMonth } from '@/utils/inventoryDemoData';
+import { inventorySnapshotFromRows, normalizeInventoryPayload } from '@/utils/inventoryData';
 import { FARM_STAYS } from '@/content/farmStays';
 
 /** @typedef {'ceo' | 'finance' | 'admin'} HomeVariant */
@@ -231,6 +234,29 @@ export default function ExecutiveHomeDashboard({ variant }) {
     const base = currentYear;
     return Array.from({ length: 7 }, (_, i) => String(base - 5 + i));
   }, [currentYear]);
+  const selectedMonthKey = useMemo(
+    () => `${selectedYearNum}-${String(selectedMonthNum).padStart(2, '0')}`,
+    [selectedYearNum, selectedMonthNum]
+  );
+  const inventoryQuery = useQuery({
+    queryKey: ['inventory', 'dashboard', selectedMonthKey],
+    enabled: variant === 'admin',
+    retry: false,
+    queryFn: async () => {
+      const [stockResult, equipmentResult] = await Promise.allSettled([getStock(), getEquipment()]);
+      const stockRes = stockResult.status === 'fulfilled' ? stockResult.value : null;
+      const equipmentRes = equipmentResult.status === 'fulfilled' ? equipmentResult.value : null;
+      return normalizeInventoryPayload(stockRes?.data ?? stockRes, equipmentRes?.data ?? equipmentRes);
+    },
+  });
+  const inventorySnapshot = useMemo(
+    () => {
+      const apiRows = Array.isArray(inventoryQuery.data) ? inventoryQuery.data : [];
+      if (apiRows.length) return inventorySnapshotFromRows(apiRows, selectedMonthKey);
+      return getInventorySnapshotForMonth(selectedMonthKey);
+    },
+    [inventoryQuery.data, selectedMonthKey]
+  );
 
   const dashQuery = useQuery({
     queryKey: ['finance', 'dashboard-home', variant, revenueMonths, selectedMonth, selectedYear],
@@ -285,6 +311,10 @@ export default function ExecutiveHomeDashboard({ variant }) {
       const checkIns = cards?.checkInsToday;
       const checkOuts = cards?.checkOutsToday;
       const stockAlerts = cards?.stockAlerts;
+      const stockAlertsCount = variant === 'admin' ? inventorySnapshot.lowCount : (stockAlerts?.count ?? 0);
+      const stockAlertsTrendText = variant === 'admin'
+        ? `${inventorySnapshot.lowCount} low of ${inventorySnapshot.totalCount} items`
+        : 'Reorder needed';
 
       return [
         {
@@ -325,18 +355,35 @@ export default function ExecutiveHomeDashboard({ variant }) {
           label: 'Stock alerts',
           value: (
             <>
-              {stockAlerts?.count ?? 0}
+              {stockAlertsCount}
               <span className="stat-unit"> SKUs</span>
             </>
           ),
           trendDir: 'down',
           trendIcon: 'fas fa-exclamation-triangle',
-          trendText: 'Reorder needed',
+          trendText: stockAlertsTrendText,
         },
       ];
     }
+    if (variant === 'admin') {
+      const cards = emptyOperationsStatCards();
+      return cards.map((card) =>
+        card.label === 'Stock alerts'
+          ? {
+              ...card,
+              value: (
+                <>
+                  {inventorySnapshot.lowCount}
+                  <span className="stat-unit"> SKUs</span>
+                </>
+              ),
+              trendText: `${inventorySnapshot.lowCount} low of ${inventorySnapshot.totalCount} items`,
+            }
+          : card
+      );
+    }
     return emptyOperationsStatCards();
-  }, [variant, dash, operationsDashboard, occupancy]);
+  }, [variant, dash, operationsDashboard, occupancy, inventorySnapshot]);
 
   const ring = useMemo(() => {
     const base = { ...c.ring };
@@ -973,7 +1020,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
     if (loading) {
       return [
         { value: '—', label: variant === 'finance' ? 'Receipts MTD' : 'Occupancy' },
-        { value: '—', label: variant === 'finance' ? 'Open invoices' : 'Rooms occupied' },
+        { value: '—', label: variant === 'finance' ? 'Open invoices' : 'Bookings today' },
         { value: '—', label: variant === 'finance' ? 'Debtors' : 'Receipts MTD' },
       ];
     }
@@ -986,12 +1033,16 @@ export default function ExecutiveHomeDashboard({ variant }) {
       ];
     }
     const pct = occupancy ? Math.round(Number(occupancy.occupancyPct ?? occupancy.pct ?? 0)) : null;
+    const bookingsToday =
+      operationsDashboard?.cards?.checkInsToday?.count ??
+      operationsDashboard?.cards?.checkOutsToday?.count ??
+      movementsToday.length;
     return [
       { value: pct != null ? `${pct}%` : '—', label: 'Occupancy' },
-      { value: occupancy?.occupiedRooms != null ? String(occupancy.occupiedRooms) : '—', label: 'Rooms occupied' },
+      { value: bookingsToday != null ? String(bookingsToday) : '—', label: 'Bookings today' },
       { value: fmtRand(dash?.incomeMtd), label: 'Receipts MTD' },
     ];
-  }, [loading, variant, dash, occupancy]);
+  }, [loading, variant, dash, occupancy, operationsDashboard, movementsToday]);
 
   const heroSubtitle = useMemo(() => {
     if (dash?.headline) return dash.headline;
