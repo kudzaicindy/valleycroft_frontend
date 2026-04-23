@@ -7,8 +7,6 @@
  * If unset, uses `https://valleycroft.s3.amazonaws.com/<key>` (path-style encoding).
  */
 
-import { resolveApiBaseUrl } from '@/api/resolveApiBaseUrl';
-
 const DEFAULT_S3_BASE = 'https://valleycroft.s3.eu-north-1.amazonaws.com';
 
 function encodeKeySegments(key) {
@@ -18,6 +16,15 @@ function encodeKeySegments(key) {
     .join('/');
 }
 
+function normalizeEncodedUri(value) {
+  const s = String(value || '');
+  try {
+    return encodeURI(decodeURI(s));
+  } catch {
+    return encodeURI(s);
+  }
+}
+
 /**
  * @param {string | null | undefined} src
  * @returns {string}
@@ -25,7 +32,7 @@ function encodeKeySegments(key) {
 export function resolveRoomImageUrl(src) {
   if (src == null || src === '') return '';
   const s = String(src).trim();
-  if (/^https?:\/\//i.test(s)) return encodeURI(s);
+  if (/^https?:\/\//i.test(s)) return normalizeEncodedUri(s);
   if (/^data:/i.test(s)) return s;
   const configuredS3Base =
     typeof import.meta !== 'undefined' && import.meta.env?.VITE_S3_PUBLIC_HTTP_BASE
@@ -34,29 +41,11 @@ export function resolveRoomImageUrl(src) {
   const s3Base = configuredS3Base || DEFAULT_S3_BASE;
   /** Root-relative paths may contain spaces; encodeURI keeps `/` and fixes CSS url() parsing. */
   if (s.startsWith('/')) {
-    if (s.startsWith('/uploads/')) {
-      const apiBase = resolveApiBaseUrl();
-      const fallbackLocal =
-        typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL_LOCAL
-          ? String(import.meta.env.VITE_API_URL_LOCAL).trim().replace(/\/$/, '')
-          : 'http://localhost:5000';
-      const uploadsBase = (apiBase || fallbackLocal).replace(/\/$/, '');
-      return `${uploadsBase}${encodeURI(s)}`;
+    if (s.startsWith('/rooms/') || s.startsWith('/public/') || s.startsWith('/uploads/')) {
+      return `${s3Base}${normalizeEncodedUri(s)}`;
     }
-    // Room/public image keys are stored in S3 (e.g. /public/... or /rooms/...).
-    if (s.startsWith('/public/') || s.startsWith('/rooms/')) {
-      return `${s3Base}${encodeURI(s)}`;
-    }
-    // Legacy DB image keys are root-level filenames (e.g. /house%201living%20room.jpeg).
-    // Treat these as S3 object keys, not frontend-static assets.
-    if (
-      /^\/house(?:%20|\s|[-_])?/i.test(s) ||
-      /%20/.test(s) ||
-      /\.(jpe?g|png|webp|gif)$/i.test(s)
-    ) {
-      return `${s3Base}${encodeURI(s)}`;
-    }
-    return configuredS3Base ? `${configuredS3Base}${encodeURI(s)}` : encodeURI(s);
+    // Legacy room image keys often come as "/house ...jpg"; in S3 these live under /public/.
+    return `${s3Base}/public${normalizeEncodedUri(s)}`;
   }
 
   const m = /^s3:\/\/([^/]+)\/(.+)$/i.exec(s);
@@ -68,12 +57,8 @@ export function resolveRoomImageUrl(src) {
     }
     return `https://${bucket}.s3.eu-north-1.amazonaws.com/${encodeKeySegments(key)}`;
   }
-
-  if (/^(public|rooms)\//i.test(s)) {
-    return `${s3Base}/${encodeKeySegments(s)}`;
-  }
-
-  return s;
+  // Any other key-like value is treated as an S3 object key.
+  return `${s3Base}/${encodeKeySegments(s.replace(/^\/+/, ''))}`;
 }
 
 /**
