@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { getTransactions } from '@/api/finance';
 import { transactionCategoryLabel } from '@/constants/transactionCategories';
 import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
+import { useAccountsSelectOptions } from '@/hooks/useAccountsSelectOptions';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { parseLocalDate } from '@/utils/availability';
 import {
@@ -30,20 +31,21 @@ function moneyOrBlank(n) {
   return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
 }
 
-function accountLabel(code) {
+function accountLabel(code, labelByCode) {
   const c = String(code ?? '').trim();
   if (!c) return '—';
+  if (labelByCode?.has(c)) return labelByCode.get(c);
   const o = ACCOUNT_OPTIONS.find((x) => x.value === c);
   return o ? o.label : c;
 }
 
 /** Primary line for drill-down: API name, else chart label, else code. */
-function debitCreditAccountTitle(apiName, code) {
+function debitCreditAccountTitle(apiName, code, labelByCode) {
   const name = String(apiName ?? '').trim();
   if (name) return name;
   const c = String(code ?? '').trim();
   if (!c) return '—';
-  const lbl = accountLabel(c);
+  const lbl = accountLabel(c, labelByCode);
   return lbl !== '—' ? lbl : c;
 }
 
@@ -71,7 +73,7 @@ function sortKeyForLedger(t) {
  * @param {string} props.end - YYYY-MM-DD
  * @param {string | null} [props.category] - transaction category filter (API + client)
  * @param {string | null} [props.type] - income | expense — client filter after fetch
- * @param {string[] | null} [props.accountCodes] - GL codes from the statement line; when set, list is restricted to txs touching these accounts (fetch omits category so postings are not dropped)
+ * @param {string[] | null} [props.accountCodes] - GL codes from the statement line; when set, list is restricted to txs touching these accounts (fetch omits category so postings are not dropped). Exactly one code: server `accountCode` narrows the fetch. Several codes: fetch is **not** narrowed by one GL (that would drop other accounts); client filters to any listed code (same idea as cash-flow union drills).
  * @param {number | null} [props.statementAmount] - expected total from statement line for comparison
  * @param {'abs' | 'signed'} [props.sumMode] - how to sum listed rows vs statement (default abs)
  */
@@ -88,18 +90,32 @@ export default function StatementTransactionsModal({
   statementAmount,
   sumMode = 'abs',
 }) {
+  const { labelByCode } = useAccountsSelectOptions();
   const [drillSearch, setDrillSearch] = useState('');
   const [drillMonth, setDrillMonth] = useState('');
 
-  const accountKey = useMemo(() => {
-    if (!accountCodes?.length) return '';
-    return [...accountCodes].map((c) => String(c).trim()).filter(Boolean).sort().join(',');
+  const normalizedAccountCodes = useMemo(() => {
+    if (!accountCodes?.length) return [];
+    const s = new Set(accountCodes.map((c) => String(c).trim()).filter(Boolean));
+    return [...s].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [accountCodes]);
-  const singleAccountCode = useMemo(() => {
-    if (!accountCodes?.length) return '';
-    const clean = accountCodes.map((c) => String(c).trim()).filter(Boolean);
-    return clean.length === 1 ? clean[0] : '';
-  }, [accountCodes]);
+
+  const accountKey = useMemo(() => normalizedAccountCodes.join(','), [normalizedAccountCodes]);
+
+  /** Exactly one GL — used for per-account running balance in the drill table. */
+  const singleAccountCode = useMemo(
+    () => (normalizedAccountCodes.length === 1 ? normalizedAccountCodes[0] : ''),
+    [normalizedAccountCodes]
+  );
+
+  /**
+   * Single GL only for `GET .../transactions?accountCode=`.
+   * With 2+ codes, sending only the first code misses txs on the others; cash-flow-style union drills need an unscoped fetch + client filter.
+   */
+  const apiAccountCode = useMemo(
+    () => (normalizedAccountCodes.length === 1 ? normalizedAccountCodes[0] : ''),
+    [normalizedAccountCodes]
+  );
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['finance', 'statement-drilldown', start, end, category ?? '', accountKey],
@@ -111,7 +127,7 @@ export default function StatementTransactionsModal({
         end,
         limit: 500,
         includeByAccount: 0,
-        ...(singleAccountCode ? { accountCode: singleAccountCode } : {}),
+        ...(apiAccountCode ? { accountCode: apiAccountCode } : {}),
         ...(!useAcct && category ? { category } : {}),
       });
       return normalizeTransactionsFetchResult(res).list;
@@ -164,8 +180,8 @@ export default function StatementTransactionsModal({
     if (drillSearch.trim()) {
       const q = drillSearch.trim().toLowerCase();
       rows = rows.filter(({ t, debitCode, creditCode, debitName, creditName }) => {
-        const debitTitle = debitCreditAccountTitle(debitName, debitCode);
-        const creditTitle = debitCreditAccountTitle(creditName, creditCode);
+        const debitTitle = debitCreditAccountTitle(debitName, debitCode, labelByCode);
+        const creditTitle = debitCreditAccountTitle(creditName, creditCode, labelByCode);
         return (
           String(t.description || '').toLowerCase().includes(q) ||
           String(t.reference || '').toLowerCase().includes(q) ||
@@ -183,7 +199,7 @@ export default function StatementTransactionsModal({
       out.push({ ...row, runningBalance: running });
     }
     return out;
-  }, [ledgerRows, drillMonth, drillSearch]);
+  }, [ledgerRows, drillMonth, drillSearch, labelByCode]);
 
   const txSum = useMemo(() => {
     if (singleAccountCode) {
@@ -298,8 +314,8 @@ export default function StatementTransactionsModal({
                         const id = t._id ?? t.id;
                         const jid = t.journalEntryId;
                         const refundLike = t.category === 'refund';
-                        const debitTitle = debitCreditAccountTitle(debitName, debitCode);
-                        const creditTitle = debitCreditAccountTitle(creditName, creditCode);
+                        const debitTitle = debitCreditAccountTitle(debitName, debitCode, labelByCode);
+                        const creditTitle = debitCreditAccountTitle(creditName, creditCode, labelByCode);
                         return (
                           <tr key={id || JSON.stringify(t)}>
                             <td className="statement-drill-col-date">{formatTxDate(t.date)}</td>

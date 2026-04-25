@@ -614,7 +614,8 @@ export default function StaffPage() {
         <div className="acct-ui-topbar-title-wrap">
           <div className="acct-ui-topbar-title">Worker payments</div>
           <div className="acct-ui-topbar-sub">
-            Payouts for work done — paid-to name must match an employee record. Same history under Finance → Payments.
+            Payouts for work done — paid-to name must match an employee record. Guest receipts are recorded under
+            Payments, not here.
           </div>
         </div>
         <div className="acct-ui-controls">

@@ -5802,6 +5802,17 @@
   grid-column: 1 / -1;
 }
 
+.transactions-form-hint {
+  font-size: 12px;
+  color: var(--text-muted, #6b7a72);
+  margin: 6px 0 0;
+  line-height: 1.35;
+}
+
+.transactions-form-hint code {
+  font-size: 11px;
+}
+
 .transactions-modal-actions {
   display: flex;
   justify-content: flex-end;

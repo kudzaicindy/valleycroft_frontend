@@ -6,13 +6,17 @@ import {
   updateTransaction,
   deleteTransaction,
 } from '@/api/finance';
-import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
+import { getGuestBookings } from '@/api/guestBookings';
+import { getBookings } from '@/api/bookings';
+import { useAccountsSelectOptions } from '@/hooks/useAccountsSelectOptions';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { newIdempotencyKey } from '@/utils/transactionLedgerUi';
 import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 import ConfirmModal from '@/components/ConfirmModal';
+import { listFromSuccessEnvelope } from '@/utils/apiEnvelope';
+import { bookingReferenceDisplay, bookingGuestLabel } from '@/utils/bookingDisplay';
 
 const LIMIT = 20;
 
@@ -29,7 +33,20 @@ function buildRefundDescription(guestName, reason) {
   return r;
 }
 
+function roomSummary(b) {
+  const r = b?.room ?? b?.roomId;
+  if (r && typeof r === 'object' && r.name) return String(r.name);
+  if (typeof r === 'string' && r.trim()) return r.trim();
+  return '—';
+}
+
+function bookingSortKey(b) {
+  const s = b?.checkIn || b?.eventDate || b?.createdAt || '';
+  return String(s).slice(0, 10);
+}
+
 const emptyForm = () => ({
+  selectedGuestKey: '',
   guestName: '',
   reason: '',
   amount: '',
@@ -50,6 +67,7 @@ export default function RefundsPage() {
   const [form, setForm] = useState(emptyForm);
   const [saveError, setSaveError] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const { options: accountSelectOptions } = useAccountsSelectOptions();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', 'refunds', page],
@@ -58,6 +76,102 @@ export default function RefundsPage() {
       return normalizeTransactionsFetchResult(res);
     },
   });
+
+  const guestPickerEnabled = modalOpen && !editingId;
+  const { data: guestBookingsRes, isFetching: guestPickerLoading } = useQuery({
+    queryKey: ['guest-bookings', 'refunds-picker'],
+    queryFn: () => getGuestBookings({ limit: 250 }),
+    enabled: guestPickerEnabled,
+    staleTime: 60 * 1000,
+  });
+  const { data: internalBookingsRes, isFetching: internalPickerLoading } = useQuery({
+    queryKey: ['bookings', 'refunds-picker'],
+    queryFn: () => getBookings({ limit: 250 }),
+    enabled: guestPickerEnabled,
+    staleTime: 60 * 1000,
+  });
+
+  const refundGuestOptions = useMemo(() => {
+    const guestRows = Array.isArray(guestBookingsRes)
+      ? guestBookingsRes
+      : (guestBookingsRes?.data ?? []);
+    const internalRows = listFromSuccessEnvelope(internalBookingsRes);
+    const out = [];
+    for (const b of guestRows) {
+      const id = b?._id ?? b?.id;
+      if (!id) continue;
+      const guestName = bookingGuestLabel(b);
+      const ref = bookingReferenceDisplay(b);
+      const ci = b?.checkIn ? String(b.checkIn).slice(0, 10) : '';
+      const co = b?.checkOut ? String(b.checkOut).slice(0, 10) : '';
+      const dates = ci && co ? `${ci} → ${co}` : ci || '—';
+      const amt = Number(b?.totalAmount ?? b?.amount ?? b?.deposit ?? 0) || 0;
+      const label = `Guest · ${guestName} · ${roomSummary(b)} · ${ref} · ${dates}`;
+      out.push({
+        key: `guest:${id}`,
+        guestName,
+        bookingId: String(id),
+        reference: ref !== '—' ? ref : '',
+        amountHint: amt,
+        label,
+        sort: bookingSortKey(b),
+      });
+    }
+    for (const b of internalRows) {
+      const id = b?._id ?? b?.id;
+      if (!id) continue;
+      const guestName = String(b?.guestName || b?.guest?.name || '').trim() || bookingGuestLabel(b);
+      const ref = bookingReferenceDisplay(b);
+      const ci = b?.checkIn ? String(b.checkIn).slice(0, 10) : '';
+      const co = b?.checkOut ? String(b.checkOut).slice(0, 10) : '';
+      const ed = b?.eventDate ? String(b.eventDate).slice(0, 10) : '';
+      const dates = ed ? `Event ${ed}` : ci && co ? `${ci} → ${co}` : ci || '—';
+      const typ = String(b?.type || b?.bookingType || '').toLowerCase();
+      const amt = Number(b?.totalAmount ?? b?.amount ?? 0) || 0;
+      const label = `${typ === 'event' ? 'Event' : 'BnB'} · ${guestName || '—'} · ${roomSummary(b)} · ${ref} · ${dates}`;
+      out.push({
+        key: `int:${id}`,
+        guestName: guestName || '—',
+        bookingId: String(id),
+        reference: ref !== '—' ? ref : '',
+        amountHint: amt,
+        label,
+        sort: bookingSortKey(b),
+      });
+    }
+    out.sort((a, b) => String(b.sort).localeCompare(String(a.sort)));
+    return out;
+  }, [guestBookingsRes, internalBookingsRes]);
+
+  const refundGuestOptionMap = useMemo(() => {
+    const m = new Map();
+    refundGuestOptions.forEach((o) => m.set(o.key, o));
+    return m;
+  }, [refundGuestOptions]);
+
+  const applyGuestSelection = useCallback((key) => {
+    if (!key) {
+      setForm((f) => ({
+        ...f,
+        selectedGuestKey: '',
+        guestName: '',
+        booking: '',
+        reference: '',
+      }));
+      return;
+    }
+    const opt = refundGuestOptionMap.get(key);
+    if (!opt) return;
+    setForm((f) => ({
+      ...f,
+      selectedGuestKey: key,
+      guestName: opt.guestName,
+      booking: opt.bookingId,
+      reference: opt.reference || f.reference,
+      amount:
+        opt.amountHint > 0 ? String(opt.amountHint) : f.amount,
+    }));
+  }, [refundGuestOptionMap]);
 
   const listRaw = data?.list ?? [];
   const list = listRaw.filter((t) => t.category === 'refund');
@@ -86,6 +200,7 @@ export default function RefundsPage() {
   const openEdit = useCallback((row) => {
     setEditingId(row._id ?? row.id);
     setForm({
+      selectedGuestKey: '',
       guestName: '',
       reason: row.description || '',
       amount: row.amount != null ? String(row.amount) : '',
@@ -227,14 +342,42 @@ export default function RefundsPage() {
               <form onSubmit={handleSubmit}>
                 <div className="transactions-form-grid">
                   {!editingId && (
+                    <div className="transactions-form-field transactions-form-field--wide">
+                      <label htmlFor="rf-guest-booking">Select guest / booking</label>
+                      <select
+                        id="rf-guest-booking"
+                        className="form-control"
+                        value={form.selectedGuestKey}
+                        onChange={(e) => applyGuestSelection(e.target.value)}
+                      >
+                        <option value="">— Choose a booking (optional) —</option>
+                        {refundGuestOptions.map((o) => (
+                          <option key={o.key} value={o.key} title={o.label}>
+                            {o.label.length > 96 ? `${o.label.slice(0, 93)}…` : o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {guestPickerLoading || internalPickerLoading ? (
+                        <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>Loading bookings…</p>
+                      ) : (
+                        <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                          Fills guest name, booking id, reference, and amount from the selected reservation. Clear the
+                          list to type manually.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {!editingId && (
                     <div className="transactions-form-field">
                       <label htmlFor="rf-guest">Guest name</label>
                       <input
                         id="rf-guest"
                         className="form-control"
                         value={form.guestName}
-                        onChange={(e) => setForm((f) => ({ ...f, guestName: e.target.value }))}
-                        placeholder="Optional"
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, guestName: e.target.value, selectedGuestKey: '' }))
+                        }
+                        placeholder="From booking picker or type manually"
                       />
                     </div>
                   )}
@@ -271,7 +414,7 @@ export default function RefundsPage() {
                       value={form.debitAccount}
                       onChange={(e) => setForm((f) => ({ ...f, debitAccount: e.target.value }))}
                     >
-                      {ACCOUNT_OPTIONS.map((o) => (
+                      {accountSelectOptions.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>
@@ -287,7 +430,7 @@ export default function RefundsPage() {
                       value={form.creditAccount}
                       onChange={(e) => setForm((f) => ({ ...f, creditAccount: e.target.value }))}
                     >
-                      {ACCOUNT_OPTIONS.map((o) => (
+                      {accountSelectOptions.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>

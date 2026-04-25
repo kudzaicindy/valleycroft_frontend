@@ -32,7 +32,7 @@ const sections = [
     label: 'Management',
     defaultOpen: true,
     items: [
-      { id: 'salary', label: 'Worker payments', path: '/finance/salary', icon: <FaMoneyBillWave className="w-4 h-4" /> },
+      { id: 'staff', label: 'Worker payments', path: '/finance/staff', icon: <FaMoneyBillWave className="w-4 h-4" /> },
       { id: 'suppliers', label: 'Suppliers', path: '/finance/suppliers', icon: <FaTruck className="w-4 h-4" /> },
       { id: 'debtors', label: 'Debtors', path: '/finance/debtors', icon: <FaUserClock className="w-4 h-4" /> },
       { id: 'invoices', label: 'Invoices', path: '/finance/invoices', icon: <FaFileAlt className="w-4 h-4" /> },

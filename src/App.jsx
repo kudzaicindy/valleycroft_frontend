@@ -39,7 +39,6 @@ const IncomeStatement = lazy(() => import('@/pages/dashboard/IncomeStatement'));
 const BalanceSheet = lazy(() => import('@/pages/dashboard/BalanceSheet'));
 const LedgerPage = lazy(() => import('@/pages/dashboard/LedgerPage'));
 const RoomsPage = lazy(() => import('@/pages/dashboard/RoomsPage'));
-const SalaryPage = lazy(() => import('@/pages/dashboard/SalaryPage'));
 const AuditPage = lazy(() => import('@/pages/dashboard/AuditPage'));
 const TransactionsPage = lazy(() => import('@/pages/dashboard/TransactionsPage'));
 const BookingPaymentsPage = lazy(() => import('@/pages/dashboard/BookingPaymentsPage'));
@@ -87,7 +86,8 @@ function App() {
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="bookings" element={<BookingsPage />} />
-                <Route path="booking-payments" element={<BookingPaymentsPage />} />
+                <Route path="payments" element={<BookingPaymentsPage />} />
+                <Route path="booking-payments" element={<Navigate to="payments" replace />} />
                 <Route path="quotations" element={<QuotationsPage />} />
                 <Route path="enquiries" element={<EnquiriesPage />} />
                 <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
@@ -142,9 +142,10 @@ function App() {
                 <Route path="dashboard" element={<FinanceDashboard />} />
                 <Route path="transactions" element={<TransactionsPage />} />
                 <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
-                <Route path="booking-payments" element={<BookingPaymentsPage />} />
                 <Route path="payments" element={<BookingPaymentsPage />} />
-                <Route path="salary" element={<SalaryPage />} />
+                <Route path="booking-payments" element={<Navigate to="payments" replace />} />
+                <Route path="staff" element={<StaffPage />} />
+                <Route path="salary" element={<Navigate to="staff" replace />} />
                 <Route path="suppliers" element={<SuppliersPage />} />
                 <Route path="debtors" element={<DebtorsPage />} />
                 <Route path="invoices" element={<InvoicesPage />} />

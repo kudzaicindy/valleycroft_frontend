@@ -1,7 +1,11 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getPendingBookingDebtors, recordDebtorPayment } from '@/api/debtors';
+import { getTransactions, FINANCE_TRANSACTIONS_MAX_LIMIT } from '@/api/finance';
+import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
+import { transactionCategoryLabel } from '@/constants/transactionCategories';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { parseLocalDate } from '@/utils/availability';
 import {
@@ -111,6 +115,49 @@ function toPaymentRow(raw) {
   };
 }
 
+/** Rows posted from debtor / booking receipt flows (Payments page or equivalent). */
+function isGuestBookingPaymentRecord(t) {
+  if (!t || typeof t !== 'object') return false;
+  const src = String(t.source || t.paymentSource || '').toLowerCase();
+  if (src.includes('debtor_payment') || src === 'debtor') return true;
+  const cat = String(t.category || '').toLowerCase();
+  if (cat === 'booking_payment' || cat === 'guest_payment') return true;
+  if (/guest\s+payment/i.test(String(t.description || ''))) return true;
+  if (/^pay-book-/i.test(String(t.reference || ''))) return true;
+  return false;
+}
+
+function transactionBookingId(t) {
+  const b = t?.booking;
+  if (b == null || b === '') return '';
+  if (typeof b === 'object') return String(b._id ?? b.id ?? '');
+  return String(b);
+}
+
+function transactionGuestFromBooking(t) {
+  const b = t?.booking;
+  if (!b || typeof b !== 'object') return { name: '', email: '', phone: '' };
+  return {
+    name: String(b.guestName || b.guest?.name || '').trim(),
+    email: String(b.guestEmail || b.guest?.email || '').trim(),
+    phone: String(b.guestPhone || b.guest?.phone || '').trim(),
+  };
+}
+
+/** Primary guest label for history rows (populated booking, top-level field, or description). */
+function transactionGuestDisplay(t) {
+  const { name } = transactionGuestFromBooking(t);
+  if (name) return name;
+  const top = String(t?.guestName || '').trim();
+  if (top) return top;
+  const desc = String(t?.description || '');
+  const m =
+    desc.match(/Payment received —\s*([^([]]+)/i) ||
+    desc.match(/Guest payment —\s*([^([]]+)/i);
+  if (m) return m[1].trim();
+  return '—';
+}
+
 function defaultPaymentForm(booking) {
   const debtorId = booking?.debtorId || '';
   const ref = booking ? bookingReferenceDisplay(booking) : '';
@@ -129,6 +176,7 @@ function defaultPaymentForm(booking) {
 }
 
 export default function BookingPaymentsPage() {
+  const location = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -137,6 +185,7 @@ export default function BookingPaymentsPage() {
   const [paymentBooking, setPaymentBooking] = useState(null);
   const [form, setForm] = useState(() => defaultPaymentForm(null));
   const [saveError, setSaveError] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['debtors', 'pending-bookings', LIMIT],
@@ -171,6 +220,58 @@ export default function BookingPaymentsPage() {
         roomLabel(b).toLowerCase().includes(q)
     );
   }, [eligible, search, monthFilter]);
+
+  const historyLimit = Math.min(300, FINANCE_TRANSACTIONS_MAX_LIMIT);
+  const {
+    data: historyFetch,
+    isLoading: historyLoading,
+    error: historyError,
+  } = useQuery({
+    queryKey: ['finance', 'transactions', 'booking-payments-history', historyLimit],
+    queryFn: async () => {
+      const res = await getTransactions({ page: 1, limit: historyLimit, includeByAccount: 0 });
+      return normalizeTransactionsFetchResult(res);
+    },
+    enabled: activeTab === 'history',
+    staleTime: 30 * 1000,
+  });
+
+  const historyEligible = useMemo(() => {
+    const rows = historyFetch?.list ?? [];
+    return rows.filter(isGuestBookingPaymentRecord);
+  }, [historyFetch]);
+
+  const historyList = useMemo(() => {
+    let rows = historyEligible;
+    if (monthFilter) {
+      rows = rows.filter((t) => {
+        const d = t.date ?? t.paidAt ?? t.createdAt;
+        const m = d != null && String(d).length >= 7 ? String(d).slice(0, 7) : '';
+        if (!m) return true;
+        return m === monthFilter;
+      });
+    }
+    if (!search.trim()) return rows;
+    const q = search.trim().toLowerCase();
+    return rows.filter((t) => {
+      const g = transactionGuestFromBooking(t);
+      const guestLine = `${transactionGuestDisplay(t)} ${g.email} ${g.phone}`.toLowerCase();
+      const bid = transactionBookingId(t).toLowerCase();
+      return (
+        guestLine.includes(q) ||
+        bid.includes(q) ||
+        String(t.description || '')
+          .toLowerCase()
+          .includes(q) ||
+        String(t.reference || '')
+          .toLowerCase()
+          .includes(q) ||
+        String(transactionCategoryLabel(t.category))
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [historyEligible, search, monthFilter]);
 
   const outstandingBookings = useMemo(() => {
     return eligible
@@ -226,6 +327,7 @@ export default function BookingPaymentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['debtors'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['finance', 'transactions', 'booking-payments-history'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
       closePayment();
     },
@@ -262,16 +364,25 @@ export default function BookingPaymentsPage() {
     <div className="page-stack booking-payments-page">
       <div className="page-header page-header--compact">
         <div className="page-header-left">
-          <div className="page-title">Booking payments</div>
+          <div className="page-title">{location.pathname.includes('/payments') ? 'Payments' : 'Booking payments'}</div>
           <div className="page-subtitle">
-            Record receipts against booking debtors with outstanding balances
-            {String(user?.role || '').toLowerCase() === 'finance' ? (
+            {activeTab === 'pending' ? (
               <>
-                {' '}
-                — pending list is sourced from <code>/api/debtors/pending-bookings</code>.
+                Record receipts against booking debtors with outstanding balances
+                {String(user?.role || '').toLowerCase() === 'finance' ? (
+                  <>
+                    {' '}
+                    — pending list is sourced from <code>/api/debtors/pending-bookings</code>.
+                  </>
+                ) : (
+                  <> — Finance can review and settle outstanding booking debtors.</>
+                )}
               </>
             ) : (
-              <> — Finance can review and settle outstanding booking debtors.</>
+              <>
+                Receipts already posted from this flow (matched from finance transactions: debtor payments, guest
+                payment notes, or <code>PAY-BOOK-</code> references).
+              </>
             )}
           </div>
         </div>
@@ -280,95 +391,195 @@ export default function BookingPaymentsPage() {
         </button>
       </div>
 
-      {error && (
+      {((activeTab === 'pending' && error) || (activeTab === 'history' && historyError)) && (
         <div className="card card--error">
-          <div className="card-body">{error.message}</div>
+          <div className="card-body">{(activeTab === 'history' ? historyError : error)?.message}</div>
         </div>
       )}
 
       <div className="card">
+        <div className="card-body" style={{ paddingBottom: 12 }}>
+          <div className="filter-tabs" role="tablist" aria-label="Payments views">
+            <div
+              role="tab"
+              tabIndex={0}
+              className={`filter-tab ${activeTab === 'pending' ? 'active' : ''}`}
+              onClick={() => setActiveTab('pending')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActiveTab('pending');
+                }
+              }}
+            >
+              Outstanding
+            </div>
+            <div
+              role="tab"
+              tabIndex={0}
+              className={`filter-tab ${activeTab === 'history' ? 'active' : ''}`}
+              onClick={() => setActiveTab('history')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActiveTab('history');
+                }
+              }}
+            >
+              Payments made
+            </div>
+          </div>
+        </div>
         <div className="card-body">
           <div className="booking-payments-toolbar">
             <DashboardListFilters
               embedded
               search={search}
               onSearchChange={setSearch}
-              searchPlaceholder="Guest name, email, phone, reference, room…"
+              searchPlaceholder={
+                activeTab === 'pending'
+                  ? 'Guest name, email, phone, reference, room…'
+                  : 'Guest, email, phone, description, reference, booking id…'
+              }
               month={monthFilter}
               onMonthChange={setMonthFilter}
             />
             <p className="booking-payments-hint">
-              Showing {list.length} of {eligible.length} booking debtors with balances pending.
+              {activeTab === 'pending' ? (
+                <>
+                  Showing {list.length} of {eligible.length} booking debtors with balances pending.
+                </>
+              ) : (
+                <>
+                  Showing {historyList.length} of {historyEligible.length} matched payment
+                  {historyEligible.length === 1 ? '' : 's'} (from last {historyLimit} finance transactions).
+                </>
+              )}
             </p>
           </div>
         </div>
         <div className="card-body card-body--no-pad">
           <div className="statement-table-wrap">
-            <table className="statement-table booking-payments-table">
-              <thead>
-                <tr>
-                  <th>Reference</th>
-                  <th>Guest</th>
-                  <th>Status</th>
-                  <th>Platform</th>
-                  <th>Check-in</th>
-                  <th>Check-out</th>
-                  <th>Room / type</th>
-                  <th className="statement-table-num">Amount owed</th>
-                  <th className="statement-table-num">Balance</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
+            {activeTab === 'pending' ? (
+              <table className="statement-table booking-payments-table">
+                <thead>
                   <tr>
-                    <td colSpan={10}>Loading bookings…</td>
+                    <th>Reference</th>
+                    <th>Guest</th>
+                    <th>Status</th>
+                    <th>Platform</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Room / type</th>
+                    <th className="statement-table-num">Amount owed</th>
+                    <th className="statement-table-num">Balance</th>
+                    <th />
                   </tr>
-                ) : null}
-                {!isLoading && list.length === 0 ? (
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={10}>Loading bookings…</td>
+                    </tr>
+                  ) : null}
+                  {!isLoading && list.length === 0 ? (
+                    <tr>
+                      <td colSpan={10}>No pending booking debtors found.</td>
+                    </tr>
+                  ) : null}
+                  {!isLoading &&
+                    list.map((b) => {
+                      const id = b._id ?? b.id;
+                      return (
+                        <tr key={id || JSON.stringify(b)}>
+                          <td className="booking-payments-ref">{bookingReferenceDisplay(b)}</td>
+                          <td>
+                            <div className="booking-payments-guest">
+                              {String(b.guestName || '').trim() || bookingGuestLabel(b)}
+                            </div>
+                            {b.guestEmail ? <div className="booking-payments-email">{b.guestEmail}</div> : null}
+                            {b.guestPhone ? <div className="booking-payments-email">{b.guestPhone}</div> : null}
+                          </td>
+                          <td>
+                            <span className={'badge ' + statusBadgeClass(b.status)}>{statusStr(b.status) || '—'}</span>
+                          </td>
+                          <td>{String(b.platform || 'direct')}</td>
+                          <td>{bookingDateLabel(b.checkIn || b.eventDate)}</td>
+                          <td>{bookingDateLabel(b.checkOut)}</td>
+                          <td className="booking-payments-room">
+                            {roomLabel(b)}
+                            {b.type ? <span className="booking-payments-type">{String(b.type)}</span> : null}
+                          </td>
+                          <td className="statement-table-num">{fmtMoney(b.amountOwed)}</td>
+                          <td className="statement-table-num">
+                            <strong>{fmtMoney(b.balance)}</strong>
+                          </td>
+                          <td className="booking-payments-actions">
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => openPayment(b)}>
+                              Record payment
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            ) : (
+              <table className="statement-table booking-payments-table">
+                <thead>
                   <tr>
-                    <td colSpan={10}>
-                      No pending booking debtors found.
-                    </td>
+                    <th>Date</th>
+                    <th>Guest</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Reference</th>
+                    <th>Booking</th>
+                    <th className="statement-table-num">Amount</th>
                   </tr>
-                ) : null}
-                {!isLoading &&
-                  list.map((b) => {
-                    const id = b._id ?? b.id;
-                    return (
-                      <tr key={id || JSON.stringify(b)}>
-                        <td className="booking-payments-ref">{bookingReferenceDisplay(b)}</td>
-                        <td>
-                          <div className="booking-payments-guest">
-                            {String(b.guestName || '').trim() || bookingGuestLabel(b)}
-                          </div>
-                          {b.guestEmail ? <div className="booking-payments-email">{b.guestEmail}</div> : null}
-                          {b.guestPhone ? <div className="booking-payments-email">{b.guestPhone}</div> : null}
-                        </td>
-                        <td>
-                          <span className={'badge ' + statusBadgeClass(b.status)}>{statusStr(b.status) || '—'}</span>
-                        </td>
-                        <td>{String(b.platform || 'direct')}</td>
-                        <td>{bookingDateLabel(b.checkIn || b.eventDate)}</td>
-                        <td>{bookingDateLabel(b.checkOut)}</td>
-                        <td className="booking-payments-room">
-                          {roomLabel(b)}
-                          {b.type ? (
-                            <span className="booking-payments-type">{String(b.type)}</span>
-                          ) : null}
-                        </td>
-                        <td className="statement-table-num">{fmtMoney(b.amountOwed)}</td>
-                        <td className="statement-table-num"><strong>{fmtMoney(b.balance)}</strong></td>
-                        <td className="booking-payments-actions">
-                          <button type="button" className="btn btn-primary btn-sm" onClick={() => openPayment(b)}>
-                            Record payment
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {historyLoading ? (
+                    <tr>
+                      <td colSpan={7}>Loading payments…</td>
+                    </tr>
+                  ) : null}
+                  {!historyLoading && historyList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>
+                        {historyEligible.length === 0
+                          ? 'No matching guest payment transactions in this window. After you record a receipt, it should appear here.'
+                          : 'No rows match the current search or month filter.'}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!historyLoading &&
+                    historyList.map((t) => {
+                      const id = t._id ?? t.id;
+                      const d = t.date ?? t.paidAt ?? t.createdAt;
+                      const g = transactionGuestFromBooking(t);
+                      const guestLabel = transactionGuestDisplay(t);
+                      const bookingId = transactionBookingId(t);
+                      return (
+                        <tr key={id || JSON.stringify(t)}>
+                          <td>{d ? String(d).slice(0, 10) : '—'}</td>
+                          <td>
+                            <div className="booking-payments-guest">{guestLabel}</div>
+                            {g.email ? <div className="booking-payments-email">{g.email}</div> : null}
+                            {g.phone ? <div className="booking-payments-email">{g.phone}</div> : null}
+                          </td>
+                          <td>{t.description || '—'}</td>
+                          <td>{transactionCategoryLabel(t.category)}</td>
+                          <td className="booking-payments-ref">{t.reference || '—'}</td>
+                          <td className="booking-payments-email">{bookingId || '—'}</td>
+                          <td className="statement-table-num pl-pos">
+                            <strong>{fmtMoney(t.amount)}</strong>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

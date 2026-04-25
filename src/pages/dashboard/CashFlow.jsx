@@ -5,10 +5,10 @@ import FinanceLegacyReportsBanner from '@/components/dashboard/FinanceLegacyRepo
 import StatementAmountCell from '@/components/dashboard/StatementAmountCell';
 import StatementTransactionsModal from '@/components/dashboard/StatementTransactionsModal';
 import { MONTH_SHORT, defaultReportYear, monthRange, yearOptions, yearRange } from '@/utils/financePeriods';
-import { cashflowDetailedSections } from '@/utils/financeStatementHelpers';
+import { cashflowDetailedSections, unwrapFinancePayload } from '@/utils/financeStatementHelpers';
 import {
-  cashflowStatementLineAccountCodes,
-  cashflowSummaryCashAccountCodes,
+  cashflowCashSectionAccountCodesUnion,
+  cashflowDrillAccountCodes,
   mergedMonthRange,
   statementKeyToTransactionCategory,
 } from '@/utils/statementDrilldown';
@@ -150,7 +150,7 @@ function CashflowInvestFinDetailBlock({
                     end,
                     category: cat,
                     type: cat ? null : tType,
-                    accountCodes: cashflowStatementLineAccountCodes(k),
+                    accountCodes: cashflowDrillAccountCodes(rowsByMonth, k, mi, visibleMonths, false),
                     statementAmount: Number(v),
                     sumMode: 'abs',
                   })
@@ -181,7 +181,7 @@ function CashflowInvestFinDetailBlock({
                       end: merged.end,
                       category: cat,
                       type: cat ? null : tType,
-                      accountCodes: cashflowStatementLineAccountCodes(k),
+                      accountCodes: cashflowDrillAccountCodes(rowsByMonth, k, null, visibleMonths, true),
                       statementAmount: totalVal,
                       sumMode: 'abs',
                     });
@@ -258,6 +258,10 @@ export default function CashFlow() {
   const [investingInflowKeys, investingOutflowKeys] = splitKeysByInflowOutflow(investingKeys, investingRowsByMonth, visibleMonths);
   const [financingInflowKeys, financingOutflowKeys] = splitKeysByInflowOutflow(financingKeys, financingRowsByMonth, visibleMonths);
   const cashAccountKeys = Array.from(new Set(visibleMonths.flatMap((mi) => cashAccountsByMonth[mi].map((r) => r.key))));
+  const cashSummaryAccountCodes = useMemo(
+    () => cashflowCashSectionAccountCodesUnion(cashAccountsByMonth, visibleMonths),
+    [cashAccountsByMonth, visibleMonths]
+  );
   const rowLabelByKey = useMemo(() => {
     const map = {};
     [...operatingIncomeByMonth, ...operatingExpenseByMonth, ...investingRowsByMonth, ...financingRowsByMonth, ...cashAccountsByMonth].forEach((sectionRows) => {
@@ -314,6 +318,20 @@ export default function CashFlow() {
   const merged = useMemo(() => mergedMonthRange(year, visibleMonths), [year, visibleMonths]);
   const quarterLabel = QUARTERS.find((q) => q.value === quarter)?.label ?? '';
 
+  const statementMeta = useMemo(() => {
+    for (const q of monthQueries) {
+      if (!q.data) continue;
+      const d = unwrapFinancePayload(q.data);
+      if (d && typeof d === 'object' && (d.basis != null || d.period != null)) {
+        return {
+          basis: d.basis != null ? String(d.basis) : null,
+          period: d.period != null ? String(d.period) : null,
+        };
+      }
+    }
+    return { basis: null, period: null };
+  }, [monthQueries]);
+
   return (
     <div className="finance-statement-page acct-ui-page">
       <FinanceLegacyReportsBanner />
@@ -344,7 +362,11 @@ export default function CashFlow() {
         </div>
       </div>
 
-      <div className="acct-ui-meta">Year: {year} · Quarter: {QUARTERS.find((q) => q.value === quarter)?.label} · Entity: All Entities</div>
+      <div className="acct-ui-meta">
+        Year: {year} · Quarter: {QUARTERS.find((q) => q.value === quarter)?.label} · Entity: All Entities
+        {statementMeta.basis ? <> · Basis: {statementMeta.basis}</> : null}
+        {statementMeta.period ? <> · Period: {statementMeta.period}</> : null}
+      </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
 
       <StatementTransactionsModal
@@ -406,7 +428,7 @@ export default function CashFlow() {
                             end,
                             category: cat,
                             type: 'income',
-                            accountCodes: cashflowStatementLineAccountCodes(k),
+                            accountCodes: cashflowDrillAccountCodes(operatingIncomeByMonth, k, mi, visibleMonths, false),
                             statementAmount: Number(v),
                             sumMode: 'abs',
                           })
@@ -435,7 +457,7 @@ export default function CashFlow() {
                               end: merged.end,
                               category: statementKeyToTransactionCategory(k),
                               type: 'income',
-                              accountCodes: cashflowStatementLineAccountCodes(k),
+                              accountCodes: cashflowDrillAccountCodes(operatingIncomeByMonth, k, null, visibleMonths, true),
                               statementAmount: totalVal,
                               sumMode: 'abs',
                             });
@@ -467,7 +489,7 @@ export default function CashFlow() {
                           end,
                           category: null,
                           type: null,
-                          accountCodes: cashflowSummaryCashAccountCodes(),
+                          accountCodes: cashSummaryAccountCodes,
                           statementAmount: v,
                           sumMode: 'signed',
                         })
@@ -493,7 +515,7 @@ export default function CashFlow() {
                             end: merged.end,
                             category: null,
                             type: null,
-                            accountCodes: cashflowSummaryCashAccountCodes(),
+                            accountCodes: cashSummaryAccountCodes,
                             statementAmount: tv,
                             sumMode: 'signed',
                           });
@@ -529,7 +551,7 @@ export default function CashFlow() {
                             end,
                             category: cat,
                             type: 'expense',
-                            accountCodes: cashflowStatementLineAccountCodes(k),
+                            accountCodes: cashflowDrillAccountCodes(operatingExpenseByMonth, k, mi, visibleMonths, false),
                             statementAmount: Number(v),
                             sumMode: 'abs',
                           })
@@ -558,7 +580,7 @@ export default function CashFlow() {
                               end: merged.end,
                               category: statementKeyToTransactionCategory(k),
                               type: 'expense',
-                              accountCodes: cashflowStatementLineAccountCodes(k),
+                              accountCodes: cashflowDrillAccountCodes(operatingExpenseByMonth, k, null, visibleMonths, true),
                               statementAmount: totalVal,
                               sumMode: 'abs',
                             });
@@ -590,7 +612,7 @@ export default function CashFlow() {
                           end,
                           category: null,
                           type: 'expense',
-                          accountCodes: cashflowSummaryCashAccountCodes(),
+                          accountCodes: cashSummaryAccountCodes,
                           statementAmount: v,
                           sumMode: 'abs',
                         })
@@ -622,7 +644,7 @@ export default function CashFlow() {
                             end: merged.end,
                             category: null,
                             type: 'expense',
-                            accountCodes: cashflowSummaryCashAccountCodes(),
+                            accountCodes: cashSummaryAccountCodes,
                             statementAmount: tv,
                             sumMode: 'abs',
                           });
@@ -653,7 +675,7 @@ export default function CashFlow() {
                           end,
                           category: null,
                           type: null,
-                          accountCodes: cashflowSummaryCashAccountCodes(),
+                          accountCodes: cashSummaryAccountCodes,
                           statementAmount: v,
                           sumMode: 'signed',
                         })
@@ -678,7 +700,7 @@ export default function CashFlow() {
                             end: merged.end,
                             category: null,
                             type: null,
-                            accountCodes: cashflowSummaryCashAccountCodes(),
+                            accountCodes: cashSummaryAccountCodes,
                             statementAmount: operating,
                             sumMode: 'signed',
                           })
@@ -745,7 +767,7 @@ export default function CashFlow() {
                           end,
                           category: null,
                           type: null,
-                          accountCodes: cashflowSummaryCashAccountCodes(),
+                          accountCodes: cashSummaryAccountCodes,
                           statementAmount: v,
                           sumMode: 'signed',
                         })
@@ -770,7 +792,7 @@ export default function CashFlow() {
                             end: merged.end,
                             category: null,
                             type: null,
-                            accountCodes: cashflowSummaryCashAccountCodes(),
+                            accountCodes: cashSummaryAccountCodes,
                             statementAmount: investing,
                             sumMode: 'signed',
                           })
@@ -837,7 +859,7 @@ export default function CashFlow() {
                           end,
                           category: null,
                           type: null,
-                          accountCodes: cashflowSummaryCashAccountCodes(),
+                          accountCodes: cashSummaryAccountCodes,
                           statementAmount: v,
                           sumMode: 'signed',
                         })
@@ -862,7 +884,7 @@ export default function CashFlow() {
                             end: merged.end,
                             category: null,
                             type: null,
-                            accountCodes: cashflowSummaryCashAccountCodes(),
+                            accountCodes: cashSummaryAccountCodes,
                             statementAmount: financing,
                             sumMode: 'signed',
                           })
@@ -895,7 +917,7 @@ export default function CashFlow() {
                           end,
                           category: null,
                           type: null,
-                          accountCodes: cashflowSummaryCashAccountCodes(),
+                          accountCodes: cashSummaryAccountCodes,
                           statementAmount: v,
                           sumMode: 'signed',
                         })
@@ -920,7 +942,7 @@ export default function CashFlow() {
                             end: merged.end,
                             category: null,
                             type: null,
-                            accountCodes: cashflowSummaryCashAccountCodes(),
+                            accountCodes: cashSummaryAccountCodes,
                             statementAmount: net,
                             sumMode: 'signed',
                           })
@@ -963,7 +985,7 @@ export default function CashFlow() {
                                     end,
                                     category: cat,
                                     type: null,
-                                    accountCodes: cashflowStatementLineAccountCodes(k),
+                                    accountCodes: cashflowDrillAccountCodes(cashAccountsByMonth, k, mi, visibleMonths, false),
                                     statementAmount: Number(v),
                                     sumMode: 'abs',
                                   })
@@ -975,7 +997,7 @@ export default function CashFlow() {
                                     end,
                                     category: null,
                                     type: tType,
-                                    accountCodes: cashflowStatementLineAccountCodes(k),
+                                    accountCodes: cashflowDrillAccountCodes(cashAccountsByMonth, k, mi, visibleMonths, false),
                                     statementAmount: Number(v),
                                     sumMode: 'abs',
                                   })
@@ -1002,7 +1024,7 @@ export default function CashFlow() {
                               end: merged.end,
                               category: cat,
                               type: cat ? null : tType,
-                              accountCodes: cashflowStatementLineAccountCodes(k),
+                              accountCodes: cashflowDrillAccountCodes(cashAccountsByMonth, k, null, visibleMonths, true),
                               statementAmount: lastBal,
                               sumMode: 'abs',
                             });

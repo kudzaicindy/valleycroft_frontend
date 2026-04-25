@@ -9,7 +9,7 @@ import {
   FINANCE_TRANSACTIONS_MAX_LIMIT,
 } from '@/api/finance';
 import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel } from '@/constants/transactionCategories';
-import { ACCOUNT_OPTIONS } from '@/constants/financeAccounts';
+import { useAccountsSelectOptions } from '@/hooks/useAccountsSelectOptions';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
 import { parseLocalDate } from '@/utils/availability';
@@ -64,6 +64,7 @@ export default function TransactionsPage({ forcedType = '' }) {
   const [form, setForm] = useState(emptyForm);
   const [saveError, setSaveError] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const { options: accountSelectOptions } = useAccountsSelectOptions();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', page, qpStart, qpEnd, qpCategory],
@@ -296,21 +297,39 @@ export default function TransactionsPage({ forcedType = '' }) {
                   </div>
                   <div className="transactions-form-field">
                     <label htmlFor="tx-category">Category</label>
-                    <select
-                      id="tx-category"
-                      className="form-control"
-                      required={form.type !== 'refund'}
-                      disabled={form.type === 'refund'}
-                      value={form.type === 'refund' ? 'refund' : form.category}
-                      onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                    >
-                      <option value="">Select…</option>
-                      {TRANSACTION_CATEGORY_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
+                    {form.type === 'refund' ? (
+                      <input
+                        id="tx-category"
+                        className="form-control"
+                        disabled
+                        value="refund"
+                        readOnly
+                      />
+                    ) : (
+                      <>
+                        <input
+                          id="tx-category"
+                          className="form-control"
+                          list="tx-category-datalist"
+                          required
+                          value={form.category}
+                          onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                          placeholder="Choose a suggestion or type your own"
+                          autoComplete="off"
+                        />
+                        <datalist id="tx-category-datalist">
+                          {TRANSACTION_CATEGORY_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </datalist>
+                        <p className="transactions-form-hint">
+                          Presets match the ledger; any other text is sent as a category code (e.g. &quot;council rates&quot; →{' '}
+                          <code>council_rates</code>).
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div className="transactions-form-field transactions-form-field--wide">
                     <label htmlFor="tx-desc">Description</label>
@@ -345,7 +364,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                       onChange={(e) => setForm((f) => ({ ...f, debitAccount: e.target.value }))}
                     >
                       <option value="">Select account…</option>
-                      {ACCOUNT_OPTIONS.map((o) => (
+                      {accountSelectOptions.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>
@@ -362,7 +381,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                       onChange={(e) => setForm((f) => ({ ...f, creditAccount: e.target.value }))}
                     >
                       <option value="">Select account…</option>
-                      {ACCOUNT_OPTIONS.map((o) => (
+                      {accountSelectOptions.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>

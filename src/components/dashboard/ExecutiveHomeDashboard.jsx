@@ -2229,7 +2229,7 @@ const CONFIG = {
               <span className="badge badge-confirmed">Scheduled</span>
             </td>
             <td>
-              <Link to="/finance/salary" className="btn btn-outline btn-sm">
+              <Link to="/finance/staff" className="btn btn-outline btn-sm">
                 Review
               </Link>
             </td>
@@ -2316,8 +2316,8 @@ const CONFIG = {
       actions: [
         { to: 'bookings', label: 'New booking', icon: 'fas fa-plus', btnClass: 'btn btn-gold btn-sm' },
         {
-          to: 'booking-payments',
-          label: 'Guest payments',
+          to: 'payments',
+          label: 'Payments',
           icon: 'fas fa-credit-card',
           btnClass: OUTLINE_HERO_BTN,
           linkStyle: OUTLINE_ON_DARK,

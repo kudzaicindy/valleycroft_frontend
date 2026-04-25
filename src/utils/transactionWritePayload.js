@@ -1,3 +1,5 @@
+import { resolveTransactionCategoryForApi } from '@/constants/transactionCategories';
+
 /**
  * Build body for POST/PUT transactions. Never sends read-only ledger fields.
  * Allowed: type, category, description, amount, debitAccount, creditAccount, date?, reference?, booking?
@@ -18,8 +20,7 @@ export function buildTransactionWritePayload(raw) {
   const uiType = String(raw.type || 'expense').toLowerCase();
   const isRefundUi = uiType === 'refund';
   const type = isRefundUi ? 'expense' : uiType === 'income' ? 'income' : 'expense';
-  let category = String(raw.category || '').trim();
-  if (isRefundUi) category = 'refund';
+  let category = isRefundUi ? 'refund' : resolveTransactionCategoryForApi(raw.category);
   const description = String(raw.description || '').trim();
   const amount = Number(raw.amount);
   const debitAccount = String(raw.debitAccount || '').trim();

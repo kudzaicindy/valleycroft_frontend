@@ -7,7 +7,9 @@ import StatementTransactionsModal from '@/components/dashboard/StatementTransact
 import { MONTH_SHORT, defaultReportYear, monthRange, yearOptions, yearRange } from '@/utils/financePeriods';
 import { incomeStatementMetrics } from '@/utils/financeStatementHelpers';
 import {
-  incomeStatementLineAccountCodes,
+  incomeStatementDrillAccountCodes,
+  incomeStatementKeysWithAnyActivity,
+  incomeStatementRowKey,
   mergedMonthRange,
   statementKeyToTransactionCategory,
 } from '@/utils/statementDrilldown';
@@ -16,19 +18,6 @@ function money(n) {
   const num = Number(n);
   if (n == null || Number.isNaN(num) || num === 0) return '-';
   return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function rowKey(row, idx, prefix) {
-  return String(
-    row?.key ??
-    row?.code ??
-    row?.accountCode ??
-    row?.name ??
-    row?.label ??
-    row?.category ??
-    row?.description ??
-    `${prefix}_${idx}`
-  );
 }
 
 function rowLabel(row) {
@@ -77,16 +66,74 @@ export default function IncomeStatement() {
   const visibleMonths = QUARTERS.find((q) => q.value === quarter)?.months ?? QUARTERS[0].months;
   const incomeRowsByMonth = cols.map((c) => c.incomeRows || []);
   const expenseRowsByMonth = cols.map((c) => c.expenseRows || []);
-  const incomeKeys = Array.from(new Set(visibleMonths.flatMap((mi) => incomeRowsByMonth[mi].map((r, i) => rowKey(r, i, 'income')))));
-  const expenseKeys = Array.from(new Set(visibleMonths.flatMap((mi) => expenseRowsByMonth[mi].map((r, i) => rowKey(r, i, 'expense')))));
+  const incomeKeys = Array.from(new Set(visibleMonths.flatMap((mi) => incomeRowsByMonth[mi].map((r, i) => incomeStatementRowKey(r, i, 'income')))));
+  const expenseKeys = Array.from(new Set(visibleMonths.flatMap((mi) => expenseRowsByMonth[mi].map((r, i) => incomeStatementRowKey(r, i, 'expense')))));
+  /** Same rule as cash-flow: show a line only if at least one visible month has a non-zero amount. */
+  const incomeKeysVisible = useMemo(
+    () => incomeStatementKeysWithAnyActivity(incomeKeys, incomeRowsByMonth, visibleMonths, monthHasData, 'income'),
+    [incomeKeys, incomeRowsByMonth, visibleMonths, monthHasData]
+  );
+  /** GL codes on visible revenue lines — scopes "Total revenue" transaction drill. */
+  const revenueStatementAccountCodesUnion = useMemo(() => {
+    const s = new Set();
+    for (const k of incomeKeysVisible) {
+      for (const c of incomeStatementDrillAccountCodes(
+        incomeRowsByMonth,
+        k,
+        'income',
+        null,
+        visibleMonths,
+        true
+      )) {
+        const t = String(c).trim();
+        if (t) s.add(t);
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [incomeKeysVisible, incomeRowsByMonth, visibleMonths]);
+  const expenseKeysVisible = useMemo(
+    () => incomeStatementKeysWithAnyActivity(expenseKeys, expenseRowsByMonth, visibleMonths, monthHasData, 'expense'),
+    [expenseKeys, expenseRowsByMonth, visibleMonths, monthHasData]
+  );
+  /** GL codes on visible expense lines — scopes "Total expenses" transaction drill. */
+  const expenseStatementAccountCodesUnion = useMemo(() => {
+    const s = new Set();
+    for (const k of expenseKeysVisible) {
+      for (const c of incomeStatementDrillAccountCodes(
+        expenseRowsByMonth,
+        k,
+        'expense',
+        null,
+        visibleMonths,
+        true
+      )) {
+        const t = String(c).trim();
+        if (t) s.add(t);
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [expenseKeysVisible, expenseRowsByMonth, visibleMonths]);
+  /** Union of GLs on visible P&amp;L lines (cf. cash-flow net operating drill + cashSummaryAccountCodes). */
+  const incomeStatementPlAccountCodesUnion = useMemo(() => {
+    const s = new Set();
+    for (const c of revenueStatementAccountCodesUnion) {
+      const t = String(c).trim();
+      if (t) s.add(t);
+    }
+    for (const c of expenseStatementAccountCodesUnion) {
+      const t = String(c).trim();
+      if (t) s.add(t);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [revenueStatementAccountCodesUnion, expenseStatementAccountCodesUnion]);
   const rowLabelMap = useMemo(() => {
     const map = {};
     incomeRowsByMonth.forEach((rows) => rows.forEach((r, i) => {
-      const k = rowKey(r, i, 'income');
+      const k = incomeStatementRowKey(r, i, 'income');
       if (!map[k]) map[k] = rowLabel(r);
     }));
     expenseRowsByMonth.forEach((rows) => rows.forEach((r, i) => {
-      const k = rowKey(r, i, 'expense');
+      const k = incomeStatementRowKey(r, i, 'expense');
       if (!map[k]) map[k] = rowLabel(r);
     }));
     return map;
@@ -96,7 +143,7 @@ export default function IncomeStatement() {
   const expenseTotal = visibleMonths.reduce((s, mi) => s + (monthHasData[mi] ? cols[mi].expense : 0), 0);
   const netTotal = revenueTotal - expenseTotal;
   const hasAnyRevenue = visibleMonths.some((mi) => monthHasData[mi]);
-  const hasAnyExpense = visibleMonths.some((mi) => monthHasData[mi]);
+  const showExpenseSection = Math.abs(expenseTotal) > 1e-9 || expenseKeysVisible.length > 0;
   const hasAnyNet = visibleMonths.some((mi) => monthHasData[mi]);
   const merged = useMemo(() => mergedMonthRange(year, visibleMonths), [year, visibleMonths]);
   const quarterLabel = QUARTERS.find((q) => q.value === quarter)?.label ?? '';
@@ -166,14 +213,16 @@ export default function IncomeStatement() {
               </tr>
             </thead>
             <tbody>
+              {incomeKeysVisible.length > 0 && (
               <tr className="acct-ui-section acct-ui-section--pos"><td colSpan={visibleMonths.length + 3}>Revenue accounts</td></tr>
-              {incomeKeys.map((k) => (
+              )}
+              {incomeKeysVisible.map((k) => (
                 <tr key={`income-${k}`}>
                   <td>{rowLabelMap[k] || k}</td>
                   <td>Income</td>
                   {visibleMonths.map((mi) => {
                     const rows = incomeRowsByMonth[mi];
-                    const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
+                    const match = rows.find((r, i) => incomeStatementRowKey(r, i, 'income') === k);
                     const v = match ? rowAmount(match) : null;
                     const cat = statementKeyToTransactionCategory(k);
                     const { start, end } = monthRange(year, mi);
@@ -192,8 +241,15 @@ export default function IncomeStatement() {
                             start,
                             end,
                             category: cat,
-                            type: 'income',
-                            accountCodes: incomeStatementLineAccountCodes(k, 'income'),
+                            type: cat ? null : 'income',
+                            accountCodes: incomeStatementDrillAccountCodes(
+                              incomeRowsByMonth,
+                              k,
+                              'income',
+                              mi,
+                              visibleMonths,
+                              false
+                            ),
                             statementAmount: v != null ? Number(v) : null,
                             sumMode: 'abs',
                           })
@@ -207,13 +263,13 @@ export default function IncomeStatement() {
                     hasData={hasAnyRevenue}
                     rawValue={visibleMonths.reduce((s, mi) => {
                       const rows = incomeRowsByMonth[mi];
-                      const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
+                      const match = rows.find((r, i) => incomeStatementRowKey(r, i, 'income') === k);
                       return s + (match ? rowAmount(match) : 0);
                     }, 0)}
                     display={money(
                       visibleMonths.reduce((s, mi) => {
                         const rows = incomeRowsByMonth[mi];
-                        const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
+                        const match = rows.find((r, i) => incomeStatementRowKey(r, i, 'income') === k);
                         return s + (match ? rowAmount(match) : 0);
                       }, 0)
                     )}
@@ -222,7 +278,7 @@ export default function IncomeStatement() {
                         ? () => {
                             const totalVal = visibleMonths.reduce((s, mi) => {
                               const rows = incomeRowsByMonth[mi];
-                              const match = rows.find((r, i) => rowKey(r, i, 'income') === k);
+                              const match = rows.find((r, i) => incomeStatementRowKey(r, i, 'income') === k);
                               return s + (match ? rowAmount(match) : 0);
                             }, 0);
                             setDrill({
@@ -231,8 +287,15 @@ export default function IncomeStatement() {
                               start: merged.start,
                               end: merged.end,
                               category: statementKeyToTransactionCategory(k),
-                              type: 'income',
-                              accountCodes: incomeStatementLineAccountCodes(k, 'income'),
+                              type: statementKeyToTransactionCategory(k) ? null : 'income',
+                              accountCodes: incomeStatementDrillAccountCodes(
+                                incomeRowsByMonth,
+                                k,
+                                'income',
+                                null,
+                                visibleMonths,
+                                true
+                              ),
                               statementAmount: totalVal,
                               sumMode: 'abs',
                             });
@@ -263,9 +326,13 @@ export default function IncomeStatement() {
                           start,
                           end,
                           category: null,
-                          type: 'income',
+                          type: null,
+                          accountCodes:
+                            revenueStatementAccountCodesUnion.length > 0
+                              ? revenueStatementAccountCodesUnion
+                              : null,
                           statementAmount: v,
-                          sumMode: 'abs',
+                          sumMode: 'signed',
                         })
                       }
                     />
@@ -286,33 +353,49 @@ export default function IncomeStatement() {
                             start: merged.start,
                             end: merged.end,
                             category: null,
-                            type: 'income',
+                            type: null,
+                            accountCodes:
+                              revenueStatementAccountCodesUnion.length > 0
+                                ? revenueStatementAccountCodesUnion
+                                : null,
                             statementAmount: revenueTotal,
-                            sumMode: 'abs',
+                            sumMode: 'signed',
                           })
                       : undefined
                   }
                 />
               </tr>
+              {showExpenseSection && (
+              <>
+              {expenseKeysVisible.length > 0 && (
               <tr className="acct-ui-section acct-ui-section--neg"><td colSpan={visibleMonths.length + 3}>Expense accounts</td></tr>
-              {expenseKeys.map((k) => (
+              )}
+              {expenseKeysVisible.map((k) => {
+                const expenseRowPeriodTotal = visibleMonths.reduce((s, mi) => {
+                  if (!monthHasData[mi]) return s;
+                  const rows = expenseRowsByMonth[mi];
+                  const match = rows.find((r, i) => incomeStatementRowKey(r, i, 'expense') === k);
+                  return s + (match ? rowAmount(match) : 0);
+                }, 0);
+                return (
                 <tr key={`expense-${k}`}>
                   <td>{rowLabelMap[k] || k}</td>
                   <td>Expense</td>
                   {visibleMonths.map((mi) => {
                     const rows = expenseRowsByMonth[mi];
-                    const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
+                    const match = rows.find((r, i) => incomeStatementRowKey(r, i, 'expense') === k);
                     const v = match ? rowAmount(match) : null;
                     const cat = statementKeyToTransactionCategory(k);
                     const { start, end } = monthRange(year, mi);
+                    const cellHasExp = monthHasData[mi] && v != null && Math.abs(Number(v)) > 1e-9;
                     return (
                       <StatementAmountCell
                         key={mi}
                         className=""
                         loading={loading}
-                        hasData={monthHasData[mi]}
+                        hasData={cellHasExp}
                         rawValue={v}
-                        display={monthHasData[mi] && v != null ? money(v) : ''}
+                        display={cellHasExp ? money(v) : ''}
                         onDrill={() =>
                           setDrill({
                             title: `Income statement — ${rowLabelMap[k] || k}`,
@@ -320,8 +403,15 @@ export default function IncomeStatement() {
                             start,
                             end,
                             category: cat,
-                            type: 'expense',
-                            accountCodes: incomeStatementLineAccountCodes(k, 'expense'),
+                            type: cat ? null : 'expense',
+                            accountCodes: incomeStatementDrillAccountCodes(
+                              expenseRowsByMonth,
+                              k,
+                              'expense',
+                              mi,
+                              visibleMonths,
+                              false
+                            ),
                             statementAmount: v != null ? Number(v) : null,
                             sumMode: 'abs',
                           })
@@ -332,27 +422,12 @@ export default function IncomeStatement() {
                   <StatementAmountCell
                     className="neg"
                     loading={loading}
-                    hasData={hasAnyExpense}
-                    rawValue={visibleMonths.reduce((s, mi) => {
-                      const rows = expenseRowsByMonth[mi];
-                      const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
-                      return s + (match ? rowAmount(match) : 0);
-                    }, 0)}
-                    display={money(
-                      visibleMonths.reduce((s, mi) => {
-                        const rows = expenseRowsByMonth[mi];
-                        const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
-                        return s + (match ? rowAmount(match) : 0);
-                      }, 0)
-                    )}
+                    hasData={Math.abs(expenseRowPeriodTotal) > 1e-9}
+                    rawValue={expenseRowPeriodTotal}
+                    display={money(expenseRowPeriodTotal)}
                     onDrill={
                       merged
                         ? () => {
-                            const totalVal = visibleMonths.reduce((s, mi) => {
-                              const rows = expenseRowsByMonth[mi];
-                              const match = rows.find((r, i) => rowKey(r, i, 'expense') === k);
-                              return s + (match ? rowAmount(match) : 0);
-                            }, 0);
                             setDrill({
                               title: `Income statement — ${rowLabelMap[k] || k}`,
                               subtitle: `Total · ${quarterLabel} ${year}`,
@@ -360,8 +435,15 @@ export default function IncomeStatement() {
                               end: merged.end,
                               category: statementKeyToTransactionCategory(k),
                               type: 'expense',
-                              accountCodes: incomeStatementLineAccountCodes(k, 'expense'),
-                              statementAmount: totalVal,
+                              accountCodes: incomeStatementDrillAccountCodes(
+                                expenseRowsByMonth,
+                                k,
+                                'expense',
+                                null,
+                                visibleMonths,
+                                true
+                              ),
+                              statementAmount: expenseRowPeriodTotal,
                               sumMode: 'abs',
                             });
                           }
@@ -369,21 +451,23 @@ export default function IncomeStatement() {
                     }
                   />
                 </tr>
-              ))}
+              );
+              })}
               <tr className="acct-ui-total-row">
                 <td><strong>Total expenses</strong></td>
                 <td />
                 {visibleMonths.map((mi) => {
                   const v = cols[mi].expense;
                   const { start, end } = monthRange(year, mi);
+                  const hasExp = monthHasData[mi] && Math.abs(v) > 1e-9;
                   return (
                     <StatementAmountCell
                       key={mi}
                       className=""
                       loading={loading}
-                      hasData={monthHasData[mi]}
+                      hasData={hasExp}
                       rawValue={v}
-                      display={loading ? '…' : <strong>{monthHasData[mi] ? money(v) : ''}</strong>}
+                      display={loading ? '…' : <strong>{hasExp ? money(v) : ''}</strong>}
                       onDrill={() =>
                         setDrill({
                           title: 'Total expenses',
@@ -392,6 +476,10 @@ export default function IncomeStatement() {
                           end,
                           category: null,
                           type: 'expense',
+                          accountCodes:
+                            expenseStatementAccountCodesUnion.length > 0
+                              ? expenseStatementAccountCodesUnion
+                              : null,
                           statementAmount: v,
                           sumMode: 'abs',
                         })
@@ -402,9 +490,9 @@ export default function IncomeStatement() {
                 <StatementAmountCell
                   className="neg"
                   loading={loading}
-                  hasData={hasAnyExpense}
+                  hasData={Math.abs(expenseTotal) > 1e-9}
                   rawValue={expenseTotal}
-                  display={loading ? '…' : <strong>{hasAnyExpense ? money(expenseTotal) : ''}</strong>}
+                  display={loading ? '…' : <strong>{Math.abs(expenseTotal) > 1e-9 ? money(expenseTotal) : ''}</strong>}
                   onDrill={
                     merged
                       ? () =>
@@ -415,6 +503,10 @@ export default function IncomeStatement() {
                             end: merged.end,
                             category: null,
                             type: 'expense',
+                            accountCodes:
+                              expenseStatementAccountCodesUnion.length > 0
+                                ? expenseStatementAccountCodesUnion
+                                : null,
                             statementAmount: expenseTotal,
                             sumMode: 'abs',
                           })
@@ -422,6 +514,8 @@ export default function IncomeStatement() {
                   }
                 />
               </tr>
+              </>
+              )}
               <tr className="acct-ui-total-row">
                 <td><strong>Net income / (loss)</strong></td>
                 <td />
@@ -444,6 +538,10 @@ export default function IncomeStatement() {
                           end,
                           category: null,
                           type: null,
+                          accountCodes:
+                            incomeStatementPlAccountCodesUnion.length > 0
+                              ? incomeStatementPlAccountCodesUnion
+                              : null,
                           statementAmount: v,
                           sumMode: 'signed',
                         })
@@ -467,6 +565,10 @@ export default function IncomeStatement() {
                             end: merged.end,
                             category: null,
                             type: null,
+                            accountCodes:
+                              incomeStatementPlAccountCodesUnion.length > 0
+                                ? incomeStatementPlAccountCodesUnion
+                                : null,
                             statementAmount: netTotal,
                             sumMode: 'signed',
                           })
