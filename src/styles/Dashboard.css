@@ -1,8 +1,10 @@
 /* ValleyCroft Farm Management System — Dashboard design system
-   Sidebar: position:fixed 256px left. Main: margin-left:256px. Pure CSS. */
+   Sidebar: position:fixed left. Main: margin-left matches sidebar width. Pure CSS + mobile drawer. */
 
 /* ---- Design tokens ---- */
 .dashboard {
+  --portal-sidebar-width: 256px;
+  --dashboard-mobile-topbar-h: 52px;
   --forest: #2D5016;
   --forest-dark: #1e3610;
   --forest-light: #3d6b1e;
@@ -68,7 +70,7 @@
   left: 0;
   position: fixed;
   top: 0;
-  width: 256px;
+  width: var(--portal-sidebar-width);
   z-index: 40;
 }
 
@@ -77,9 +79,34 @@
 }
 
 .dashboard .portal-sidebar__header {
+  align-items: center;
   background: linear-gradient(90deg, var(--forest-dark), var(--sidebar-bg-soft));
   border-bottom: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+  justify-content: space-between;
   padding: 14px 16px 12px;
+}
+
+.dashboard .portal-sidebar__close-mobile {
+  align-items: center;
+  background: rgba(253, 251, 247, 0.1);
+  border: 1px solid rgba(216, 210, 196, 0.25);
+  border-radius: 10px;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  display: none;
+  flex-shrink: 0;
+  height: 36px;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease;
+  width: 36px;
+}
+
+.dashboard .portal-sidebar__close-mobile:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-accent-strong);
 }
 
 .dashboard .portal-sidebar__brand {
@@ -337,10 +364,10 @@
   font-size: 11px;
 }
 
-/* Main area — pushed right of the 256px fixed sidebar */
+/* Main area — pushed right of the fixed sidebar */
 .dashboard .main-wrapper {
-  margin-left: 256px;
-  width: calc(100% - 256px);
+  margin-left: var(--portal-sidebar-width);
+  width: calc(100% - var(--portal-sidebar-width));
   height: 100vh;
   height: 100dvh;
   display: flex;
@@ -349,11 +376,120 @@
   box-sizing: border-box;
 }
 
-/* Mobile: keep same static sidebar width */
-@media (max-width: 768px) {
+/* —— Mobile / tablet: full-width main, drawer sidebar —— */
+.dashboard__mobile-topbar {
+  display: none;
+}
+
+.dashboard__nav-backdrop {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .dashboard__mobile-topbar {
+    align-items: center;
+    background: linear-gradient(90deg, var(--forest-dark), #243818);
+    border-bottom: 1px solid rgba(216, 210, 196, 0.18);
+    box-shadow: 0 2px 14px rgba(12, 20, 8, 0.22);
+    box-sizing: border-box;
+    display: flex;
+    gap: 12px;
+    left: 0;
+    min-height: calc(var(--dashboard-mobile-topbar-h) + env(safe-area-inset-top, 0px));
+    padding: 10px 14px;
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 120;
+  }
+
+  .dashboard__menu-toggle {
+    align-items: center;
+    background: rgba(253, 251, 247, 0.1);
+    border: 1px solid rgba(216, 210, 196, 0.28);
+    border-radius: 10px;
+    color: var(--white);
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 16px;
+    height: 40px;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    width: 40px;
+  }
+
+  .dashboard__menu-toggle:hover {
+    background: rgba(253, 251, 247, 0.16);
+    border-color: rgba(216, 210, 196, 0.45);
+    color: var(--gold-light);
+  }
+
+  .dashboard__mobile-title {
+    color: var(--white);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard__nav-backdrop {
+    background: rgba(10, 16, 8, 0.52);
+    display: block;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: fixed;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+    visibility: hidden;
+    z-index: 110;
+  }
+
+  .dashboard--nav-open .dashboard__nav-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+  }
+
+  .dashboard .portal-sidebar {
+    box-shadow: none;
+    max-width: min(300px, 92vw);
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+    width: min(var(--portal-sidebar-width), 92vw);
+    z-index: 115;
+  }
+
+  .dashboard--nav-open .portal-sidebar {
+    box-shadow: 12px 0 48px rgba(0, 0, 0, 0.35);
+    transform: translateX(0);
+  }
+
+  .dashboard .portal-sidebar__close-mobile {
+    display: inline-flex;
+  }
+
   .dashboard .main-wrapper {
-    margin-left: 256px;
-    width: calc(100% - 256px);
+    margin-left: 0 !important;
+    padding-top: max(
+      calc(var(--dashboard-mobile-topbar-h) + env(safe-area-inset-top, 0px) + 14px),
+      58px
+    );
+    width: 100% !important;
+  }
+
+  .dashboard .page-content {
+    min-width: 0;
+    overflow-x: auto;
+    padding-left: max(8px, env(safe-area-inset-left, 0px));
+    padding-right: max(8px, env(safe-area-inset-right, 0px));
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   }
 }
 

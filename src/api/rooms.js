@@ -192,11 +192,29 @@ export async function uploadRoomImages(roomId, files) {
 }
 
 /**
+ * GET /api/rooms/public/media
+ * Public read-only catalog: names, slugs, types, normalized images, sort order, availability flag.
+ * No auth; intended for landing and marketing surfaces.
+ */
+export function getRoomsPublicMedia() {
+  return axiosInstance.get('/api/rooms/public/media');
+}
+
+/**
  * GET /api/rooms
  * Optional params: checkIn, checkOut (YYYY-MM-DD) — when provided, each room includes availableForDates: true | false for that range.
+ *
+ * Non-admin clients must hit `/api/rooms` first: `/api/admin/rooms` returns 401 and getWithAliases
+ * only falls through on 404/405, so the public route would never run if admin were listed first.
  */
 export function getRooms(params = {}) {
-  return getWithAliases(['/api/admin/rooms', '/api/rooms'], params);
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const role = roleFromToken(token);
+  const paths =
+    role === 'admin'
+      ? ['/api/admin/rooms', '/api/rooms']
+      : ['/api/rooms', '/api/admin/rooms'];
+  return getWithAliases(paths, params);
 }
 
 /**

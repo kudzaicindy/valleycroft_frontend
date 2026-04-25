@@ -76,6 +76,24 @@ function formatMonthKeyLabel(key) {
   return new Date(y, mm - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
+/** Month-scoped sold nights % when present; otherwise point-in-time `occupancyPct`. */
+function displayOccupancyPct(occupancy) {
+  if (!occupancy || typeof occupancy !== 'object') return null;
+  if (occupancy.selectedMonthOccupancyPct != null && occupancy.selectedMonthOccupancyPct !== '') {
+    const n = Number(occupancy.selectedMonthOccupancyPct);
+    if (Number.isFinite(n)) return Math.min(100, Math.max(0, n));
+  }
+  const fallback = Number(occupancy.occupancyPct ?? occupancy.pct);
+  if (Number.isFinite(fallback)) return Math.min(100, Math.max(0, fallback));
+  return null;
+}
+
+function occupancyOverallMonthRow(operationsDashboard, monthKey) {
+  const arr = operationsDashboard?.monthlyByRoom?.overallByMonth;
+  if (!Array.isArray(arr) || !monthKey) return null;
+  return arr.find((r) => String(r?.key) === String(monthKey)) ?? null;
+}
+
 function listFromResponseEnvelope(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
@@ -145,13 +163,13 @@ function emptyOperationsStatCards() {
   ];
 }
 
-function financeTilesToStatCards(tilesList, dash, occupancy) {
+function financeTilesToStatCards(tilesList, dash, occupancy, monthNightRow, periodLabel) {
   const tones = ['green', 'gold', 'sage', 'teal'];
   const icons = ['fas fa-chart-line', 'fas fa-file-invoice-dollar', 'fas fa-balance-scale', 'fas fa-truck'];
   const unifiedRevenue = dash?.revenueMtd ?? dash?.incomeMtd;
-  const occupancyPctRaw = Number(occupancy?.occupancyPct ?? occupancy?.pct);
+  const occPct = displayOccupancyPct(occupancy);
   const occupancyPct =
-    Number.isFinite(occupancyPctRaw) ? `${Math.round(Math.min(100, Math.max(0, occupancyPctRaw)))}%` : '—';
+    occPct != null ? `${Math.round(occPct)}%` : '—';
   return tilesList.slice(0, 4).map((tile, i) => {
     const lower = String(tile?.title ?? '').toLowerCase();
     const isCollectionsTile = lower.includes('collection');
@@ -162,11 +180,17 @@ function financeTilesToStatCards(tilesList, dash, occupancy) {
           ? fmtRand(unifiedRevenue)
           : tile.primary;
     const occupancyDetails = [
-      occupancy?.occupiedRooms != null ? `${occupancy.occupiedRooms} occupied` : null,
+      occupancy?.occupiedRooms != null ? `${occupancy.occupiedRooms} occupied now` : null,
       occupancy?.vacantRooms != null ? `${occupancy.vacantRooms} vacant` : null,
     ].filter(Boolean);
+    const nightsLine =
+      monthNightRow &&
+      Number.isFinite(Number(monthNightRow.soldNights)) &&
+      Number.isFinite(Number(monthNightRow.availableNights))
+        ? `${Number(monthNightRow.soldNights)} / ${Number(monthNightRow.availableNights)} nights (${periodLabel || formatMonthKeyLabel(monthNightRow.key)})`
+        : null;
     const trendText = isCollectionsTile
-      ? occupancyDetails.join(' · ') || 'Rooms occupied now'
+      ? [nightsLine, occupancyDetails.join(' · ')].filter(Boolean).join(' · ') || 'Occupancy for selected month'
       : tile.lines?.length
         ? tile.lines.join(' · ')
         : '—';
@@ -300,6 +324,10 @@ export default function ExecutiveHomeDashboard({ variant }) {
   const isAdminContext = variant === 'admin' || dashboardRole === 'admin' || userRole === 'admin';
   const operationsDashboard = root?.operationsDashboard ?? null;
   const occupancy = operationsDashboard?.occupancy ?? null;
+  const occupancyMonthRow = useMemo(
+    () => occupancyOverallMonthRow(operationsDashboard, selectedMonthKey),
+    [operationsDashboard, selectedMonthKey]
+  );
   const movementsToday = Array.isArray(operationsDashboard?.movementsToday)
     ? operationsDashboard.movementsToday
     : [];
@@ -345,7 +373,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
 
   const statCards = useMemo(() => {
     if (variant === 'finance' && Array.isArray(dash?.tilesList) && dash.tilesList.length > 0) {
-      return financeTilesToStatCards(dash.tilesList, dash, occupancy);
+      return financeTilesToStatCards(dash.tilesList, dash, occupancy, occupancyMonthRow, dash?.periodLabel);
     }
     if (variant === 'finance') {
       return financeScalarStatCards(dash);
@@ -429,19 +457,28 @@ export default function ExecutiveHomeDashboard({ variant }) {
       );
     }
     return emptyOperationsStatCards();
-  }, [variant, dash, operationsDashboard, occupancy, inventorySnapshot, isAdminContext]);
+  }, [variant, dash, operationsDashboard, occupancy, occupancyMonthRow, inventorySnapshot, isAdminContext]);
 
   const ring = useMemo(() => {
     const base = { ...c.ring };
     if (occupancy) {
-      const pct = Math.min(100, Math.max(0, Number(occupancy.occupancyPct ?? occupancy.pct ?? 0)));
+      const pctRaw = displayOccupancyPct(occupancy);
+      const pct = pctRaw != null ? pctRaw : 0;
       const occupied = occupancy.occupiedRooms;
       const vacant = occupancy.vacantRooms;
       const maintenance = occupancy.maintenanceRooms;
       const arc = Math.max(0, Math.round((pct / 100) * 196));
+      const monthLabel = dash?.periodLabel || formatMonthKeyLabel(selectedMonthKey);
+      const soldN = occupancyMonthRow != null ? Number(occupancyMonthRow.soldNights) : NaN;
+      const availN = occupancyMonthRow != null ? Number(occupancyMonthRow.availableNights) : NaN;
+      const hasNights = Number.isFinite(soldN) && Number.isFinite(availN);
+      const usesMonthPct =
+        occupancy.selectedMonthOccupancyPct != null &&
+        occupancy.selectedMonthOccupancyPct !== '' &&
+        Number.isFinite(Number(occupancy.selectedMonthOccupancyPct));
       return {
         ...base,
-        badge: `${Math.round(pct)}% full`,
+        badge: usesMonthPct ? `${Math.round(pct)}% · month` : `${Math.round(pct)}% full`,
         badgeClass: 'badge badge-confirmed',
         stroke: 'var(--forest)',
         dashArray: `${arc} 226`,
@@ -450,8 +487,16 @@ export default function ExecutiveHomeDashboard({ variant }) {
         textFill: 'var(--forest-dark)',
         info: (
           <>
+            {hasNights ? (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sold nights ({monthLabel})</div>
+                <div style={{ fontWeight: 700, color: 'var(--forest)' }}>
+                  {soldN} / {availN}
+                </div>
+              </div>
+            ) : null}
             <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Occupied</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Occupied now</div>
               <div style={{ fontWeight: 700, color: 'var(--forest)' }}>{occupied ?? '—'} rooms</div>
             </div>
             <div style={{ marginBottom: 8 }}>
@@ -481,7 +526,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
         </div>
       ),
     };
-  }, [occupancy, c.ring, loading]);
+  }, [occupancy, occupancyMonthRow, dash?.periodLabel, selectedMonthKey, c.ring, loading]);
 
   const mainTable = useMemo(() => {
     const base = c.mainTable;
@@ -1097,7 +1142,8 @@ export default function ExecutiveHomeDashboard({ variant }) {
         { value: fmtRand(dash?.debtorsTotal), label: 'Debtors' },
       ];
     }
-    const pct = occupancy ? Math.round(Number(occupancy.occupancyPct ?? occupancy.pct ?? 0)) : null;
+    const pctRaw = occupancy ? displayOccupancyPct(occupancy) : null;
+    const pct = pctRaw != null ? Math.round(pctRaw) : null;
     const bookingsToday =
       operationsDashboard?.cards?.checkInsToday?.count ??
       operationsDashboard?.cards?.checkOutsToday?.count ??

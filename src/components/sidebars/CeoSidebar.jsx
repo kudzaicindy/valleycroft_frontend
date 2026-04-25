@@ -11,6 +11,7 @@ import {
   FaUserGraduate,
   FaUsers,
   FaClipboardList,
+  FaEnvelopeOpenText,
 } from 'react-icons/fa';
 import PortalSidebar from '@/components/sidebars/PortalSidebar';
 
@@ -22,6 +23,7 @@ const sections = [
     items: [
       { id: 'dashboard', label: 'Dashboard', path: '/ceo/dashboard', icon: <FaChartBar className="w-4 h-4" /> },
       { id: 'bookings', label: 'Bookings', path: '/ceo/bookings', icon: <FaCalendarAlt className="w-4 h-4" /> },
+      { id: 'enquiries', label: 'Enquiries', path: '/ceo/enquiries', icon: <FaEnvelopeOpenText className="w-4 h-4" /> },
       { id: 'expenses', label: 'Expenses', path: '/ceo/expenses', icon: <FaReceipt className="w-4 h-4" /> },
     ],
   },
@@ -51,7 +53,8 @@ const sections = [
   },
 ];
 
-export default function CeoSidebar({ onLogout }) {
+export default function CeoSidebar(props) {
+  const { onLogout, ...rest } = props;
   return (
     <PortalSidebar
       portalLabel="CEO Portal"
@@ -59,6 +62,7 @@ export default function CeoSidebar({ onLogout }) {
       profileRole="Chief Executive Officer"
       sections={sections}
       onLogout={onLogout}
+      {...rest}
     />
   );
 }

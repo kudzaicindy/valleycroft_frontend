@@ -1,0 +1,370 @@
+/* Event enquiry — layout tweaks on top of BookingPage.css */
+
+.event-enquiry-page .event-enquiry-steps-inner {
+  max-width: 720px;
+}
+
+.event-enquiry-page .event-enquiry-steps-inner--single {
+  max-width: 420px;
+  justify-content: center;
+}
+
+.event-enquiry-page .event-enquiry-steps-inner--single .step {
+  flex: 0 0 auto;
+}
+
+.event-enquiry-page .event-enquiry-steps-inner:not(.event-enquiry-steps-inner--single) .step {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.event-enquiry-page .event-enquiry-steps-inner:not(.event-enquiry-steps-inner--single) .step-line {
+  max-width: 40px;
+  flex: 0 0 auto;
+}
+
+.event-enquiry-lead {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.event-venues-section {
+  margin: 0 0 24px;
+  padding: 18px 0 4px;
+  border-top: 1px solid rgba(45, 80, 22, 0.1);
+  border-bottom: 1px solid rgba(45, 80, 22, 0.08);
+}
+
+.event-venues-heading {
+  margin: 0 0 6px;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--forest-d);
+}
+
+.event-venues-sub {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.event-venues-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-mid);
+}
+
+.event-venues-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.event-venue-card {
+  border: 1px solid var(--linen-d);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.event-venue-card-visual {
+  position: relative;
+}
+
+.event-venue-carousel {
+  position: relative;
+  width: 100%;
+  height: 132px;
+  background: linear-gradient(135deg, rgba(45, 80, 22, 0.12), rgba(184, 137, 42, 0.15));
+}
+
+.event-venue-carousel--empty {
+  background-color: rgba(45, 80, 22, 0.08);
+}
+
+.event-venue-carousel-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+}
+
+.event-venue-carousel-viewport:hover {
+  filter: brightness(1.03);
+}
+
+.event-venue-carousel-viewport:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--gold);
+}
+
+.event-venue-carousel-track {
+  display: flex;
+  height: 100%;
+  transition: transform 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-venue-carousel-track {
+    transition: none;
+  }
+}
+
+.event-venue-carousel-slide {
+  flex-shrink: 0;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-color: rgba(45, 80, 22, 0.06);
+  transition: filter 0.2s ease;
+}
+
+.event-venue-carousel-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--forest-d);
+  background: rgba(253, 251, 247, 0.92);
+  border: 1px solid rgba(45, 80, 22, 0.14);
+  box-shadow: 0 1px 4px rgba(45, 80, 22, 0.12);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.event-venue-carousel-nav:hover {
+  background: var(--white);
+  color: var(--forest);
+}
+
+.event-venue-carousel-nav--prev {
+  left: 6px;
+}
+
+.event-venue-carousel-nav--next {
+  right: 6px;
+}
+
+.event-venue-carousel-nav i {
+  font-size: 11px;
+}
+
+.event-venue-carousel-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.event-venue-carousel-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  background: rgba(253, 251, 247, 0.45);
+  box-shadow: 0 0 0 1px rgba(45, 80, 22, 0.25);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.event-venue-carousel-dot:hover {
+  background: rgba(253, 251, 247, 0.75);
+}
+
+.event-venue-carousel-dot.is-active {
+  background: var(--gold);
+  box-shadow: 0 0 0 1px rgba(45, 80, 22, 0.2);
+  transform: scale(1.15);
+}
+
+.event-venue-carousel-count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--forest-d);
+  background: rgba(253, 251, 247, 0.92);
+  border: 1px solid rgba(45, 80, 22, 0.12);
+  pointer-events: none;
+}
+
+.event-venue-card-body {
+  padding: 12px 14px 14px;
+}
+
+.event-venue-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--forest-d);
+  margin-bottom: 2px;
+}
+
+.event-venue-card-cap {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.event-venue-card-desc {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-mid);
+  line-height: 1.45;
+}
+
+.event-venue-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-venue-card-price {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.event-enquiry-page .event-venue-album-btn {
+  font-size: 11px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.event-enquiry-page .event-enquiry-panel-footer {
+  margin-top: 8px;
+  padding-left: 0;
+  padding-right: 0;
+  border-top: none;
+}
+
+.event-enquiry-mailto-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--text-mid);
+  line-height: 1.5;
+  background: rgba(45, 80, 22, 0.06);
+  border: 1px solid rgba(45, 80, 22, 0.12);
+  border-radius: 10px;
+}
+
+.event-enquiry-mailto-hint i {
+  color: var(--forest);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.event-enquiry-mailto-hint a {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.event-enquiry-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--forest-d);
+  line-height: 1.55;
+  background: rgba(45, 80, 22, 0.08);
+  border: 1px solid rgba(45, 80, 22, 0.18);
+  border-radius: 10px;
+}
+
+.event-enquiry-success i {
+  color: var(--forest);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.event-enquiry-ref {
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.event-enquiry-side-card {
+  background: rgba(45, 80, 22, 0.06);
+  border: 1px solid rgba(45, 80, 22, 0.15);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-top: 16px;
+}
+
+.event-enquiry-side-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--forest-d);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-enquiry-side-card-title i {
+  color: var(--gold);
+}
+
+.event-enquiry-side-card-text {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.event-enquiry-help-card {
+  background: var(--linen);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-top: 14px;
+  text-align: center;
+}
+
+.event-enquiry-help-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.event-enquiry-help-phone {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--forest);
+}
+
+.event-enquiry-help-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}

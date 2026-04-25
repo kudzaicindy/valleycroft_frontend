@@ -19,6 +19,7 @@ const queryClient = new QueryClient({
 
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const BookingPage = lazy(() => import('@/pages/BookingPage'));
+const EventEnquiryPage = lazy(() => import('@/pages/EventEnquiryPage'));
 const BookingTrackPage = lazy(() => import('@/pages/BookingTrackPage'));
 
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
@@ -43,6 +44,7 @@ const AuditPage = lazy(() => import('@/pages/dashboard/AuditPage'));
 const TransactionsPage = lazy(() => import('@/pages/dashboard/TransactionsPage'));
 const BookingPaymentsPage = lazy(() => import('@/pages/dashboard/BookingPaymentsPage'));
 const QuotationsPage = lazy(() => import('@/pages/dashboard/QuotationsPage'));
+const EnquiriesPage = lazy(() => import('@/pages/dashboard/EnquiriesPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/dashboard/ChartOfAccountsPage'));
 const DebtorsPage = lazy(() => import('@/pages/dashboard/DebtorsPage'));
 const SuppliersPage = lazy(() => import('@/pages/dashboard/SuppliersPage'));
@@ -69,6 +71,7 @@ function App() {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/booking" element={<BookingPage />} />
+              <Route path="/event-enquiry" element={<EventEnquiryPage />} />
               <Route path="/booking-track" element={<BookingTrackPage />} />
               <Route path="/login" element={<LoginPage />} />
 
@@ -86,6 +89,7 @@ function App() {
                 <Route path="bookings" element={<BookingsPage />} />
                 <Route path="booking-payments" element={<BookingPaymentsPage />} />
                 <Route path="quotations" element={<QuotationsPage />} />
+                <Route path="enquiries" element={<EnquiriesPage />} />
                 <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
                 <Route path="guest-bookings" element={<Navigate to="bookings?tab=guest" replace />} />
                 <Route path="rooms" element={<RoomsPage />} />
@@ -122,6 +126,7 @@ function App() {
                 <Route path="staff" element={<StaffPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route path="audit" element={<AuditPage />} />
+                <Route path="enquiries" element={<EnquiriesPage />} />
               </Route>
 
               {/* Finance */}
@@ -152,6 +157,7 @@ function App() {
                 <Route path="pl" element={<Navigate to="ledger" replace />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route path="audit" element={<AuditPage />} />
+                <Route path="enquiries" element={<EnquiriesPage />} />
               </Route>
 
               {/* Employee */}

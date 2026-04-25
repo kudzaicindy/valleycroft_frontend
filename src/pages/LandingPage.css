@@ -182,10 +182,16 @@ html {
   border: 1.5px solid rgba(255, 255, 255, 0.35);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.06);
-  color: var(--white);
+  color: #ffffff;
   font-size: 18px;
   flex-shrink: 0;
   transition: background 0.2s, border-color 0.2s;
+}
+
+/* Beat .landing-page a { color: inherit } so the icon stays white */
+.landing-page .landing-nav .nav-menu-toggle,
+.landing-page .landing-nav .nav-menu-toggle i {
+  color: #ffffff;
 }
 
 .nav-menu-toggle:hover {
@@ -199,7 +205,7 @@ html {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1002;
+  z-index: 1103;
   background: rgba(0, 0, 0, 0.45);
   opacity: 0;
   visibility: hidden;
@@ -220,7 +226,7 @@ html {
   top: var(--landing-nav-h, 72px);
   right: 0;
   bottom: 0;
-  z-index: 1003;
+  z-index: 1104;
   width: min(20rem, 92vw);
   max-width: 100%;
   background: linear-gradient(180deg, #1e3610 0%, #243818 100%);
@@ -248,9 +254,14 @@ html {
   padding: 14px 12px;
   font-size: 15px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.88);
+  color: #ffffff;
   border-radius: 10px;
   transition: background 0.2s, color 0.2s;
+}
+
+/* Drawer lives outside .landing-nav; .landing-page a { color: inherit } otherwise wins */
+.landing-page .nav-drawer a.nav-drawer-link {
+  color: #ffffff;
 }
 
 .nav-drawer-link:hover,
@@ -267,6 +278,14 @@ html {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.landing-page .nav-drawer .nav-drawer-actions a.btn-nav {
+  color: #ffffff;
+}
+
+.landing-page .nav-drawer .nav-drawer-actions a.btn-gold-nav {
+  color: #ffffff;
 }
 
 .nav-drawer-btn {
@@ -1253,7 +1272,7 @@ body.landing-nav-open {
 .btn-view-all-rooms {
   padding: 14px 32px;
   background: linear-gradient(135deg, var(--forest), var(--forest-l));
-  color: var(--white);
+  color: #fff !important;
   border: none;
   border-radius: 11px;
   font-size: 14px;
@@ -1263,6 +1282,14 @@ body.landing-nav-open {
   gap: 8px;
   transition: all 0.2s;
   text-decoration: none;
+}
+
+.landing-page a.btn-view-all-rooms:visited {
+  color: #fff !important;
+}
+
+.landing-page a.btn-view-all-rooms i {
+  color: inherit;
 }
 
 .btn-view-all-rooms:hover {
@@ -1689,23 +1716,26 @@ footer {
   color: rgba(255, 255, 255, 0.35);
 }
 
-/* Keep landing footer text readable even with global anchor/text overrides. */
-.landing-page footer,
-.landing-page footer .footer-brand-name,
-.landing-page footer .footer-brand-desc,
-.landing-page footer .footer-col-title,
-.landing-page footer .footer-link,
-.landing-page footer .footer-copy {
-  color: inherit;
+/* Landing footer: explicit colours — do not inherit .landing-page body text (low contrast on --forest-d). */
+.landing-page footer {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .landing-page footer .footer-brand-name {
-  color: var(--white);
+  color: #fff;
+}
+
+.landing-page footer .footer-col-title {
+  color: var(--gold-l, #e8d5a3);
 }
 
 .landing-page footer .footer-brand-desc,
 .landing-page footer .footer-link {
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.landing-page footer .footer-link:hover {
+  color: var(--gold-l, #e8d5a3);
 }
 
 .landing-page footer .footer-copy {
@@ -2210,14 +2240,16 @@ html.vc-remotion-ad .btn-hero-secondary {
 }
 
 /* RESPONSIVE */
-/* Force desktop nav visibility to avoid accidental hide on wide screens. */
-.landing-page .nav-links,
-.landing-page .nav-actions {
-  display: flex !important;
-}
+/* Desktop only: keep inline links + hide hamburger (scoped so ≤960px mobile rules can win). */
+@media (min-width: 961px) {
+  .landing-page .nav-links,
+  .landing-page .nav-actions {
+    display: flex !important;
+  }
 
-.landing-page .nav-menu-toggle {
-  display: none !important;
+  .landing-page .nav-menu-toggle {
+    display: none !important;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -2288,14 +2320,12 @@ html.vc-remotion-ad .btn-hero-secondary {
     --landing-nav-h: 64px;
     padding: 0 16px;
   }
-  .nav-links {
-    display: none;
+  .landing-page .nav-links,
+  .landing-page .nav-actions {
+    display: none !important;
   }
-  .nav-actions {
-    display: none;
-  }
-  .nav-menu-toggle {
-    display: flex;
+  .landing-page .nav-menu-toggle {
+    display: flex !important;
   }
   .nav-name {
     font-size: 18px;

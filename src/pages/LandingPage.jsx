@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { getRooms } from '@/api/rooms';
+import { getRooms, getRoomsPublicMedia } from '@/api/rooms';
 import { FARM_STAYS, apiRowMatchesStay, quickBookNameBySlug } from '@/content/farmStays';
+import {
+  isLandingStayCatalogRoom,
+  mergeLandingCatalogRows,
+  normalizePublicRoomsPayload,
+} from '@/utils/publicRoomCatalog';
 import { resolveRoomImageUrl, resolveRoomImageUrls } from '@/utils/roomImageUrl';
 import './LandingPage.css';
 
@@ -27,6 +32,68 @@ function findApiRoomForQuickBookHouse(apiList, houseVal) {
     }
   }
   return null;
+}
+
+/** Card body: admin space description when set, else composed meta line. */
+function landingRoomCardDescription(room) {
+  const prose = String(room.description || room.spaceDescription || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (prose) {
+    return prose.length > 380 ? `${prose.slice(0, 377)}…` : prose;
+  }
+  return buildLandingRoomDescFromApi(room);
+}
+
+/** One-line detail blurb from the same fields admin uses on Rooms (or public/media extras). */
+function buildLandingRoomDescFromApi(room) {
+  const type = String(room.type || '').replace(/-/g, ' ');
+  const cap = room.capacity != null && room.capacity !== '' ? `Sleeps up to ${Number(room.capacity)}` : '';
+  const bed = String(room.bedConfig || room.beds || '').trim();
+  const parts = [];
+  const rt = String(room.roomType || '').trim();
+  const sc = String(room.spaceCategory || '').trim();
+  if (rt) parts.push(rt.replace(/\b\w/g, (c) => c.toUpperCase()));
+  if (sc && sc.toLowerCase() !== rt.toLowerCase()) parts.push(sc.replace(/\b\w/g, (c) => c.toUpperCase()));
+  if (type) parts.push(type.replace(/\b\w/g, (c) => c.toUpperCase()));
+  if (cap) parts.push(cap);
+  if (bed) parts.push(bed);
+  if (room.bathroom) parts.push(String(room.bathroom));
+  if (room.view) parts.push(String(room.view));
+  if (room.floor != null && room.floor !== '') parts.push(`Floor ${room.floor}`);
+  return parts.length ? parts.join(' · ') : 'Self-catering farm stay at Valley Croft.';
+}
+
+function landingAmenityTagsFromApi(room) {
+  const a = room.amenities;
+  if (Array.isArray(a) && a.length) {
+    return a
+      .slice(0, 12)
+      .map((x) => (typeof x === 'string' ? x : x?.name || x?.label || String(x)))
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+      .slice(0, 6);
+  }
+  const tags = [];
+  const bed = room.bedConfig || room.beds;
+  if (bed) tags.push(String(bed));
+  if (room.capacity) tags.push(`${room.capacity} guests`);
+  if (room.bathroom) tags.push(String(room.bathroom));
+  if (room.view) tags.push(String(room.view));
+  return tags.slice(0, 4);
+}
+
+function landingPriceLabelFromApi(room) {
+  const n = Number(room.pricePerNight);
+  if (!Number.isFinite(n) || n <= 0) return 'See booking';
+  return `R ${Math.round(n).toLocaleString('en-ZA')}`;
+}
+
+function landingBedsLabelFromApi(room) {
+  const bed = String(room.bedConfig || room.beds || '').trim();
+  if (bed) return bed;
+  if (room.capacity != null && room.capacity !== '') return `${room.capacity} guests`;
+  return '';
 }
 
 const HOUSE1_IMAGE_PATHS = FARM_STAYS[0].images;
@@ -194,7 +261,7 @@ export default function LandingPage() {
   const [bookingType, setBookingType] = useState('bnb');
   const [modalOpen, setModalOpen] = useState(false);
   const [farmGalleryOpen, setFarmGalleryOpen] = useState(false);
-  const [bookingContext, setBookingContext] = useState({ name: '', type: 'room' });
+  const [bookingContext, setBookingContext] = useState({ name: '', type: 'room', preferredRoomId: '' });
   const [qbCheckIn, setQbCheckIn] = useState(() => ymdLocal(new Date()));
   const [qbCheckOut, setQbCheckOut] = useState(() => {
     const t = new Date();
@@ -210,6 +277,34 @@ export default function LandingPage() {
 
   const todayMin = useMemo(() => ymdLocal(new Date()), []);
 
+  const { data: catalogMediaRaw } = useQuery({
+    queryKey: ['landing-room-catalog-media'],
+    queryFn: () => getRoomsPublicMedia(),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const { data: catalogDetailRaw } = useQuery({
+    queryKey: ['landing-room-catalog-detail'],
+    queryFn: () => getRooms(),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const catalogApiRooms = useMemo(() => {
+    const mediaList = normalizePublicRoomsPayload(catalogMediaRaw);
+    const detailList = normalizePublicRoomsPayload(catalogDetailRaw);
+    const merged = mergeLandingCatalogRows(mediaList, detailList).filter(isLandingStayCatalogRoom);
+    return [...merged].sort((a, b) => {
+      const oa = Number(a.order);
+      const ob = Number(b.order);
+      const na = Number.isFinite(oa) ? oa : 999;
+      const nb = Number.isFinite(ob) ? ob : 999;
+      if (na !== nb) return na - nb;
+      return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+    });
+  }, [catalogMediaRaw, catalogDetailRaw]);
+
   const bnbDatesValid =
     bookingType === 'bnb' && qbCheckIn && qbCheckOut && qbCheckOut > qbCheckIn;
 
@@ -220,10 +315,16 @@ export default function LandingPage() {
     retry: 1,
   });
 
-  const landingApiRooms = useMemo(() => {
-    const raw = roomsRaw;
-    return Array.isArray(raw) ? raw : (raw?.data ?? []);
-  }, [roomsRaw]);
+  const landingApiRooms = useMemo(() => normalizePublicRoomsPayload(roomsRaw), [roomsRaw]);
+
+  const landingAvailByRoomId = useMemo(() => {
+    const m = new Map();
+    for (const r of landingApiRooms) {
+      const id = String(r._id ?? r.id ?? '');
+      if (id) m.set(id, r.availableForDates !== false);
+    }
+    return m;
+  }, [landingApiRooms]);
 
   const landingAvail = useMemo(() => {
     if (!bnbDatesValid || !isSuccess || isError || landingApiRooms.length === 0) {
@@ -274,9 +375,33 @@ export default function LandingPage() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const goToBooking = () => {
+  function buildBookingNavState(partial = {}) {
+    const guestsVal = guestsRef.current?.value ?? '2';
+    let adults = 2;
+    let children = 0;
+    const g = String(guestsVal);
+    if (g === '1') adults = 1;
+    else if (g === '2') adults = 2;
+    else if (g === '3') adults = 3;
+    else if (g === '4') adults = 4;
+    else if (g === '5+') adults = 6;
     const checkIn = qbCheckIn.trim();
     const checkOut = qbCheckOut.trim();
+    return {
+      checkIn: checkIn || undefined,
+      checkOut: checkOut || undefined,
+      bookingType: partial.bookingType ?? 'bnb',
+      adults,
+      children,
+      ...(partial.preferredRoomId ? { preferredRoomId: partial.preferredRoomId } : {}),
+    };
+  }
+
+  const goToBooking = () => {
+    if (bookingType === 'event') {
+      navigate('/event-enquiry');
+      return;
+    }
     if (bookingType === 'bnb' && landingAvail.known && landingAvail.blocked) {
       setMessageModal({
         open: true,
@@ -285,33 +410,22 @@ export default function LandingPage() {
       });
       return;
     }
-    const guestsVal = guestsRef.current?.value ?? '2';
     const houseVal = qbHouse;
-    let adults = 2;
-    let children = 0;
-    const g = String(guestsVal);
-    if (g === '1') adults = 1;
-    else if (g === '2') adults = 2;
-    else if (g === '3') adults = 3;
-    else if (g === '4') adults = 4;
-    else if (g === '5+') {
-      adults = 6;
-    }
     const preferredRoomId = houseVal && houseVal !== 'any' ? houseVal : undefined;
     navigate('/booking', {
-      state: {
-        checkIn: checkIn || undefined,
-        checkOut: checkOut || undefined,
-        bookingType,
-        adults,
-        children,
-        ...(preferredRoomId ? { preferredRoomId } : {}),
-      },
+      state: buildBookingNavState({
+        bookingType: 'bnb',
+        preferredRoomId,
+      }),
     });
   };
 
-  const openBookingModal = (name, type = 'room') => {
-    setBookingContext({ name, type });
+  const openBookingModal = (name, type = 'room', preferredRoomId = '') => {
+    if (type === 'event') {
+      navigate('/event-enquiry');
+      return;
+    }
+    setBookingContext({ name, type, preferredRoomId: preferredRoomId || '' });
     setModalOpen(true);
   };
 
@@ -431,9 +545,11 @@ export default function LandingPage() {
       },
       { threshold: 0.1 }
     );
+    /* Room cards swap from FARM_STAYS → API when the catalog loads; new nodes must be observed
+       or they stay at opacity:0 forever (initial effect only ran once). */
     document.querySelectorAll('[data-animate]').forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, []);
+  }, [catalogApiRooms.length]);
 
   const aboutStrip = [
     { title: 'BnB Stays', desc: 'Comfortable farm accommodation', img: resolveRoomImageUrl(HOUSE1_IMAGE_PATHS[0]) },
@@ -449,35 +565,98 @@ export default function LandingPage() {
     { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
   ];
 
-  const rooms = FARM_STAYS.map((stay, idx) => {
+  const rooms = useMemo(() => {
     const tags = ['Popular', 'Cosy', 'Premium'];
     const ratings = [4.92, 4.89, 4.95];
-    const imgs = [HOUSE1_IMAGE_PATHS, HOUSE2_IMAGE_PATHS, HOUSE3_IMAGE_PATHS][idx];
-    const apiRoom = landingApiRooms.find((row) => apiRowMatchesStay(row, stay));
-    const apiGallery = resolveRoomImageUrls(apiRoom?.images || []);
-    const fallbackGallery = resolveRoomImageUrls(imgs);
-    const gallery = apiGallery.length ? apiGallery : fallbackGallery;
-    return {
-      tag: tags[idx],
-      avail: 'yes',
-      name: stay.name,
-      bedsLabel: stay.bedsShort,
-      desc: stay.desc,
-      amenities: stay.tags.slice(0, 4),
-      price: `R ${stay.price.toLocaleString('en-ZA')}`,
-      sub: 'per night',
-      rating: ratings[idx],
-      img: gallery[0] || '',
-      gallery,
-      isEvent: false,
-    };
-  });
+
+    if (catalogApiRooms.length > 0) {
+      return catalogApiRooms.map((apiRow, idx) => {
+        const id = String(apiRow._id ?? apiRow.id ?? idx);
+        const stay = FARM_STAYS.find((s) => apiRowMatchesStay(apiRow, s));
+        const stayIdx = stay ? FARM_STAYS.indexOf(stay) : -1;
+        const fallbackImgs =
+          stayIdx === 0 ? HOUSE1_IMAGE_PATHS : stayIdx === 1 ? HOUSE2_IMAGE_PATHS : stayIdx === 2 ? HOUSE3_IMAGE_PATHS : [];
+        const apiGallery = resolveRoomImageUrls(apiRow.images || []);
+        const fallbackGallery = resolveRoomImageUrls(fallbackImgs);
+        const gallery = apiGallery.length ? apiGallery : fallbackGallery;
+
+        let avail = 'yes';
+        let availText = '';
+        const hasDateAvail =
+          bnbDatesValid && isSuccess && landingApiRooms.length && landingAvailByRoomId.has(id);
+        if (hasDateAvail) {
+          if (landingAvailByRoomId.get(id) === false) {
+            avail = 'no';
+            availText = 'Unavailable';
+          }
+        } else if (apiRow.isAvailable === false) {
+          avail = 'no';
+          availText = 'Not listed for booking';
+        }
+
+        return {
+          roomId: id,
+          tag: tags[idx % tags.length],
+          avail,
+          availText,
+          name: String(apiRow.name || 'Room').trim() || 'Room',
+          bedsLabel: landingBedsLabelFromApi(apiRow),
+          desc: landingRoomCardDescription(apiRow),
+          amenities: landingAmenityTagsFromApi(apiRow),
+          price: landingPriceLabelFromApi(apiRow),
+          sub: 'per night',
+          rating: ratings[idx % ratings.length],
+          img: gallery[0] || '',
+          gallery,
+          isEvent: false,
+        };
+      });
+    }
+
+    return FARM_STAYS.map((stay, idx) => {
+      const imgs = [HOUSE1_IMAGE_PATHS, HOUSE2_IMAGE_PATHS, HOUSE3_IMAGE_PATHS][idx];
+      const apiRoom = landingApiRooms.find((row) => apiRowMatchesStay(row, stay));
+      const apiGallery = resolveRoomImageUrls(apiRoom?.images || []);
+      const fallbackGallery = resolveRoomImageUrls(imgs);
+      const gallery = apiGallery.length ? apiGallery : fallbackGallery;
+      const id = apiRoom ? String(apiRoom._id ?? apiRoom.id ?? '') : stay.slug;
+      let avail = 'yes';
+      let availText = '';
+      const hasDateAvailFb =
+        bnbDatesValid && isSuccess && landingApiRooms.length && id && landingAvailByRoomId.has(id);
+      if (hasDateAvailFb) {
+        if (landingAvailByRoomId.get(id) === false) {
+          avail = 'no';
+          availText = 'Unavailable';
+        }
+      } else if (apiRoom?.isAvailable === false) {
+        avail = 'no';
+        availText = 'Not listed for booking';
+      }
+      return {
+        roomId: id,
+        tag: tags[idx],
+        avail,
+        availText,
+        name: stay.name,
+        bedsLabel: stay.bedsShort,
+        desc: stay.desc,
+        amenities: stay.tags.slice(0, 4),
+        price: `R ${stay.price.toLocaleString('en-ZA')}`,
+        sub: 'per night',
+        rating: ratings[idx],
+        img: gallery[0] || '',
+        gallery,
+        isEvent: false,
+      };
+    });
+  }, [catalogApiRooms, landingApiRooms, landingAvailByRoomId, bnbDatesValid, isSuccess]);
 
   const events = [
-    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Venue capacity supports events of up to 300 guests.', features: ['Up to 300 guests', 'Self-catering venue', 'Decor and events management available', 'Scenic photo backdrops throughout'], price: 'From R 28,000', sub: 'Full day venue hire', link: '/booking?type=wedding' },
-    { icon: '🏢', name: 'Corporate Events', desc: 'Team retreats, strategy sessions, product launches. Escape the city for a productive day surrounded by nature.', features: ['20–120 delegates', 'AV equipment included', 'Self-catering setup', 'Decor and events management available'], price: 'From R 8,500', sub: 'Half-day from R 5,000', link: '/booking?type=corporate' },
-    { icon: '🎂', name: 'Private Celebrations', desc: 'Birthdays, anniversaries, family reunions. Our garden venue creates magical memories for every occasion.', features: ['Up to 80 guests', 'Entertainment area', 'Self-catering setup', 'Decor and events management available'], price: 'From R 6,500', sub: 'Venue hire per day', link: '/booking?type=celebration' },
-    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities, and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/booking?type=retreat' },
+    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Venue capacity supports events of up to 300 guests.', features: ['Up to 300 guests', 'Self-catering venue', 'Decor and events management available', 'Scenic photo backdrops throughout'], price: 'From R 28,000', sub: 'Full day venue hire', link: '/event-enquiry?type=wedding' },
+    { icon: '🏢', name: 'Corporate Events', desc: 'Team retreats, strategy sessions, product launches. Escape the city for a productive day surrounded by nature.', features: ['20–120 delegates', 'AV equipment included', 'Self-catering setup', 'Decor and events management available'], price: 'From R 8,500', sub: 'Half-day from R 5,000', link: '/event-enquiry?type=corporate' },
+    { icon: '🎂', name: 'Private Celebrations', desc: 'Birthdays, anniversaries, family reunions. Our garden venue creates magical memories for every occasion.', features: ['Up to 80 guests', 'Entertainment area', 'Self-catering setup', 'Decor and events management available'], price: 'From R 6,500', sub: 'Venue hire per day', link: '/event-enquiry?type=celebration' },
+    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities, and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
   ];
 
   const testimonials = [
@@ -487,7 +666,7 @@ export default function LandingPage() {
   ];
 
   const accommodationRoomCards = rooms.map((room) => (
-    <div key={room.name} className="room-card-pub" data-animate>
+    <div key={room.roomId || room.name} className="room-card-pub" data-animate>
       <RoomCardImageCarousel
         images={room.gallery?.length ? room.gallery : [room.img]}
         roomName={room.name}
@@ -497,7 +676,9 @@ export default function LandingPage() {
               <div className="room-guest-badge">Guest favourite</div>
             ) : null}
             <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
-            <div className={`room-avail ${room.avail}`}>{room.avail === 'yes' ? 'Available' : room.availText}</div>
+            <div className={`room-avail ${room.avail}`}>
+              {room.avail === 'yes' ? 'Available' : room.availText || 'Unavailable'}
+            </div>
             <button
               type="button"
               className="room-wishlist"
@@ -528,7 +709,11 @@ export default function LandingPage() {
             <div className="room-price">{room.price}</div>
             <div className="room-price-sub">{room.sub}</div>
           </div>
-          <button type="button" className="btn-book-room" onClick={() => openBookingModal(room.name, room.isEvent ? 'event' : 'room')}>
+          <button
+            type="button"
+            className="btn-book-room"
+            onClick={() => openBookingModal(room.name, room.isEvent ? 'event' : 'room', room.roomId || '')}
+          >
             {room.isEvent ? 'Enquire' : 'Book'}
           </button>
         </div>
@@ -691,11 +876,23 @@ export default function LandingPage() {
                   aria-label="Preferred house"
                 >
                   <option value="any">Any house</option>
-                  {FARM_STAYS.map((s) => (
-                    <option key={s.slug} value={s.slug}>
-                      {s.name} ({s.bedsShort})
-                    </option>
-                  ))}
+                  {catalogApiRooms.length
+                    ? catalogApiRooms.map((r) => {
+                        const id = String(r._id ?? r.id);
+                        const bed = landingBedsLabelFromApi(r);
+                        const suffix = bed ? ` (${bed})` : r.capacity ? ` (${r.capacity} guests)` : '';
+                        return (
+                          <option key={id} value={id}>
+                            {(r.name || 'Room').trim()}
+                            {suffix}
+                          </option>
+                        );
+                      })
+                    : FARM_STAYS.map((s) => (
+                        <option key={s.slug} value={s.slug}>
+                          {s.name} ({s.bedsShort})
+                        </option>
+                      ))}
                 </select>
               </div>
             </div>
@@ -746,10 +943,10 @@ export default function LandingPage() {
               <h3>Book BnB</h3>
               <p>Choose a room and reserve your dates</p>
             </button>
-            <button type="button" className="quick-action-card" onClick={() => openBookingModal('Event Hire', 'event')} data-animate>
+            <button type="button" className="quick-action-card" onClick={() => navigate('/event-enquiry')} data-animate>
               <i className="fas fa-glass-cheers" />
-              <h3>Book Event Hire</h3>
-              <p>Weddings, corporate events & celebrations</p>
+              <h3>Event hire enquiry</h3>
+              <p>Weddings, corporate events & celebrations — request a quote</p>
             </button>
             <a href="mailto:admin@valleycroft.com" className="quick-action-card" data-animate>
               <i className="fas fa-envelope" />
@@ -764,7 +961,11 @@ export default function LandingPage() {
         <div className="section-center section-center--accom" data-animate>
           <div className="eyebrow">Where You&apos;ll Stay</div>
           <h2 className="section-heading">Our farm houses</h2>
-          <p className="section-desc">Three houses on the farm — each with its own character, from cosy Studio Flier to the spacious Blue House.</p>
+          <p className="section-desc">
+            {catalogApiRooms.length
+              ? `${catalogApiRooms.length} stay${catalogApiRooms.length === 1 ? '' : 's'} listed — descriptions, amenities, photos and rates from the live catalog you maintain in admin (date availability refines when you pick check-in and check-out).`
+              : 'Three houses on the farm — each with its own character, from cosy Studio Flier to the spacious Blue House.'}
+          </p>
         </div>
         <div className="landing-m-accom-head">
           <h2 className="landing-m-accom-title">Available farm houses</h2>
@@ -883,7 +1084,7 @@ export default function LandingPage() {
                   ))}
                 </div>
                 <div><div className="event-price">{event.price}</div><div className="event-price-sub">{event.sub}</div></div>
-                <Link to={event.link} className="btn-event">Enquire & Book</Link>
+                <Link to={event.link} className="btn-event">Send enquiry</Link>
               </div>
             ))}
           </div>
@@ -1032,11 +1233,19 @@ export default function LandingPage() {
           <button type="button" className="modal-close" onClick={closeModal} aria-label="Close"><i className="fas fa-times" /></button>
           <h3 className="modal-title">Book {bookingContext.name}</h3>
           <p className="modal-desc">
-            {bookingContext.type === 'event'
-              ? 'Send us your event details and we\'ll get back with availability and a quote. Decor and events management are available.'
-              : 'Choose your dates and we\'ll confirm your self-catering stay.'}
+            Continue to the booking flow to choose dates and complete your self-catering farm stay.
           </p>
-          <Link to="/booking" className="btn-modal-primary">Continue to booking</Link>
+          <Link
+            to="/booking"
+            className="btn-modal-primary"
+            state={buildBookingNavState({
+              bookingType: 'bnb',
+              ...(bookingContext.preferredRoomId ? { preferredRoomId: bookingContext.preferredRoomId } : {}),
+            })}
+            onClick={closeModal}
+          >
+            Continue to booking
+          </Link>
           <p className="modal-contact">Or contact us: <a href="mailto:stay@valleycroft.com">stay@valleycroft.com</a> · <a href="tel:+27112345678">+27 11 234 5678</a></p>
         </div>
       </div>
@@ -1067,10 +1276,10 @@ export default function LandingPage() {
             </div>
             <div>
               <div className="footer-col-title">Events</div>
-              <Link to="/booking?type=wedding" className="footer-link">Weddings</Link>
-              <Link to="/booking?type=corporate" className="footer-link">Corporate Days</Link>
-              <Link to="/booking?type=celebration" className="footer-link">Celebrations</Link>
-              <Link to="/booking?type=retreat" className="footer-link">Farm Retreats</Link>
+              <Link to="/event-enquiry?type=wedding" className="footer-link">Weddings</Link>
+              <Link to="/event-enquiry?type=corporate" className="footer-link">Corporate Days</Link>
+              <Link to="/event-enquiry?type=celebration" className="footer-link">Celebrations</Link>
+              <Link to="/event-enquiry?type=retreat" className="footer-link">Farm Retreats</Link>
             </div>
             <div>
               <div className="footer-col-title">Guest Services</div>

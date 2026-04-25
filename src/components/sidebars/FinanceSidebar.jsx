@@ -4,6 +4,7 @@ import {
   FaChartBar,
   FaChartLine,
   FaCreditCard,
+  FaEnvelopeOpenText,
   FaFileAlt,
   FaHistory,
   FaMoneyBillWave,
@@ -23,6 +24,7 @@ const sections = [
       { id: 'transactions', label: 'Transactions', path: '/finance/transactions', icon: <FaCreditCard className="w-4 h-4" /> },
       { id: 'expenses', label: 'Expenses', path: '/finance/expenses', icon: <FaReceipt className="w-4 h-4" /> },
       { id: 'payments', label: 'Payments', path: '/finance/payments', icon: <FaMoneyBillWave className="w-4 h-4" /> },
+      { id: 'enquiries', label: 'Enquiries', path: '/finance/enquiries', icon: <FaEnvelopeOpenText className="w-4 h-4" /> },
     ],
   },
   {
@@ -53,7 +55,8 @@ const sections = [
   },
 ];
 
-export default function FinanceSidebar({ onLogout }) {
+export default function FinanceSidebar(props) {
+  const { onLogout, ...rest } = props;
   return (
     <PortalSidebar
       portalLabel="Finance Portal"
@@ -61,6 +64,7 @@ export default function FinanceSidebar({ onLogout }) {
       profileRole="Finance Manager"
       sections={sections}
       onLogout={onLogout}
+      {...rest}
     />
   );
 }

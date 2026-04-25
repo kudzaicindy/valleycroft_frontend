@@ -141,6 +141,15 @@ function parseImageLines(text) {
     .filter(Boolean);
 }
 
+function amenitiesToMultiline(amenities) {
+  if (!Array.isArray(amenities) || !amenities.length) return '';
+  return amenities
+    .map((x) => (typeof x === 'string' ? x : x?.name || x?.label || ''))
+    .map((s) => String(s).trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 function buildCalendarCells(viewMonth) {
   const y = viewMonth.getFullYear();
   const m = viewMonth.getMonth();
@@ -188,6 +197,8 @@ export default function RoomsPage() {
   const [newRoomFloor, setNewRoomFloor] = useState('1');
   const [newRoomCapacity, setNewRoomCapacity] = useState('2');
   const [newRoomBeds, setNewRoomBeds] = useState('');
+  const [newRoomDescription, setNewRoomDescription] = useState('');
+  const [newRoomAmenitiesText, setNewRoomAmenitiesText] = useState('');
   const [newRoomImagesText, setNewRoomImagesText] = useState('');
   const [editName, setEditName] = useState('');
   const [editSpaceCategory, setEditSpaceCategory] = useState('room');
@@ -197,9 +208,14 @@ export default function RoomsPage() {
   const [editBathroom, setEditBathroom] = useState('');
   const [editView, setEditView] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAmenitiesText, setEditAmenitiesText] = useState('');
   const [editImagesText, setEditImagesText] = useState('');
   const [editImageFiles, setEditImageFiles] = useState([]);
   const [newRoomImageFiles, setNewRoomImageFiles] = useState([]);
+  const [spaceSaveNotice, setSpaceSaveNotice] = useState('');
+  /** After save: brief "Space updated" then close detail modal (clear selection). */
+  const roomDetailCloseTimerRef = useRef(null);
   const editFileInputRef = useRef(null);
   const newRoomFileInputRef = useRef(null);
 
@@ -316,11 +332,18 @@ export default function RoomsPage() {
     return new Date(t.getFullYear(), t.getMonth(), t.getDate());
   }, []);
 
+  const invalidateLandingRoomQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['landing-room-catalog-media'] });
+    queryClient.invalidateQueries({ queryKey: ['landing-room-catalog-detail'] });
+    queryClient.invalidateQueries({ queryKey: ['landing-rooms-avail'] });
+  };
+
   const updateMutation = useMutation({
     mutationFn: ({ id, body }) => updateRoom(id, body),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', id] });
+      invalidateLandingRoomQueries();
     },
   });
 
@@ -349,10 +372,13 @@ export default function RoomsPage() {
       setNewRoomFloor('1');
       setNewRoomCapacity('2');
       setNewRoomBeds('');
+      setNewRoomDescription('');
+      setNewRoomAmenitiesText('');
       setNewRoomImagesText('');
       setNewRoomImageFiles([]);
       if (newRoomFileInputRef.current) newRoomFileInputRef.current.value = '';
       if (newId) setSelectedId(String(newId));
+      invalidateLandingRoomQueries();
     },
   });
 
@@ -366,11 +392,26 @@ export default function RoomsPage() {
       }
       return updateRoom(id, { ...body, images });
     },
+    onMutate: () => {
+      if (roomDetailCloseTimerRef.current) {
+        clearTimeout(roomDetailCloseTimerRef.current);
+        roomDetailCloseTimerRef.current = null;
+      }
+      setSpaceSaveNotice('');
+    },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', id] });
+      invalidateLandingRoomQueries();
       setEditImageFiles([]);
       if (editFileInputRef.current) editFileInputRef.current.value = '';
+      setSpaceSaveNotice('Space updated.');
+      if (roomDetailCloseTimerRef.current) clearTimeout(roomDetailCloseTimerRef.current);
+      roomDetailCloseTimerRef.current = setTimeout(() => {
+        setSelectedId(null);
+        setSpaceSaveNotice('');
+        roomDetailCloseTimerRef.current = null;
+      }, 750);
     },
   });
 
@@ -380,10 +421,25 @@ export default function RoomsPage() {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', id] });
       queryClient.invalidateQueries({ queryKey: ['room-bookings', id] });
+      invalidateLandingRoomQueries();
       setDeleteConfirmOpen(false);
       setSelectedId(null);
     },
   });
+
+  useEffect(() => {
+    setSpaceSaveNotice('');
+    if (roomDetailCloseTimerRef.current) {
+      clearTimeout(roomDetailCloseTimerRef.current);
+      roomDetailCloseTimerRef.current = null;
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    return () => {
+      if (roomDetailCloseTimerRef.current) clearTimeout(roomDetailCloseTimerRef.current);
+    };
+  }, []);
 
   const editPreviewUrls = useMemo(() => editImageFiles.map((f) => URL.createObjectURL(f)), [editImageFiles]);
   useEffect(() => {
@@ -412,6 +468,8 @@ export default function RoomsPage() {
         .filter(Boolean)
         .join('\n')
     );
+    setEditDescription(String(selectedRoom.description || selectedRoom.spaceDescription || ''));
+    setEditAmenitiesText(amenitiesToMultiline(selectedRoom.amenities));
     setEditImageFiles([]);
     if (editFileInputRef.current) editFileInputRef.current.value = '';
   }, [
@@ -425,6 +483,9 @@ export default function RoomsPage() {
     selectedRoom?.bedConfig,
     selectedRoom?.bathroom,
     selectedRoom?.view,
+    selectedRoom?.description,
+    selectedRoom?.spaceDescription,
+    selectedRoom?.amenities,
   ]);
 
   function setRoomStatus(roomId, status) {
@@ -457,6 +518,10 @@ export default function RoomsPage() {
         capacity: Math.max(1, Number(newRoomCapacity) || 2),
         ...(newRoomBeds.trim() ? { bedConfig: newRoomBeds.trim() } : {}),
         images: parseImageLines(newRoomImagesText),
+        ...(newRoomDescription.trim() ? { description: newRoomDescription.trim() } : {}),
+        ...(parseImageLines(newRoomAmenitiesText).length
+          ? { amenities: parseImageLines(newRoomAmenitiesText) }
+          : {}),
         status: 'available',
         isAvailable: true,
       },
@@ -478,6 +543,8 @@ export default function RoomsPage() {
       isEventSpace: editSpaceCategory === 'event',
       pricePerNight: Number.isFinite(price) && price >= 0 ? price : 0,
       images: parseImageLines(editImagesText),
+      description: editDescription.trim(),
+      amenities: parseImageLines(editAmenitiesText),
     };
     if (editCapacity.trim()) body.capacity = Math.max(1, Number(editCapacity) || 1);
     if (editBeds.trim()) body.bedConfig = editBeds.trim();
@@ -718,11 +785,42 @@ export default function RoomsPage() {
                 <div className="review-row"><div className="rv-label">Bathroom</div><div className="rv-val">{selectedRoom.bathroom ?? '—'}</div></div>
                 <div className="review-row"><div className="rv-label">View</div><div className="rv-val">{selectedRoom.view ?? '—'}</div></div>
                 <div className="review-row"><div className="rv-label">Rate</div><div className="rv-val">R {fmtNum(selectedRoom.pricePerNight)}/night</div></div>
+                {(selectedRoom.description || selectedRoom.spaceDescription) && (
+                  <div className="review-row review-row--block">
+                    <div className="rv-label">Description</div>
+                    <div className="rv-val" style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>
+                      {String(selectedRoom.description || selectedRoom.spaceDescription || '').trim()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {isAdmin && (
                 <div className="review-block">
                   <div className="review-block-header">Edit space (admin)</div>
+                  {spaceSaveNotice ? (
+                    <div
+                      className="rooms-space-save-notice"
+                      role="status"
+                      aria-live="polite"
+                      style={{
+                        marginBottom: 10,
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'var(--forest-d, #2d5016)',
+                        background: 'rgba(143, 168, 90, 0.22)',
+                        border: '1px solid rgba(45, 80, 22, 0.22)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <i className="fas fa-check-circle" aria-hidden />
+                      {spaceSaveNotice}
+                    </div>
+                  ) : null}
                   <p className="rooms-admin-hint" style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
                     Update details, price, and photos. Uploads use <code>POST /api/rooms/:id/images</code> (multipart field{' '}
                     <code>images</code>), then <code>PUT /api/rooms/:id</code> merges returned paths with existing gallery.
@@ -816,6 +914,32 @@ export default function RoomsPage() {
                         className="form-control"
                         value={editView}
                         onChange={(e) => setEditView(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-desc">
+                        Space description
+                      </label>
+                      <textarea
+                        id="room-edit-desc"
+                        className="form-control"
+                        rows={4}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Shown on the public landing page for this stay (plain text)."
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-amenities">
+                        Amenities
+                      </label>
+                      <textarea
+                        id="room-edit-amenities"
+                        className="form-control"
+                        rows={4}
+                        value={editAmenitiesText}
+                        onChange={(e) => setEditAmenitiesText(e.target.value)}
+                        placeholder="One per line or comma-separated, e.g. WiFi, Pool, Parking"
                       />
                     </div>
                     <div className="form-group">
@@ -1099,7 +1223,7 @@ export default function RoomsPage() {
                 <h2 id="room-detail-modal-title" className="rooms-events-modal-title">
                   {selectedRoom.name || 'Room details'}
                 </h2>
-                <p className="rooms-events-modal-sub">Room details and updates</p>
+                <p className="rooms-events-modal-sub">Details, landing copy, and photos</p>
               </div>
               <button type="button" className="rooms-events-modal-close" onClick={() => setSelectedId(null)} aria-label="Close">
                 <i className="fas fa-times" />
@@ -1120,13 +1244,54 @@ export default function RoomsPage() {
                     <div className="review-row"><div className="rv-label">Bed</div><div className="rv-val">{selectedRoom.bedConfig || selectedRoom.beds || '—'}</div></div>
                     <div className="review-row"><div className="rv-label">Bathroom</div><div className="rv-val">{selectedRoom.bathroom ?? '—'}</div></div>
                     <div className="review-row"><div className="rv-label">View</div><div className="rv-val">{selectedRoom.view ?? '—'}</div></div>
+                    {(selectedRoom.description || selectedRoom.spaceDescription) && (
+                      <div className="review-row rooms-detail-modal-desc-preview">
+                        <div className="rv-label">Landing copy</div>
+                        <div className="rv-val" style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.45, gridColumn: '1 / -1' }}>
+                          {String(selectedRoom.description || selectedRoom.spaceDescription || '').trim().slice(0, 220)}
+                          {String(selectedRoom.description || selectedRoom.spaceDescription || '').trim().length > 220 ? '…' : ''}
+                        </div>
+                      </div>
+                    )}
                   </div>
+                  {selectedRoom.amenities && selectedRoom.amenities.length > 0 && (
+                    <div className="rooms-detail-modal-amenities" style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {selectedRoom.amenities.map((a, i) => (
+                        <span key={i} className="rooms-amenity-tag" style={{ fontSize: 11 }}>
+                          {typeof a === 'string' ? a : a.name || a.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {isAdmin && (
                 <div className="review-block">
                   <div className="review-block-header">Edit space (admin)</div>
+                  {spaceSaveNotice ? (
+                    <div
+                      className="rooms-space-save-notice"
+                      role="status"
+                      aria-live="polite"
+                      style={{
+                        marginBottom: 10,
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: 'var(--forest-d, #2d5016)',
+                        background: 'rgba(143, 168, 90, 0.22)',
+                        border: '1px solid rgba(45, 80, 22, 0.22)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <i className="fas fa-check-circle" aria-hidden />
+                      {spaceSaveNotice}
+                    </div>
+                  ) : null}
                   <form className="form-stack" onSubmit={handleAdminRoomSave}>
                     <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-name-modal">Space name *</label>
@@ -1162,6 +1327,28 @@ export default function RoomsPage() {
                     <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-view-modal">View</label>
                       <input id="room-edit-view-modal" className="form-control" value={editView} onChange={(e) => setEditView(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-desc-modal">Space description</label>
+                      <textarea
+                        id="room-edit-desc-modal"
+                        className="form-control"
+                        rows={4}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Shown on the public landing page for this stay (plain text)."
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="room-edit-amenities-modal">Amenities</label>
+                      <textarea
+                        id="room-edit-amenities-modal"
+                        className="form-control"
+                        rows={4}
+                        value={editAmenitiesText}
+                        onChange={(e) => setEditAmenitiesText(e.target.value)}
+                        placeholder="One per line or comma-separated, e.g. WiFi, Pool, Parking"
+                      />
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-price-modal">Price per night (R)</label>
@@ -1460,6 +1647,32 @@ export default function RoomsPage() {
                     value={newRoomBeds}
                     onChange={(e) => setNewRoomBeds(e.target.value)}
                     placeholder="e.g. King + single"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="add-room-desc">
+                    Space description (optional)
+                  </label>
+                  <textarea
+                    id="add-room-desc"
+                    className="form-control"
+                    rows={3}
+                    value={newRoomDescription}
+                    onChange={(e) => setNewRoomDescription(e.target.value)}
+                    placeholder="Public landing page copy for this space."
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="add-room-amenities">
+                    Amenities (optional)
+                  </label>
+                  <textarea
+                    id="add-room-amenities"
+                    className="form-control"
+                    rows={3}
+                    value={newRoomAmenitiesText}
+                    onChange={(e) => setNewRoomAmenitiesText(e.target.value)}
+                    placeholder="One per line or comma-separated"
                   />
                 </div>
                 <div className="form-group">

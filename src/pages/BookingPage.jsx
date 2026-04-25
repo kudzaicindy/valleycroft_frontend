@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { createGuestBooking } from '@/api/guestBookings';
-import { getRooms } from '@/api/rooms';
+import { getRooms, getRoomsPublicMedia } from '@/api/rooms';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { formatGuestBookingError, pickRoomNightlyRate } from '@/utils/guestBookingErrors';
 import { FARM_STAYS, apiRowMatchesStay } from '@/content/farmStays';
+import { mergeLandingCatalogRows, normalizePublicRoomsPayload } from '@/utils/publicRoomCatalog';
 import { resolveRoomImageUrls } from '@/utils/roomImageUrl';
 import {
   loadBookingPolicySettings,
@@ -69,13 +70,15 @@ function skipRoomsApiInEmbed() {
 
 export default function BookingPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const today = new Date();
   const defaultCheckout = new Date(today);
   defaultCheckout.setDate(defaultCheckout.getDate() + 3);
 
   const [step, setStep] = useState(1);
-  const [bookingType, setBookingType] = useState(() => (location.state?.bookingType || 'bnb'));
+  /** BnB checkout only — event hire uses `/event-enquiry`. */
+  const bookingType = 'bnb';
   const [checkin, setCheckin] = useState(() => {
     const d = parseLocalDateStr(location.state?.checkIn);
     return (d && !isNaN(d.getTime())) ? d : today;
@@ -129,12 +132,26 @@ export default function BookingPage() {
   const checkInStr = toLocalDateStr(checkin);
   const checkOutStr = toLocalDateStr(checkout);
   const skipRoomsApi = skipRoomsApiInEmbed();
+  const datesReady = Boolean(checkInStr && checkOutStr);
+
+  const { data: roomsMediaRaw } = useQuery({
+    queryKey: ['booking-rooms-catalog-media'],
+    queryFn: () => getRoomsPublicMedia(),
+    enabled: datesReady && !skipRoomsApi,
+  });
+
   const { data: roomsApi } = useQuery({
     queryKey: ['rooms', checkInStr, checkOutStr],
     queryFn: () => getRooms({ checkIn: checkInStr, checkOut: checkOutStr }),
-    enabled: step >= 2 && !!checkInStr && !!checkOutStr && !skipRoomsApi,
+    enabled: datesReady && !skipRoomsApi,
   });
-  const apiRoomsList = Array.isArray(roomsApi) ? roomsApi : (roomsApi?.data ?? []);
+
+  const mergedBnBRooms = useMemo(() => {
+    const mediaList = normalizePublicRoomsPayload(roomsMediaRaw);
+    const detailList = normalizePublicRoomsPayload(roomsApi);
+    return mergeLandingCatalogRows(mediaList, detailList);
+  }, [roomsMediaRaw, roomsApi]);
+
   const displayRooms = useMemo(() => {
     const defaultImages = FARM_STAYS[0]?.images ?? [];
     const imgs = (list) => resolveRoomImageUrls(list?.length ? list : defaultImages);
@@ -150,35 +167,45 @@ export default function BookingPage() {
       bookedBy: [],
       onlyOneLeft: false,
     });
-    if (apiRoomsList.length === 0) {
+    if (!mergedBnBRooms.length) {
       return FARM_STAYS.map((stay) => fallbackRow(stay));
     }
-    return FARM_STAYS.map((stay) => {
-      const api = apiRoomsList.find((r) => apiRowMatchesStay(r, stay));
-      const staticMatch = {
-        name: stay.name,
-        desc: stay.desc,
-        tags: stay.tags,
-        images: stay.images,
-        price: stay.price,
-      };
-      if (!api) return fallbackRow(stay);
-      const id = api._id ?? api.id ?? stay.slug;
+    return mergedBnBRooms.map((api) => {
+      const stay = FARM_STAYS.find((s) => apiRowMatchesStay(api, s));
+      const staticMatch = stay
+        ? { name: stay.name, desc: stay.desc, tags: stay.tags, price: stay.price, slug: stay.slug }
+        : { name: api.name || 'Room', desc: '', tags: [], price: 0, slug: String(api.slug || '') };
+      const id = api._id ?? api.id ?? staticMatch.slug;
       const price = pickRoomNightlyRate(api, staticMatch);
+      const tagsFromAmenities =
+        Array.isArray(api.amenities) && api.amenities.length
+          ? api.amenities
+              .slice(0, 8)
+              .map((x) => (typeof x === 'string' ? x : x?.name || x?.label || ''))
+              .map((s) => String(s).trim())
+              .filter(Boolean)
+          : [];
+      const desc =
+        (api.description && String(api.description).trim()) ||
+        (api.spaceDescription && String(api.spaceDescription).trim()) ||
+        staticMatch.desc ||
+        'Self-catering farm stay.';
       return {
         id,
-        slug: stay.slug,
-        name: stay.name,
+        slug: api.slug || staticMatch.slug || String(id),
+        name: api.name || staticMatch.name,
         price,
-        desc: (api.description && String(api.description).trim()) || stay.desc,
-        tags: Array.isArray(api.tags) && api.tags.length ? api.tags : stay.tags,
-        images: imgs(api.images?.length ? api.images : stay.images?.length ? stay.images : defaultImages),
+        desc,
+        tags: tagsFromAmenities.length ? tagsFromAmenities : stay?.tags || ['Farm stay'],
+        images: imgs(
+          api.images?.length ? api.images : stay?.images?.length ? stay.images : defaultImages
+        ),
         avail: api.availableForDates !== false,
         bookedBy: api.bookedBy ?? [],
         onlyOneLeft: Boolean(api.onlyOneLeft),
       };
     });
-  }, [apiRoomsList]);
+  }, [mergedBnBRooms]);
 
   useEffect(() => {
     const onMsg = (e) => {
@@ -213,13 +240,17 @@ export default function BookingPage() {
   useEffect(() => {
     const t = searchParams.get('type');
     if (t && ['wedding', 'corporate', 'celebration', 'retreat'].includes(t)) {
-      setBookingType('event');
+      navigate(`/event-enquiry?type=${encodeURIComponent(t)}`, { replace: true });
     }
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   useEffect(() => {
     const st = location.state;
     if (!st || typeof st !== 'object') return;
+    if (st.bookingType === 'event') {
+      navigate('/event-enquiry', { replace: true });
+      return;
+    }
     if (st.checkIn) {
       const d = parseLocalDateStr(st.checkIn);
       if (d) setCheckin(d);
@@ -228,7 +259,6 @@ export default function BookingPage() {
       const d = parseLocalDateStr(st.checkOut);
       if (d) setCheckout(d);
     }
-    if (st.bookingType === 'bnb' || st.bookingType === 'event') setBookingType(st.bookingType);
     const ad = Number(st.adults);
     if (Number.isFinite(ad) && ad >= 1 && ad <= 15) setAdults(ad);
     const ch = Number(st.children);
@@ -236,9 +266,9 @@ export default function BookingPage() {
     if (st.preferredRoomId != null && String(st.preferredRoomId).trim() !== '') {
       const pr = String(st.preferredRoomId).trim();
       setPendingPreferredId(pr);
-      if (FARM_STAYS.some((s) => s.slug === pr)) setStep1House(pr);
+      setStep1House(pr);
     }
-  }, [location.key, location.state]);
+  }, [location.key, location.state, navigate]);
 
   useEffect(() => {
     const bump = (e) => {
@@ -443,25 +473,14 @@ export default function BookingPage() {
             <div className="header-sub">Agro-Tourism</div>
           </div>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="booking-header-actions">
+          <div className="booking-header-trust">
             <i className="fas fa-lock" style={{ color: 'var(--gold-l)' }} /> Secure Booking
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="booking-header-phone">
             <i className="fas fa-phone" style={{ color: 'var(--gold-l)' }} /> +27 11 234 5678
           </div>
-          <Link
-            to="/"
-            style={{
-              padding: '7px 14px',
-              background: 'transparent',
-              border: '1px solid rgba(255,255,255,.3)',
-              color: 'rgba(255,255,255,.75)',
-              borderRadius: 7,
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
+          <Link to="/" className="booking-header-back">
             ← Back to Site
           </Link>
         </div>
@@ -510,24 +529,21 @@ export default function BookingPage() {
                 <div className="form-group booking-type-field">
                   <div className="form-label">What are you booking?</div>
                   <div className="booking-type-grid">
-                    <button
-                      type="button"
+                    <div
                       className={`type-card ${bookingType === 'bnb' ? 'active' : ''}`}
-                      onClick={() => setBookingType('bnb')}
+                      role="group"
+                      aria-label="BnB stay"
                     >
                       <div className="type-card-emoji" aria-hidden>🏡</div>
-                      <div className="type-card-title">BnB</div>
-                      <div className="type-card-sub">Overnight stay in our farm rooms</div>
-                    </button>
-                    <button
-                      type="button"
-                      className={`type-card ${bookingType === 'event' ? 'active' : ''}`}
-                      onClick={() => setBookingType('event')}
-                    >
+                      <div className="type-card-title">BnB stay</div>
+                      <div className="type-card-sub">Overnight stay in our farm rooms — you&apos;re on the right page.</div>
+                    </div>
+                    <Link to="/event-enquiry" className="type-card type-card--link">
                       <div className="type-card-emoji" aria-hidden>🎉</div>
-                      <div className="type-card-title">Event Hire</div>
-                      <div className="type-card-sub">Weddings, corporate, celebrations</div>
-                    </button>
+                      <div className="type-card-title">Event hire</div>
+                      <div className="type-card-sub">Weddings, corporate days &amp; celebrations — send an enquiry for a quote</div>
+                      <span className="type-card-cta">Open event enquiry form →</span>
+                    </Link>
                   </div>
                 </div>
                 <div className="booking-dates-row">
@@ -566,6 +582,11 @@ export default function BookingPage() {
                 </div>
                 <div className="nights-tag">
                   <i className="fas fa-moon" /> {nights} nights selected
+                </div>
+                <div className="booking-step1-dates-next">
+                  <button type="button" className="btn btn-primary" onClick={() => goToStep(2)}>
+                    Next: Choose room <i className="fas fa-arrow-right" aria-hidden />
+                  </button>
                 </div>
                 <div className="booking-guests-row">
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -606,12 +627,25 @@ export default function BookingPage() {
                       onChange={(e) => setStep1House(e.target.value)}
                       aria-label="Preferred room"
                     >
-                      <option value="any">Any of our 3 stays</option>
-                      {FARM_STAYS.map((s) => (
-                        <option key={s.slug} value={s.slug}>
-                          {s.name} ({s.bedsShort})
-                        </option>
-                      ))}
+                      <option value="any">
+                        {mergedBnBRooms.length ? `Any of our ${mergedBnBRooms.length} stays` : 'Any of our stays'}
+                      </option>
+                      {mergedBnBRooms.length
+                        ? mergedBnBRooms.map((r) => {
+                            const id = String(r._id ?? r.id ?? '');
+                            const cap = r.capacity != null ? ` · up to ${r.capacity} guests` : '';
+                            return (
+                              <option key={id} value={id}>
+                                {(r.name || 'Room').trim()}
+                                {cap}
+                              </option>
+                            );
+                          })
+                        : FARM_STAYS.map((s) => (
+                            <option key={s.slug} value={s.slug}>
+                              {s.name} ({s.bedsShort})
+                            </option>
+                          ))}
                     </select>
                   </div>
                 </div>
@@ -944,7 +978,7 @@ export default function BookingPage() {
                   <div className="review-block-header">Stay Details</div>
                   <div className="review-row">
                     <div className="rv-label">Booking Type</div>
-                    <div className="rv-val">{bookingType === 'bnb' ? 'BnB' : 'Event Hire'}</div>
+                    <div className="rv-val">BnB stay</div>
                   </div>
                   <div className="review-row">
                     <div className="rv-label">Room</div>
@@ -1141,7 +1175,7 @@ export default function BookingPage() {
             <div className="summary-body">
               <div className="sum-row">
                 <div className="sum-label">Type</div>
-                <div className="sum-val">{bookingType === 'bnb' ? 'BnB' : 'Event Hire'}</div>
+                <div className="sum-val">BnB stay</div>
               </div>
               <div className="sum-row">
                 <div className="sum-label">Check-in</div>

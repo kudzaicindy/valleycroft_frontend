@@ -17,7 +17,8 @@ const sections = [
   },
 ];
 
-export default function EmployeeSidebar({ onLogout }) {
+export default function EmployeeSidebar(props) {
+  const { onLogout, ...rest } = props;
   return (
     <PortalSidebar
       portalLabel="Employee Portal"
@@ -25,6 +26,7 @@ export default function EmployeeSidebar({ onLogout }) {
       profileRole="Head Housekeeper"
       sections={sections}
       onLogout={onLogout}
+      {...rest}
     />
   );
 }

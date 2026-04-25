@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FaChevronRight, FaSignOutAlt, FaUserCircle } from 'react-icons/fa';
+import { FaChevronRight, FaSignOutAlt, FaTimes, FaUserCircle } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 function isPathActive(currentPath, targetPath) {
   return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`);
 }
 
-export default function PortalSidebar({ portalLabel, sections, onLogout, profileName, profileRole }) {
+export default function PortalSidebar({
+  portalLabel,
+  sections,
+  onLogout,
+  profileName,
+  profileRole,
+  onRequestCloseMobile,
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const portalTitle = portalLabel?.toUpperCase?.() ?? 'PORTAL';
@@ -45,6 +52,7 @@ export default function PortalSidebar({ portalLabel, sections, onLogout, profile
   }, [location.pathname, sections]);
 
   const handleLogout = () => {
+    onRequestCloseMobile?.();
     if (onLogout) return onLogout();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -63,11 +71,21 @@ export default function PortalSidebar({ portalLabel, sections, onLogout, profile
             <p className="portal-sidebar__brand-subtitle">{portalLabel}</p>
           </div>
         </div>
+        {onRequestCloseMobile ? (
+          <button
+            type="button"
+            className="portal-sidebar__close-mobile"
+            onClick={onRequestCloseMobile}
+            aria-label="Close menu"
+          >
+            <FaTimes />
+          </button>
+        ) : null}
       </header>
 
       <div className="portal-sidebar__body">
         <h1 className="portal-sidebar__title">{portalTitle}</h1>
-        <nav className="portal-sidebar__nav">
+        <nav className="portal-sidebar__nav" id="portal-sidebar-nav">
           {sections.map((section) => {
             const expanded = openSections[section.id];
             const isCollapsible = section.collapsible !== false;
@@ -95,7 +113,10 @@ export default function PortalSidebar({ portalLabel, sections, onLogout, profile
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => navigate(item.path)}
+                          onClick={() => {
+                            navigate(item.path);
+                            onRequestCloseMobile?.();
+                          }}
                           className={[
                             'portal-sidebar__item',
                             active ? 'portal-sidebar__item--active' : '',

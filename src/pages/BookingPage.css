@@ -109,7 +109,7 @@
 .booking-header-trust,
 .booking-header-phone {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.92);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -124,12 +124,33 @@
 .booking-header-back {
   padding: 7px 14px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 7px;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  color: #ffffff;
+}
+
+/* Beat `.booking-page a { color: inherit }` so header utility links stay white */
+.booking-page .booking-header a.booking-header-back {
+  color: #ffffff;
+}
+
+.booking-page .booking-header a.booking-header-back:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.booking-step1-dates-next {
+  display: flex;
+  justify-content: flex-end;
+  margin: 14px 0 6px;
+}
+
+.booking-step1-dates-next .btn {
+  min-height: 40px;
 }
 
 /* STEPS BAR */
@@ -725,6 +746,26 @@ button.room-thumb-open-gallery {
   line-height: 1.3;
   word-break: break-word;
   hyphens: auto;
+}
+
+a.type-card--link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  box-sizing: border-box;
+}
+
+a.type-card--link:hover {
+  border-color: var(--gold);
+  background: rgba(184, 137, 42, 0.08);
+}
+
+.type-card-cta {
+  display: block;
+  margin-top: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--forest);
 }
 
 /* REQUEST CHIPS */

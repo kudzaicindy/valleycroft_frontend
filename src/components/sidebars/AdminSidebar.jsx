@@ -4,6 +4,7 @@ import {
   FaCreditCard,
   FaFileAlt,
   FaFileSignature,
+  FaEnvelopeOpenText,
   FaHome,
   FaMoneyBillWave,
   FaReceipt,
@@ -23,6 +24,7 @@ const sections = [
       { id: 'rooms', label: 'Rooms', path: '/admin/rooms', icon: <FaHome className="w-4 h-4" /> },
       { id: 'booking-payments', label: 'Guest payments', path: '/admin/booking-payments', icon: <FaCreditCard className="w-4 h-4" /> },
       { id: 'quotations', label: 'Quotations', path: '/admin/quotations', icon: <FaFileSignature className="w-4 h-4" /> },
+      { id: 'enquiries', label: 'Enquiries', path: '/admin/enquiries', icon: <FaEnvelopeOpenText className="w-4 h-4" /> },
       { id: 'expenses', label: 'Expenses', path: '/admin/expenses', icon: <FaReceipt className="w-4 h-4" /> },
     ],
   },
@@ -46,7 +48,8 @@ const sections = [
   },
 ];
 
-export default function AdminSidebar({ onLogout }) {
+export default function AdminSidebar(props) {
+  const { onLogout, ...rest } = props;
   return (
     <PortalSidebar
       portalLabel="Admin Portal"
@@ -54,6 +57,7 @@ export default function AdminSidebar({ onLogout }) {
       profileRole="Operations Administrator"
       sections={sections}
       onLogout={onLogout}
+      {...rest}
     />
   );
 }
