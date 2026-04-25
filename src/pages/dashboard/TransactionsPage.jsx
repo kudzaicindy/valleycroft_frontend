@@ -17,6 +17,7 @@ import { formatDateDayMonthYear } from '@/utils/formatDate';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { newIdempotencyKey, getTransactionRowDebitCreditNet } from '@/utils/transactionLedgerUi';
 import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
+import ConfirmModal from '@/components/ConfirmModal';
 
 const LIMIT = 20;
 /** When URL has a date range, request up to the finance route max so the table matches statement drill-down. */
@@ -62,6 +63,7 @@ export default function TransactionsPage({ forcedType = '' }) {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saveError, setSaveError] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', page, qpStart, qpEnd, qpCategory],
@@ -192,8 +194,15 @@ export default function TransactionsPage({ forcedType = '' }) {
   function handleDelete(row) {
     const id = row._id ?? row.id;
     if (!id) return;
-    if (!window.confirm('Delete this transaction? This cannot be undone.')) return;
-    deleteMutation.mutate(id);
+    setDeleteTarget({ id, description: row.description || 'this transaction' });
+  }
+
+  function confirmDelete() {
+    const id = deleteTarget?.id;
+    if (!id) return;
+    deleteMutation.mutate(id, {
+      onSettled: () => setDeleteTarget(null),
+    });
   }
 
   const saving = createMutation.isPending || updateMutation.isPending;
@@ -429,6 +438,17 @@ export default function TransactionsPage({ forcedType = '' }) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete transaction"
+        message={`Delete "${deleteTarget?.description || 'this transaction'}"? This cannot be undone.`}
+        confirmLabel="Delete transaction"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleteMutation.isPending}
+        tone="danger"
+      />
 
       <div className="card">
         <div className="card-body card-body--no-pad">

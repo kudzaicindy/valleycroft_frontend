@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { marked } from 'marked';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   createQuotation,
   deleteQuotation,
@@ -231,6 +232,7 @@ export default function QuotationsPage() {
   const [monthFilter, setMonthFilter] = useState('');
   const [actionBusyId, setActionBusyId] = useState('');
   const [emailStatusBox, setEmailStatusBox] = useState({ type: '', message: '' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const quotationsQuery = useQuery({
     queryKey: ['quotations'],
@@ -444,17 +446,22 @@ export default function QuotationsPage() {
     }
   }, [statusMutation]);
 
-  const removeQuote = useCallback(async (id) => {
-    const approved = window.confirm('Delete this quotation?');
-    if (!approved) return;
+  const removeQuote = useCallback((id, label) => {
+    setDeleteTarget({ id, label: label || 'this quotation' });
+  }, []);
+
+  const confirmDeleteQuote = useCallback(async () => {
+    const id = String(deleteTarget?.id || '').trim();
+    if (!id) return;
     setActionBusyId(id);
     try {
       await deleteMutation.mutateAsync(id);
       if (previewQuote?.id === id) setPreviewQuote(null);
+      setDeleteTarget(null);
     } finally {
       setActionBusyId('');
     }
-  }, [deleteMutation, previewQuote]);
+  }, [deleteMutation, deleteTarget, previewQuote]);
 
   const sendWhatsApp = (quote) => {
     const text =
@@ -733,6 +740,16 @@ export default function QuotationsPage() {
           </div>
         </div>
       ) : null}
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete quotation"
+        message={`Delete "${deleteTarget?.label || 'this quotation'}"? This action cannot be undone.`}
+        confirmLabel="Delete quotation"
+        onConfirm={confirmDeleteQuote}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleteMutation.isPending}
+        tone="danger"
+      />
     </div>
   );
 }

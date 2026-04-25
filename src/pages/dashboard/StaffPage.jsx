@@ -6,6 +6,7 @@ import { getEmployees, getWorklogs, createWorklog } from '@/api/staff';
 import { createSalary, deleteSalary, getSalary, updateSalary } from '@/api/finance';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
+import ConfirmModal from '@/components/ConfirmModal';
 import './StaffPage.css';
 
 const LIMIT = 50;
@@ -71,6 +72,7 @@ export default function StaffPage() {
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [payFormError, setPayFormError] = useState('');
   const [payEditId, setPayEditId] = useState('');
+  const [payDeleteTarget, setPayDeleteTarget] = useState(null);
   const [paySearch, setPaySearch] = useState('');
   const [payMonthFilter, setPayMonthFilter] = useState('');
   const [logMonthFilter, setLogMonthFilter] = useState('');
@@ -300,9 +302,15 @@ export default function StaffPage() {
   function handleDeletePayment(payment) {
     const id = String(payment?._id ?? payment?.id ?? '').trim();
     if (!id) return;
-    const ok = window.confirm('Delete this worker payment record?');
-    if (!ok) return;
-    deletePaymentMutation.mutate(id);
+    setPayDeleteTarget({ id, label: String(paymentPaidTo(payment) || 'this payment') });
+  }
+
+  function confirmDeletePayment() {
+    const id = String(payDeleteTarget?.id || '').trim();
+    if (!id) return;
+    deletePaymentMutation.mutate(id, {
+      onSettled: () => setPayDeleteTarget(null),
+    });
   }
 
   function handleAddWorklogSubmit(e) {
@@ -831,6 +839,16 @@ export default function StaffPage() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        open={Boolean(payDeleteTarget)}
+        title="Delete worker payment"
+        message={`Delete payment record for "${payDeleteTarget?.label || 'this worker'}"? This cannot be undone.`}
+        confirmLabel="Delete payment"
+        onConfirm={confirmDeletePayment}
+        onCancel={() => setPayDeleteTarget(null)}
+        busy={deletePaymentMutation.isPending}
+        tone="danger"
+      />
     </div>
   );
 }

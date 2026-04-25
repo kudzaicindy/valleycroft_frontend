@@ -12,6 +12,7 @@ import { formatTransactionMutationMessage } from '@/utils/apiError';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { newIdempotencyKey } from '@/utils/transactionLedgerUi';
 import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
+import ConfirmModal from '@/components/ConfirmModal';
 
 const LIMIT = 20;
 
@@ -48,6 +49,7 @@ export default function RefundsPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saveError, setSaveError] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['transactions', 'refunds', page],
@@ -166,8 +168,17 @@ export default function RefundsPage() {
   function handleDelete(row) {
     const id = row._id ?? row.id;
     if (!id) return;
-    if (!window.confirm('Delete this refund transaction? This cannot be undone.')) return;
-    deleteMutation.mutate(id);
+    setDeleteTarget({ id, description: row.description || 'this refund transaction' });
+  }
+
+  function confirmDelete() {
+    const id = deleteTarget?.id;
+    if (!id) return;
+    deleteMutation.mutate(id, {
+      onSettled: () => {
+        setDeleteTarget(null);
+      },
+    });
   }
 
   const saving = createMutation.isPending || updateMutation.isPending;
@@ -334,6 +345,17 @@ export default function RefundsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete refund"
+        message={`Delete "${deleteTarget?.description || 'this refund transaction'}"? This cannot be undone.`}
+        confirmLabel="Delete refund"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleteMutation.isPending}
+        tone="danger"
+      />
 
       <div className="card">
         <div className="card-body card-body--no-pad">

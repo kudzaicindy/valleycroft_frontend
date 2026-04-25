@@ -5,6 +5,7 @@ import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { createStockItem, deleteStockItem, getEquipment, getStock, updateStockItem } from '@/api/inventory';
 import { INVENTORY_DEMO_STOCK } from '@/utils/inventoryDemoData';
 import { normalizeInventoryPayload } from '@/utils/inventoryData';
+import ConfirmModal from '@/components/ConfirmModal';
 import './InventoryPage.css';
 
 function inferInventoryEmoji(name, kind = 'consumable') {
@@ -75,6 +76,7 @@ export default function InventoryPage() {
   const [editQty, setEditQty] = useState('');
   const [editReorderLevel, setEditReorderLevel] = useState('');
   const [saveError, setSaveError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const rows = useMemo(() => {
     let r = items;
@@ -182,17 +184,22 @@ export default function InventoryPage() {
   const addPreviewEmoji = useMemo(() => inferInventoryEmoji(addName, addKind), [addName, addKind]);
 
   const handleDeleteStock = useCallback(
-    async (row) => {
+    (row) => {
       if (!canMutateInventory) return;
       const id = String(row?.id || '').trim();
       if (!id) return;
-      const approved = window.confirm(`Delete "${row?.name || 'this inventory item'}"?`);
-      if (!approved) return;
-      setSaveError('');
-      await deleteMutation.mutateAsync(id);
+      setDeleteTarget({ id, name: row?.name || 'this inventory item' });
     },
-    [canMutateInventory, deleteMutation]
+    [canMutateInventory]
   );
+
+  const confirmDeleteStock = useCallback(async () => {
+    const id = String(deleteTarget?.id || '').trim();
+    if (!id) return;
+    setSaveError('');
+    await deleteMutation.mutateAsync(id);
+    setDeleteTarget(null);
+  }, [deleteMutation, deleteTarget]);
 
   const filteredCount = rows.length;
   const totalCount = items.length;
@@ -270,6 +277,16 @@ export default function InventoryPage() {
           {monthFilter ? ' · month filter' : ''}
         </p>
       )}
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete inventory item"
+        message={`Delete "${deleteTarget?.name || 'this inventory item'}"? This cannot be undone.`}
+        confirmLabel="Delete item"
+        onConfirm={confirmDeleteStock}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleteMutation.isPending}
+        tone="danger"
+      />
 
       <section className="inventory-section" aria-labelledby="inv-consumables-heading">
         <div className="inventory-section-head">

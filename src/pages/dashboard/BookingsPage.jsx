@@ -16,6 +16,7 @@ import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { getApiErrorHint, looksLikeLedgerPostError } from '@/utils/apiError';
 import RoomBookingCalendarModal from '@/components/dashboard/RoomBookingCalendarModal';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import ConfirmModal from '@/components/ConfirmModal';
 
 const LIMIT = 100;
 const STATUS_OPTIONS = ['pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled'];
@@ -273,6 +274,7 @@ export default function BookingsPage() {
   const [availCellModal, setAvailCellModal] = useState(null);
   const [policySettingsOpen, setPolicySettingsOpen] = useState(false);
   const [policyDraft, setPolicyDraft] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
   const internalSubmitRef = useRef({ ts: 0, signature: '' });
 
   const { data, isLoading, error } = useQuery({
@@ -579,14 +581,16 @@ export default function BookingsPage() {
     updateMutation.mutate({ id, body: { status: 'checked-out' } });
   }
   function handleCancel(id) {
-    if (!window.confirm('Cancel this booking?')) return;
-    updateMutation.mutate({ id, body: { status: 'cancelled' } });
+    setConfirmAction({ kind: 'cancelInternal', id, message: 'Cancel this booking?' });
   }
 
   function handleDeleteInternalBooking(id) {
     if (!isAdmin) return;
-    if (!window.confirm('Delete this booking permanently? This cannot be undone.')) return;
-    deleteBookingMutation.mutate(id);
+    setConfirmAction({
+      kind: 'deleteInternal',
+      id,
+      message: 'Delete this booking permanently? This cannot be undone.',
+    });
   }
 
   function handleGuestStatusChange(id, newStatus, e) {
@@ -644,8 +648,28 @@ export default function BookingsPage() {
 
   function handleDeleteGuestReservation(id) {
     if (!isAdmin) return;
-    if (!window.confirm('Delete this reservation permanently? This cannot be undone.')) return;
-    deleteGuestBookingMutation.mutate(id);
+    setConfirmAction({
+      kind: 'deleteGuest',
+      id,
+      message: 'Delete this reservation permanently? This cannot be undone.',
+    });
+  }
+
+  function confirmBookingAction() {
+    const action = confirmAction;
+    if (!action?.id) return;
+    if (action.kind === 'cancelInternal') {
+      updateMutation.mutate({ id: action.id, body: { status: 'cancelled' } });
+      setConfirmAction(null);
+      return;
+    }
+    if (action.kind === 'deleteInternal') {
+      deleteBookingMutation.mutate(action.id, { onSettled: () => setConfirmAction(null) });
+      return;
+    }
+    if (action.kind === 'deleteGuest') {
+      deleteGuestBookingMutation.mutate(action.id, { onSettled: () => setConfirmAction(null) });
+    }
   }
 
   function submitAddInternal(e) {
@@ -1892,6 +1916,20 @@ export default function BookingsPage() {
           onClose={closeAvailCalendar}
         />
       )}
+      <ConfirmModal
+        open={Boolean(confirmAction)}
+        title="Confirm action"
+        message={confirmAction?.message || ''}
+        confirmLabel={
+          confirmAction?.kind === 'cancelInternal'
+            ? 'Cancel booking'
+            : 'Delete'
+        }
+        onConfirm={confirmBookingAction}
+        onCancel={() => setConfirmAction(null)}
+        busy={updateMutation.isPending || deleteBookingMutation.isPending || deleteGuestBookingMutation.isPending}
+        tone="danger"
+      />
     </div>
   );
 }
