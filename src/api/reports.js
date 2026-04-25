@@ -19,3 +19,14 @@ export function getAnnualReport() {
 export function exportReport(type) {
   return axiosInstance.get(`/api/reports/export/${type}`);
 }
+
+export function getAiSummary(period) {
+  return axiosInstance.post('/api/reports/ai-summary', { period });
+}
+
+export function downloadAiSummaryPdf(period) {
+  return axiosInstance.get('/api/reports/ai-summary/pdf', {
+    params: { period },
+    responseType: 'blob',
+  });
+}

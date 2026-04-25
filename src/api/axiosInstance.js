@@ -30,8 +30,7 @@ axiosInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   const role = readRoleFromToken(token);
-  const skipAdminNamespaceRewrite = Boolean(config?.skipAdminNamespaceRewrite);
-  if (!skipAdminNamespaceRewrite && role === 'admin' && typeof config.url === 'string') {
+  if (role === 'admin' && typeof config.url === 'string') {
     config.url = toAdminApiUrl(config.url);
   }
   return config;

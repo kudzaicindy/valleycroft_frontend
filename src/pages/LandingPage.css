@@ -1423,7 +1423,14 @@ body.landing-nav-open {
 .btn-cta-secondary {
   background: transparent;
   border: 1.5px solid rgba(255, 255, 255, 0.5);
-  color: var(--white);
+  color: var(--white) !important;
+}
+
+.landing-page a.btn-cta-secondary,
+.landing-page a.btn-cta-secondary:visited,
+.landing-page a.btn-cta-secondary:active,
+.landing-page a.btn-cta-secondary:focus {
+  color: var(--white) !important;
 }
 
 .btn-cta-secondary:hover {
@@ -1619,6 +1626,7 @@ body.landing-nav-open {
 footer {
   background: var(--forest-d);
   padding: 60px 48px 32px;
+  color: var(--white);
 }
 
 .footer-inner {
@@ -1681,6 +1689,29 @@ footer {
   color: rgba(255, 255, 255, 0.35);
 }
 
+/* Keep landing footer text readable even with global anchor/text overrides. */
+.landing-page footer,
+.landing-page footer .footer-brand-name,
+.landing-page footer .footer-brand-desc,
+.landing-page footer .footer-col-title,
+.landing-page footer .footer-link,
+.landing-page footer .footer-copy {
+  color: inherit;
+}
+
+.landing-page footer .footer-brand-name {
+  color: var(--white);
+}
+
+.landing-page footer .footer-brand-desc,
+.landing-page footer .footer-link {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.landing-page footer .footer-copy {
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .footer-socials {
   display: flex;
   gap: 12px;
@@ -1691,12 +1722,20 @@ footer {
   height: 34px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--gold-l) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   transition: all 0.2s;
+}
+
+.social-btn i {
+  color: inherit !important;
+  opacity: 1;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .social-btn:hover {

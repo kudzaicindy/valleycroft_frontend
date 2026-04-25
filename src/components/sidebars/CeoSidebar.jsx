@@ -7,6 +7,7 @@ import {
   FaChartLine,
   FaFileAlt,
   FaHistory,
+  FaReceipt,
   FaUserGraduate,
   FaUsers,
   FaClipboardList,
@@ -21,6 +22,7 @@ const sections = [
     items: [
       { id: 'dashboard', label: 'Dashboard', path: '/ceo/dashboard', icon: <FaChartBar className="w-4 h-4" /> },
       { id: 'bookings', label: 'Bookings', path: '/ceo/bookings', icon: <FaCalendarAlt className="w-4 h-4" /> },
+      { id: 'expenses', label: 'Expenses', path: '/ceo/expenses', icon: <FaReceipt className="w-4 h-4" /> },
     ],
   },
   {

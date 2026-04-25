@@ -42,6 +42,7 @@ const SalaryPage = lazy(() => import('@/pages/dashboard/SalaryPage'));
 const AuditPage = lazy(() => import('@/pages/dashboard/AuditPage'));
 const TransactionsPage = lazy(() => import('@/pages/dashboard/TransactionsPage'));
 const BookingPaymentsPage = lazy(() => import('@/pages/dashboard/BookingPaymentsPage'));
+const QuotationsPage = lazy(() => import('@/pages/dashboard/QuotationsPage'));
 const ChartOfAccountsPage = lazy(() => import('@/pages/dashboard/ChartOfAccountsPage'));
 const DebtorsPage = lazy(() => import('@/pages/dashboard/DebtorsPage'));
 const SuppliersPage = lazy(() => import('@/pages/dashboard/SuppliersPage'));
@@ -84,6 +85,8 @@ function App() {
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="bookings" element={<BookingsPage />} />
                 <Route path="booking-payments" element={<BookingPaymentsPage />} />
+                <Route path="quotations" element={<QuotationsPage />} />
+                <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
                 <Route path="guest-bookings" element={<Navigate to="bookings?tab=guest" replace />} />
                 <Route path="rooms" element={<RoomsPage />} />
                 <Route path="staff" element={<StaffPage />} />
@@ -106,6 +109,7 @@ function App() {
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<CeoDashboard />} />
                 <Route path="bookings" element={<BookingsPage />} />
+                <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
                 <Route path="finance" element={<FinancePage />} />
                 <Route path="cashflow" element={<CashFlow />} />
                 <Route path="income-statement" element={<IncomeStatement />} />
@@ -132,6 +136,7 @@ function App() {
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<FinanceDashboard />} />
                 <Route path="transactions" element={<TransactionsPage />} />
+                <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
                 <Route path="booking-payments" element={<BookingPaymentsPage />} />
                 <Route path="payments" element={<BookingPaymentsPage />} />
                 <Route path="salary" element={<SalaryPage />} />
@@ -145,6 +150,7 @@ function App() {
                 <Route path="ledger" element={<LedgerPage />} />
                 <Route path="chart-of-accounts" element={<ChartOfAccountsPage />} />
                 <Route path="pl" element={<Navigate to="ledger" replace />} />
+                <Route path="reports" element={<ReportsPage />} />
                 <Route path="audit" element={<AuditPage />} />
               </Route>
 
@@ -159,6 +165,7 @@ function App() {
               >
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<EmployeeDashboard />} />
+                <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
                 <Route path="log-work" element={<LogWorkPage />} />
                 <Route path="my-tasks" element={<MyTasksPage />} />
                 <Route path="my-logs" element={<EmployeeLogsPlaceholder />} />

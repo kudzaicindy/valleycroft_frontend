@@ -55,10 +55,17 @@ function dateRangeLabel(b) {
   return '—';
 }
 
+function bookingDateLabel(value) {
+  if (!value) return '—';
+  const parsed = parseLocalDate(String(value).slice(0, 10));
+  return parsed ? formatDateDayMonthYear(parsed) : '—';
+}
+
 function toPaymentRow(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const booking =
     raw.guestBookingRef ||
+    raw.bookingRef ||
     raw.guest_booking_ref ||
     raw.booking ||
     raw.guestBooking ||
@@ -88,6 +95,12 @@ function toPaymentRow(raw) {
       '',
     description: raw.description || '',
     status: raw.status || 'outstanding',
+    platform:
+      raw.platform ||
+      raw.source ||
+      booking.platform ||
+      booking.source ||
+      'direct',
     amountOwed,
     amountPaid,
     balance,
@@ -297,7 +310,9 @@ export default function BookingPaymentsPage() {
                   <th>Reference</th>
                   <th>Guest</th>
                   <th>Status</th>
-                  <th>Dates</th>
+                  <th>Platform</th>
+                  <th>Check-in</th>
+                  <th>Check-out</th>
                   <th>Room / type</th>
                   <th className="statement-table-num">Amount owed</th>
                   <th className="statement-table-num">Balance</th>
@@ -307,12 +322,12 @@ export default function BookingPaymentsPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8}>Loading bookings…</td>
+                    <td colSpan={10}>Loading bookings…</td>
                   </tr>
                 ) : null}
                 {!isLoading && list.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={10}>
                       No pending booking debtors found.
                     </td>
                   </tr>
@@ -333,7 +348,9 @@ export default function BookingPaymentsPage() {
                         <td>
                           <span className={'badge ' + statusBadgeClass(b.status)}>{statusStr(b.status) || '—'}</span>
                         </td>
-                        <td className="booking-payments-dates">{dateRangeLabel(b)}</td>
+                        <td>{String(b.platform || 'direct')}</td>
+                        <td>{bookingDateLabel(b.checkIn || b.eventDate)}</td>
+                        <td>{bookingDateLabel(b.checkOut)}</td>
                         <td className="booking-payments-room">
                           {roomLabel(b)}
                           {b.type ? (

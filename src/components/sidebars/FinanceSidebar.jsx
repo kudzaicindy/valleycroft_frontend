@@ -7,6 +7,7 @@ import {
   FaFileAlt,
   FaHistory,
   FaMoneyBillWave,
+  FaReceipt,
   FaTruck,
   FaUserClock,
 } from 'react-icons/fa';
@@ -20,6 +21,7 @@ const sections = [
     items: [
       { id: 'dashboard', label: 'Dashboard', path: '/finance/dashboard', icon: <FaChartBar className="w-4 h-4" /> },
       { id: 'transactions', label: 'Transactions', path: '/finance/transactions', icon: <FaCreditCard className="w-4 h-4" /> },
+      { id: 'expenses', label: 'Expenses', path: '/finance/expenses', icon: <FaReceipt className="w-4 h-4" /> },
       { id: 'payments', label: 'Payments', path: '/finance/payments', icon: <FaMoneyBillWave className="w-4 h-4" /> },
     ],
   },
@@ -43,6 +45,7 @@ const sections = [
       { id: 'cashflow', label: 'Cash Flow', path: '/finance/cashflow', icon: <FaChartLine className="w-4 h-4" /> },
       { id: 'income-statement', label: 'Income Statement', path: '/finance/income-statement', icon: <FaChartLine className="w-4 h-4" /> },
       { id: 'balance-sheet', label: 'Balance Sheet', path: '/finance/balance-sheet', icon: <FaBalanceScale className="w-4 h-4" /> },
+      { id: 'reports', label: 'Reports', path: '/finance/reports', icon: <FaFileAlt className="w-4 h-4" /> },
       { id: 'chart-of-accounts', label: 'Chart of Accounts', path: '/finance/chart-of-accounts', icon: <FaFileAlt className="w-4 h-4" /> },
       { id: 'ledger', label: 'Ledger', path: '/finance/ledger', icon: <FaBook className="w-4 h-4" /> },
       { id: 'audit', label: 'Audit Trail', path: '/finance/audit', icon: <FaHistory className="w-4 h-4" /> },

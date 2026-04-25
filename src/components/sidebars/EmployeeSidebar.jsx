@@ -1,4 +1,4 @@
-import { FaClipboardList, FaFileAlt, FaHome, FaMoneyBillWave, FaWrench } from 'react-icons/fa';
+import { FaClipboardList, FaFileAlt, FaHome, FaMoneyBillWave, FaReceipt, FaWrench } from 'react-icons/fa';
 import PortalSidebar from '@/components/sidebars/PortalSidebar';
 
 const sections = [
@@ -12,6 +12,7 @@ const sections = [
       { id: 'log-work', label: 'Log Work', path: '/employee/log-work', icon: <FaWrench className="w-4 h-4" /> },
       { id: 'my-logs', label: 'My Logs', path: '/employee/my-logs', icon: <FaFileAlt className="w-4 h-4" /> },
       { id: 'payslips', label: 'Payslips', path: '/employee/payslips', icon: <FaMoneyBillWave className="w-4 h-4" /> },
+      { id: 'expenses', label: 'Expenses', path: '/employee/expenses', icon: <FaReceipt className="w-4 h-4" /> },
     ],
   },
 ];

@@ -1,18 +1,48 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
-import { getEquipment, getStock } from '@/api/inventory';
+import { createStockItem, deleteStockItem, getEquipment, getStock, updateStockItem } from '@/api/inventory';
 import { INVENTORY_DEMO_STOCK } from '@/utils/inventoryDemoData';
 import { normalizeInventoryPayload } from '@/utils/inventoryData';
 import './InventoryPage.css';
 
-function bandFromLevel(level) {
-  const n = Number(level);
-  if (!Number.isFinite(n)) return 'ok';
-  return n < 30 ? 'low' : 'ok';
+function inferInventoryEmoji(name, kind = 'consumable') {
+  const value = String(name || '').toLowerCase();
+  const iconRules = [
+    { emoji: '☕', terms: ['coffee', 'tea', 'pod'] },
+    { emoji: '🧼', terms: ['soap', 'detergent', 'clean', 'bleach', 'sanitizer'] },
+    { emoji: '🧻', terms: ['tissue', 'toilet', 'paper', 'napkin'] },
+    { emoji: '🍽️', terms: ['plate', 'cup', 'glass', 'fork', 'spoon', 'knife'] },
+    { emoji: '🛏️', terms: ['linen', 'sheet', 'blanket', 'pillow', 'duvet', 'towel'] },
+    { emoji: '💡', terms: ['light', 'bulb', 'lamp'] },
+    { emoji: '🔋', terms: ['battery', 'cell'] },
+    { emoji: '🧯', terms: ['fire', 'extinguisher'] },
+    { emoji: '🛠️', terms: ['tool', 'drill', 'hammer', 'wrench', 'spanner'] },
+    { emoji: '📦', terms: ['box', 'carton', 'pack', 'stock'] },
+    { emoji: '🥤', terms: ['drink', 'water', 'juice', 'soda', 'beverage'] },
+    { emoji: '🍴', terms: ['food', 'catering', 'meal'] },
+  ];
+  const match = iconRules.find((rule) => rule.terms.some((term) => value.includes(term)));
+  if (match) return match.emoji;
+  return kind === 'equipment' ? '🔧' : '📦';
+}
+
+function parseQtyLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '—') return { quantity: 0, unit: '' };
+  const matched = raw.match(/^(-?\d+(?:\.\d+)?)\s*(.*)$/);
+  if (!matched) return { quantity: 0, unit: raw };
+  const quantity = Math.max(0, Number(matched[1]) || 0);
+  const unit = (matched[2] || '').trim();
+  return { quantity, unit };
 }
 
 export default function InventoryPage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const role = String(user?.role || '').toLowerCase();
+  const canMutateInventory = role === 'admin';
   const inventoryQuery = useQuery({
     queryKey: ['inventory', 'stock-and-equipment'],
     retry: false,
@@ -39,12 +69,12 @@ export default function InventoryPage() {
   const [addKind, setAddKind] = useState('consumable');
   const [addName, setAddName] = useState('');
   const [addQty, setAddQty] = useState('');
-  const [addLevel, setAddLevel] = useState('50');
-  const [addEmoji, setAddEmoji] = useState('📦');
+  const [addReorderLevel, setAddReorderLevel] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [editQty, setEditQty] = useState('');
-  const [editLevel, setEditLevel] = useState('50');
+  const [editReorderLevel, setEditReorderLevel] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   const rows = useMemo(() => {
     let r = items;
@@ -63,29 +93,66 @@ export default function InventoryPage() {
     setAddKind('consumable');
     setAddName('');
     setAddQty('');
-    setAddLevel('50');
-    setAddEmoji('📦');
+    setAddReorderLevel('');
+    setSaveError('');
   }, []);
 
-  function handleAddSubmit(e) {
+  const createMutation = useMutation({
+    mutationFn: (body) => createStockItem(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      closeModal();
+    },
+    onError: (err) => {
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not add stock item.');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }) => updateStockItem(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      closeEditModal();
+    },
+    onError: (err) => {
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not update stock item.');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => deleteStockItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      setSaveError('');
+    },
+    onError: (err) => {
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not delete stock item.');
+    },
+  });
+
+  async function handleAddSubmit(e) {
     e.preventDefault();
+    if (!canMutateInventory) return;
     const name = addName.trim();
     if (!name) return;
-    const qty = addQty.trim() || '—';
-    const level = Math.min(100, Math.max(0, Number(addLevel) || 0));
-    const band = bandFromLevel(level);
-    const emoji = addEmoji.trim() || (addKind === 'equipment' ? '🔧' : '📦');
-    setItems((prev) => [
-      ...prev,
-      { id: `local-${Date.now()}`, kind: addKind, name, qty, level, band, emoji },
-    ]);
-    closeModal();
+    setSaveError('');
+    const { quantity, unit } = parseQtyLabel(addQty);
+    const reorderLevel = Math.max(0, Number(addReorderLevel) || 0);
+    const body = {
+      name,
+      category: addKind === 'equipment' ? 'equipment' : 'consumable',
+      quantity,
+      reorderLevel,
+      ...(unit ? { unit } : {}),
+      emoji: inferInventoryEmoji(name, addKind),
+    };
+    await createMutation.mutateAsync(body);
   }
 
   function openEditStock(row) {
     setEditId(row.id);
     setEditQty(row.qty ?? '');
-    setEditLevel(String(row.level ?? 0));
+    setEditReorderLevel(String(row.reorderLevel ?? ''));
     setEditOpen(true);
   }
 
@@ -93,22 +160,39 @@ export default function InventoryPage() {
     setEditOpen(false);
     setEditId(null);
     setEditQty('');
-    setEditLevel('50');
+    setEditReorderLevel('');
+    setSaveError('');
   }
 
-  function handleEditSubmit(e) {
+  async function handleEditSubmit(e) {
     e.preventDefault();
-    if (editId == null) return;
-    const qty = editQty.trim() || '—';
-    const level = Math.min(100, Math.max(0, Number(editLevel) || 0));
-    const band = bandFromLevel(level);
-    setItems((prev) =>
-      prev.map((it) => (it.id === editId ? { ...it, qty, level, band } : it))
-    );
-    closeEditModal();
+    if (editId == null || !canMutateInventory) return;
+    setSaveError('');
+    const { quantity, unit } = parseQtyLabel(editQty);
+    const reorderLevel = Math.max(0, Number(editReorderLevel) || 0);
+    const body = {
+      quantity,
+      reorderLevel,
+      ...(unit ? { unit } : {}),
+    };
+    await updateMutation.mutateAsync({ id: editId, body });
   }
 
   const editingRow = editId != null ? items.find((it) => it.id === editId) : null;
+  const addPreviewEmoji = useMemo(() => inferInventoryEmoji(addName, addKind), [addName, addKind]);
+
+  const handleDeleteStock = useCallback(
+    async (row) => {
+      if (!canMutateInventory) return;
+      const id = String(row?.id || '').trim();
+      if (!id) return;
+      const approved = window.confirm(`Delete "${row?.name || 'this inventory item'}"?`);
+      if (!approved) return;
+      setSaveError('');
+      await deleteMutation.mutateAsync(id);
+    },
+    [canMutateInventory, deleteMutation]
+  );
 
   const filteredCount = rows.length;
   const totalCount = items.length;
@@ -127,11 +211,23 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="inventory-header-actions">
-          <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
-            <i className="fas fa-plus" aria-hidden /> Add item
-          </button>
+          {canMutateInventory ? (
+            <button type="button" className="btn btn-primary" onClick={() => setAddOpen(true)}>
+              <i className="fas fa-plus" aria-hidden /> Add item
+            </button>
+          ) : null}
         </div>
       </header>
+      {!canMutateInventory && (
+        <p className="inventory-toolbar-meta">
+          Read-only mode: only admins can add, update, or delete inventory items.
+        </p>
+      )}
+      {saveError ? (
+        <div className="card card--error">
+          <div className="card-body">{saveError}</div>
+        </div>
+      ) : null}
 
       <div className="inventory-toolbar">
         <DashboardListFilters
@@ -181,7 +277,7 @@ export default function InventoryPage() {
             <h2 id="inv-consumables-heading" className="inventory-section-title">
               Stock &amp; equipment register
             </h2>
-            <p className="inventory-section-desc">Levels, condition proxy (%), and quick updates</p>
+            <p className="inventory-section-desc">Quantity, reorder thresholds, and quick updates</p>
           </div>
         </div>
 
@@ -242,9 +338,24 @@ export default function InventoryPage() {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => openEditStock(row)}>
-                          <i className="fas fa-sliders-h" aria-hidden /> Update
-                        </button>
+                        {canMutateInventory ? (
+                          <>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => openEditStock(row)}>
+                              <i className="fas fa-sliders-h" aria-hidden /> Update
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ marginLeft: 8 }}
+                              onClick={() => handleDeleteStock(row)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <i className="fas fa-trash-alt" aria-hidden /> Delete
+                            </button>
+                          </>
+                        ) : (
+                          <span className="inventory-cell-muted">View only</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -255,7 +366,7 @@ export default function InventoryPage() {
         </div>
       </section>
 
-      {addOpen && (
+      {addOpen && canMutateInventory && (
         <div className="rooms-events-modal-overlay" onClick={closeModal} role="presentation">
           <div
             className="rooms-events-modal bookings-add-internal-modal inventory-modal"
@@ -269,7 +380,7 @@ export default function InventoryPage() {
                 <h2 id="inv-add-title" className="rooms-events-modal-title">
                   Add item
                 </h2>
-                <p className="rooms-events-modal-sub">Consumable or equipment — stored locally until API is connected</p>
+                <p className="rooms-events-modal-sub">Creates stock via API and refreshes the inventory register</p>
               </div>
               <button type="button" className="rooms-events-modal-close" onClick={closeModal} aria-label="Close">
                 <i className="fas fa-times" />
@@ -283,10 +394,7 @@ export default function InventoryPage() {
                     className="form-control"
                     value={addKind}
                     onChange={(e) => {
-                      const k = e.target.value;
-                      setAddKind(k);
-                      if (k === 'equipment' && addEmoji === '📦') setAddEmoji('🔧');
-                      if (k === 'consumable' && addEmoji === '🔧') setAddEmoji('📦');
+                      setAddKind(e.target.value);
                     }}
                   >
                     <option value="consumable">Consumable / supplies</option>
@@ -302,28 +410,31 @@ export default function InventoryPage() {
                   <input className="form-control" value={addQty} onChange={(e) => setAddQty(e.target.value)} placeholder="e.g. 12 bottles" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Stock level (0–100%)</label>
+                  <label className="form-label">Reorder level *</label>
                   <input
                     type="number"
                     min={0}
-                    max={100}
                     className="form-control"
-                    value={addLevel}
-                    onChange={(e) => setAddLevel(e.target.value)}
+                    value={addReorderLevel}
+                    onChange={(e) => setAddReorderLevel(e.target.value)}
+                    required
                     style={{ maxWidth: 160 }}
                   />
-                  <small className="text-muted">Below 30% flags as low stock</small>
+                  <small className="text-muted">Low stock is calculated when quantity is at or below this threshold.</small>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Icon (emoji)</label>
-                  <input className="form-control" value={addEmoji} onChange={(e) => setAddEmoji(e.target.value)} maxLength={4} style={{ maxWidth: 100 }} />
+                  <label className="form-label">Icon</label>
+                  <div className="form-control" style={{ maxWidth: 160 }}>
+                    {addPreviewEmoji} Auto-selected
+                  </div>
+                  <small className="text-muted">Icon is selected automatically from the item name.</small>
                 </div>
                 <div className="bookings-add-internal-actions">
                   <button type="button" className="btn btn-outline" onClick={closeModal}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">
-                    Add to list
+                  <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? 'Saving…' : 'Add item'}
                   </button>
                 </div>
               </form>
@@ -332,7 +443,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {editOpen && editingRow && (
+      {editOpen && editingRow && canMutateInventory && (
         <div className="rooms-events-modal-overlay" onClick={closeEditModal} role="presentation">
           <div
             className="rooms-events-modal bookings-add-internal-modal inventory-modal"
@@ -366,24 +477,24 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Stock level (0–100%)</label>
+                  <label className="form-label">Reorder level *</label>
                   <input
                     type="number"
                     min={0}
-                    max={100}
                     className="form-control"
-                    value={editLevel}
-                    onChange={(e) => setEditLevel(e.target.value)}
+                    value={editReorderLevel}
+                    onChange={(e) => setEditReorderLevel(e.target.value)}
+                    required
                     style={{ maxWidth: 160 }}
                   />
-                  <small className="text-muted">Below 30% flags as low stock</small>
+                  <small className="text-muted">Low stock is calculated when quantity is at or below this threshold.</small>
                 </div>
                 <div className="bookings-add-internal-actions">
                   <button type="button" className="btn btn-outline" onClick={closeEditModal}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">
-                    Save changes
+                  <button type="submit" className="btn btn-primary" disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? 'Saving…' : 'Save changes'}
                   </button>
                 </div>
               </form>

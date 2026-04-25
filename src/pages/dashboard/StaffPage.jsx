@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getEmployees, getWorklogs, createWorklog } from '@/api/staff';
-import { createSalary, getSalary } from '@/api/finance';
+import { createSalary, deleteSalary, getSalary, updateSalary } from '@/api/finance';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import './StaffPage.css';
@@ -70,6 +70,7 @@ export default function StaffPage() {
   const [payAmount, setPayAmount] = useState('');
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [payFormError, setPayFormError] = useState('');
+  const [payEditId, setPayEditId] = useState('');
   const [paySearch, setPaySearch] = useState('');
   const [payMonthFilter, setPayMonthFilter] = useState('');
   const [logMonthFilter, setLogMonthFilter] = useState('');
@@ -115,6 +116,9 @@ export default function StaffPage() {
   const paymentPaidTo = useCallback(
     (p) => {
       if (p.employee && typeof p.employee === 'object' && p.employee.name) return p.employee.name;
+      if (p.employee && typeof p.employee === 'string' && p.employee.trim()) return p.employee.trim();
+      if (p.payeeName) return String(p.payeeName);
+      if (p.employeeName) return String(p.employeeName);
       return employeeNameById(p.employeeId);
     },
     [employeeNameById]
@@ -181,6 +185,28 @@ export default function StaffPage() {
       setPayAmount('');
       setPayDate(new Date().toISOString().slice(0, 10));
       setPayFormError('');
+      setPayEditId('');
+    },
+  });
+
+  const updatePaymentMutation = useMutation({
+    mutationFn: ({ id, body }) => updateSalary(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary'] });
+      setPayModalOpen(false);
+      setPayName('');
+      setPayNotes('');
+      setPayAmount('');
+      setPayDate(new Date().toISOString().slice(0, 10));
+      setPayFormError('');
+      setPayEditId('');
+    },
+  });
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: (id) => deleteSalary(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary'] });
     },
   });
 
@@ -220,25 +246,63 @@ export default function StaffPage() {
       return;
     }
     const matches = matchEmployeesByEnteredName(payName);
-    if (matches.length === 0) {
-      setPayFormError(
-        'No worker matches that name. Check spelling, or ask Finance to add them as an employee record first.'
-      );
-      return;
-    }
     if (matches.length > 1) {
       setPayFormError(`Several matches — use a fuller name: ${matches.map(empName).join(', ')}`);
       return;
     }
-    const employeeId = matches[0]._id ?? matches[0].id;
+    const matchedEmployee = matches[0] || null;
+    const employeeId = matchedEmployee?._id ?? matchedEmployee?.id;
     const paidOn = payDate || new Date().toISOString().slice(0, 10);
-    wagePaymentMutation.mutate({
-      employeeId,
+    const payload = {
+      ...(employeeId ? { employeeId } : {}),
+      payeeName: payName.trim(),
       amount: amt,
       paidOn,
       month: paidOn.length >= 7 ? paidOn.slice(0, 7) : undefined,
       notes: payNotes.trim(),
-    });
+    };
+    if (payEditId) {
+      updatePaymentMutation.mutate({ id: payEditId, body: payload });
+      return;
+    }
+    wagePaymentMutation.mutate(payload);
+  }
+
+  function openCreatePaymentModal() {
+    wagePaymentMutation.reset();
+    updatePaymentMutation.reset();
+    setPayFormError('');
+    setPayEditId('');
+    setPayName('');
+    setPayNotes('');
+    setPayAmount('');
+    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayModalOpen(true);
+  }
+
+  function openEditPaymentModal(payment) {
+    if (!payment) return;
+    wagePaymentMutation.reset();
+    updatePaymentMutation.reset();
+    setPayFormError('');
+    setPayEditId(String(payment._id ?? payment.id ?? ''));
+    setPayName(String(paymentPaidTo(payment) || ''));
+    setPayNotes(String(payment.notes || ''));
+    setPayAmount(payment.amount != null ? String(payment.amount) : '');
+    setPayDate(
+      payment.paidOn
+        ? String(payment.paidOn).slice(0, 10)
+        : new Date().toISOString().slice(0, 10)
+    );
+    setPayModalOpen(true);
+  }
+
+  function handleDeletePayment(payment) {
+    const id = String(payment?._id ?? payment?.id ?? '').trim();
+    if (!id) return;
+    const ok = window.confirm('Delete this worker payment record?');
+    if (!ok) return;
+    deletePaymentMutation.mutate(id);
   }
 
   function handleAddWorklogSubmit(e) {
@@ -550,11 +614,7 @@ export default function StaffPage() {
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              onClick={() => {
-                wagePaymentMutation.reset();
-                setPayFormError('');
-                setPayModalOpen(true);
-              }}
+              onClick={openCreatePaymentModal}
             >
               <i className="fas fa-hand-holding-usd" aria-hidden /> Record payment
             </button>
@@ -604,6 +664,7 @@ export default function StaffPage() {
                     <th>Paid to</th>
                     <th>Notes</th>
                     <th className="num">Amount</th>
+                    {canRecordPayment ? <th style={{ width: 150 }}>Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -617,6 +678,27 @@ export default function StaffPage() {
                           {notes.length > 100 ? `${notes.slice(0, 100)}…` : notes}
                         </td>
                         <td className="num staff-pay-cell-amt">{fmtRand(p.amount)}</td>
+                        {canRecordPayment ? (
+                          <td>
+                            <div className="transactions-table-actions">
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => openEditPaymentModal(p)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => handleDeletePayment(p)}
+                                disabled={deletePaymentMutation.isPending}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        ) : null}
                       </tr>
                     );
                   })}
@@ -646,7 +728,7 @@ export default function StaffPage() {
             <div className="rooms-events-modal-header">
               <div>
                 <h2 id="record-pay-title" className="rooms-events-modal-title">
-                  Record payment
+                  {payEditId ? 'Edit payment' : 'Record payment'}
                 </h2>
                 <p className="rooms-events-modal-sub">Money paid to a worker for work they did</p>
               </div>
@@ -656,6 +738,7 @@ export default function StaffPage() {
                 onClick={() => {
                   setPayModalOpen(false);
                   setPayFormError('');
+                  setPayEditId('');
                 }}
                 aria-label="Close"
               >
@@ -670,10 +753,10 @@ export default function StaffPage() {
                   </div>
                 </div>
               )}
-              {wagePaymentMutation.isError && (
+              {(wagePaymentMutation.isError || updatePaymentMutation.isError) && (
                 <div className="card card--error" style={{ marginBottom: 12 }}>
                   <div className="card-body" style={{ fontSize: 12 }}>
-                    {wagePaymentMutation.error?.message || 'Could not save payment.'}
+                    {wagePaymentMutation.error?.message || updatePaymentMutation.error?.message || 'Could not save payment.'}
                   </div>
                 </div>
               )}
@@ -728,12 +811,19 @@ export default function StaffPage() {
                     onClick={() => {
                       setPayModalOpen(false);
                       setPayFormError('');
+                      setPayEditId('');
                     }}
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={wagePaymentMutation.isPending}>
-                    {wagePaymentMutation.isPending ? 'Saving…' : 'Save payment'}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={wagePaymentMutation.isPending || updatePaymentMutation.isPending}
+                  >
+                    {wagePaymentMutation.isPending || updatePaymentMutation.isPending
+                      ? 'Saving…'
+                      : (payEditId ? 'Save changes' : 'Save payment')}
                   </button>
                 </div>
               </form>

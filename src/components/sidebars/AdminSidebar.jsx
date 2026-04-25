@@ -3,8 +3,10 @@ import {
   FaChartBar,
   FaCreditCard,
   FaFileAlt,
+  FaFileSignature,
   FaHome,
   FaMoneyBillWave,
+  FaReceipt,
   FaShieldAlt,
   FaWrench,
 } from 'react-icons/fa';
@@ -20,6 +22,8 @@ const sections = [
       { id: 'bookings', label: 'Bookings & reservations', path: '/admin/bookings', icon: <FaCalendarAlt className="w-4 h-4" /> },
       { id: 'rooms', label: 'Rooms', path: '/admin/rooms', icon: <FaHome className="w-4 h-4" /> },
       { id: 'booking-payments', label: 'Guest payments', path: '/admin/booking-payments', icon: <FaCreditCard className="w-4 h-4" /> },
+      { id: 'quotations', label: 'Quotations', path: '/admin/quotations', icon: <FaFileSignature className="w-4 h-4" /> },
+      { id: 'expenses', label: 'Expenses', path: '/admin/expenses', icon: <FaReceipt className="w-4 h-4" /> },
     ],
   },
   {

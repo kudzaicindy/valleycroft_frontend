@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getFinanceDashboard } from '@/api/finance';
 import { getGuestBookings } from '@/api/guestBookings';
+import { getBookings } from '@/api/bookings';
 import { getEquipment, getStock } from '@/api/inventory';
 import { normalizeFinanceDashboardResponse, fmtRand, mapFinanceQuickLinkHref } from '@/utils/financeDashboardResponse';
 import { getInventorySnapshotForMonth } from '@/utils/inventoryDemoData';
@@ -63,6 +64,8 @@ const MONTH_OPTIONS = [
   { value: 12, label: 'Dec' },
 ];
 
+const COMPILED_REPORTS_STORAGE_KEY = 'valleycroft_compiled_reports_v1';
+
 function formatMonthKeyLabel(key) {
   const raw = String(key || '').trim();
   const m = raw.match(/^(\d{4})-(\d{2})$/);
@@ -71,6 +74,25 @@ function formatMonthKeyLabel(key) {
   const mm = Number(m[2]);
   if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return raw;
   return new Date(y, mm - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function listFromResponseEnvelope(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  return [];
+}
+
+function readCompiledReportsFromStorage() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COMPILED_REPORTS_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Operations-style stat cards with zeros — used when API has no `operationsDashboard.cards` (not demo numbers). */
@@ -210,11 +232,12 @@ export default function ExecutiveHomeDashboard({ variant }) {
   const c = CONFIG[variant];
   const to = (segment) => `${c.basePath}/${segment}`;
   const { user } = useAuth();
+  const userRole = String(user?.role || '').toLowerCase();
   const firstName =
     (user && (user.name || user.firstName || user.email || '').toString().trim().split(/\s+/)[0]) || 'there';
 
   const liveEnabled = variant === 'finance' || variant === 'ceo' || variant === 'admin';
-  const showBnbInsights = variant === 'finance' || variant === 'admin';
+  const showBnbInsights = variant === 'finance' || variant === 'admin' || variant === 'ceo';
   const [revenueMonths, setRevenueMonths] = useState(6);
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -240,7 +263,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
   );
   const inventoryQuery = useQuery({
     queryKey: ['inventory', 'dashboard', selectedMonthKey],
-    enabled: variant === 'admin',
+    enabled: variant === 'admin' || userRole === 'admin',
     retry: false,
     queryFn: async () => {
       const [stockResult, equipmentResult] = await Promise.allSettled([getStock(), getEquipment()]);
@@ -273,6 +296,8 @@ export default function ExecutiveHomeDashboard({ variant }) {
 
   const dash = dashQuery.data;
   const root = dash?.raw ?? null;
+  const dashboardRole = String(root?.meta?.role || '').toLowerCase();
+  const isAdminContext = variant === 'admin' || dashboardRole === 'admin' || userRole === 'admin';
   const operationsDashboard = root?.operationsDashboard ?? null;
   const occupancy = operationsDashboard?.occupancy ?? null;
   const movementsToday = Array.isArray(operationsDashboard?.movementsToday)
@@ -290,9 +315,30 @@ export default function ExecutiveHomeDashboard({ variant }) {
     staleTime: 60 * 1000,
     queryFn: () => getGuestBookings({ limit: 500 }),
   });
-  const bnbBookingsRaw = Array.isArray(bnbBookingsQuery.data)
-    ? bnbBookingsQuery.data
-    : (bnbBookingsQuery.data?.data ?? []);
+  const internalBookingsQuery = useQuery({
+    queryKey: ['bookings', 'dashboard-bnb-performance', revenueMonths],
+    enabled: liveEnabled,
+    staleTime: 60 * 1000,
+    queryFn: () => getBookings({ limit: 500 }),
+  });
+  const bnbBookingsRaw = listFromResponseEnvelope(bnbBookingsQuery.data);
+  const internalBookingsRaw = listFromResponseEnvelope(internalBookingsQuery.data);
+  const dashboardBookings = useMemo(() => {
+    const rows = [...bnbBookingsRaw, ...internalBookingsRaw];
+    if (rows.length <= 1) return rows;
+    const deduped = new Map();
+    rows.forEach((row, idx) => {
+      const key = String(
+        row?._id ??
+        row?.id ??
+        row?.trackingCode ??
+        row?.reference ??
+        `${row?.guestName || 'guest'}-${row?.checkIn || row?.createdAt || idx}`
+      );
+      if (!deduped.has(key)) deduped.set(key, row);
+    });
+    return [...deduped.values()];
+  }, [bnbBookingsRaw, internalBookingsRaw]);
 
   const loading = liveEnabled && dashQuery.isPending;
   const settled = liveEnabled && !dashQuery.isPending;
@@ -311,8 +357,8 @@ export default function ExecutiveHomeDashboard({ variant }) {
       const checkIns = cards?.checkInsToday;
       const checkOuts = cards?.checkOutsToday;
       const stockAlerts = cards?.stockAlerts;
-      const stockAlertsCount = variant === 'admin' ? inventorySnapshot.lowCount : (stockAlerts?.count ?? 0);
-      const stockAlertsTrendText = variant === 'admin'
+      const stockAlertsCount = isAdminContext ? inventorySnapshot.lowCount : (stockAlerts?.count ?? 0);
+      const stockAlertsTrendText = isAdminContext
         ? `${inventorySnapshot.lowCount} low of ${inventorySnapshot.totalCount} items`
         : 'Reorder needed';
 
@@ -365,7 +411,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
         },
       ];
     }
-    if (variant === 'admin') {
+    if (isAdminContext) {
       const cards = emptyOperationsStatCards();
       return cards.map((card) =>
         card.label === 'Stock alerts'
@@ -383,7 +429,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
       );
     }
     return emptyOperationsStatCards();
-  }, [variant, dash, operationsDashboard, occupancy, inventorySnapshot]);
+  }, [variant, dash, operationsDashboard, occupancy, inventorySnapshot, isAdminContext]);
 
   const ring = useMemo(() => {
     const base = { ...c.ring };
@@ -831,15 +877,26 @@ export default function ExecutiveHomeDashboard({ variant }) {
     };
     stayDefs.forEach((s) => ensure(s.key, s.name));
 
-    for (const b of bnbBookingsRaw) {
+    for (const b of dashboardBookings) {
       const status = String(b?.status || '').toLowerCase();
       if (status === 'cancelled') continue;
+      const bookingType = String(b?.type ?? b?.bookingType ?? b?.category ?? '').toLowerCase();
+      if (bookingType && bookingType !== 'bnb') continue;
       const mk = monthKey(b?.checkIn || b?.eventDate || b?.createdAt);
       if (!monthSet.has(mk)) continue;
-      const amountRaw = Number(b?.totalAmount ?? b?.amount ?? 0);
+      const amountRaw = Number(
+        b?.totalAmount ??
+        b?.total ??
+        b?.receivedAmount ??
+        b?.amount ??
+        b?.grossAmount ??
+        b?.pricePerNight ??
+        b?.price ??
+        0
+      );
       const amount = Number.isFinite(amountRaw) ? amountRaw : 0;
 
-      const rawName = String(b?.roomName ?? b?.room?.name ?? '').trim().toLowerCase();
+      const rawName = String(b?.roomName ?? b?.room?.name ?? b?.propertyName ?? '').trim().toLowerCase();
       const matched = stayDefs.find((s) => rawName && s.aliases.includes(rawName));
       const group = matched ? ensure(matched.key, matched.name) : ensure(unknownKey, 'Unmapped stay');
 
@@ -862,7 +919,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
 
     const maxRevenue = Math.max(1, ...rows.map((r) => r.totalRevenue));
     return { monthKeys, rows, maxRevenue };
-  }, [showBnbInsights, bnbBookingsRaw, revenueMonths, selectedAnchorDate]);
+  }, [showBnbInsights, dashboardBookings, revenueMonths, selectedAnchorDate]);
 
   const bnbSnapshot = useMemo(() => {
     if (!showBnbInsights || !bnbPerformance) return null;
@@ -965,14 +1022,14 @@ export default function ExecutiveHomeDashboard({ variant }) {
   }, [activityToday, c.activity, loading]);
 
   const recentBookingsCard = useMemo(() => {
-    const fromGuestBookings = Array.isArray(bnbBookingsRaw)
-      ? bnbBookingsRaw
+    const fromGuestBookings = Array.isArray(dashboardBookings)
+      ? dashboardBookings
           .map((b, i) => ({
             id: b?._id ?? b?.id ?? `bk-${i}`,
             guest: b?.guestName ?? b?.guest?.name ?? b?.customerName ?? b?.name ?? 'Guest',
             room: b?.roomName ?? b?.room?.name ?? b?.propertyName ?? '—',
             checkIn: b?.checkIn ?? b?.startDate ?? b?.date ?? b?.createdAt ?? '',
-            amount: b?.totalAmount ?? b?.amount ?? null,
+            amount: b?.totalAmount ?? b?.receivedAmount ?? b?.amount ?? b?.grossAmount ?? null,
             status: String(b?.status ?? 'pending'),
           }))
           .filter((x) => x.guest && x.checkIn)
@@ -983,7 +1040,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
       .sort((a, b) => new Date(b?.checkIn ?? b?.createdAt ?? 0).getTime() - new Date(a?.checkIn ?? a?.createdAt ?? 0).getTime())
       .slice(0, 4);
 
-    if (bnbBookingsQuery.isPending && !rows.length) {
+    if ((bnbBookingsQuery.isPending || internalBookingsQuery.isPending) && !rows.length) {
       return <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading recent bookings…</p>;
     }
 
@@ -1014,7 +1071,15 @@ export default function ExecutiveHomeDashboard({ variant }) {
         ))}
       </>
     );
-  }, [bnbBookingsRaw, movementsToday, bnbBookingsQuery.isPending]);
+  }, [dashboardBookings, movementsToday, bnbBookingsQuery.isPending, internalBookingsQuery.isPending]);
+
+  const adminCompiledReports = useMemo(() => {
+    if (!(variant === 'finance' || variant === 'ceo')) return [];
+    return readCompiledReportsFromStorage()
+      .filter((row) => String(row?.generatedByRole || '').toLowerCase() === 'admin')
+      .sort((a, b) => new Date(b?.generatedAt || 0).getTime() - new Date(a?.generatedAt || 0).getTime())
+      .slice(0, 4);
+  }, [variant]);
 
   const heroStats = useMemo(() => {
     if (loading) {
@@ -1129,7 +1194,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
       <div className="grid-cols-3-1">
         <div>
           <div className="grid-2">
-            {variant === 'finance' ? (
+            {variant === 'finance' && !isAdminContext ? (
               <>
                 <div className="card">
                   <div className="card-header">
@@ -1432,12 +1497,12 @@ export default function ExecutiveHomeDashboard({ variant }) {
             <div className="card finance-bnb-performance-card">
               <div className="card-header">
                 <div>
-                  <div className="card-title">{variant === 'admin' ? 'Property & BnB Performance' : 'BnB Revenue & Bookings by Month'}</div>
+                  <div className="card-title">{isAdminContext ? 'Property & BnB Performance' : 'BnB Revenue & Bookings by Month'}</div>
                   <div className="bnb-perf-subtitle">Period: {revenueMonths} months ending {formatMonthKeyLabel(monthKey(selectedAnchorDate))}</div>
                 </div>
               </div>
               <div className="card-body">
-                {bnbBookingsQuery.isPending ? (
+                {(bnbBookingsQuery.isPending || internalBookingsQuery.isPending) ? (
                   <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
                     Loading BnB performance…
                   </p>
@@ -1451,7 +1516,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
                         <span className="bnb-perf-summary-label">BnB Revenue ({revenueMonths}M)</span>
                         <strong>{fmtRandCompact(bnbComparisonSummary.totalBnbRevenue)}</strong>
                       </div>
-                      {variant === 'finance' ? (
+                      {variant === 'finance' && !isAdminContext ? (
                         <div className="bnb-perf-summary">
                           <span className="bnb-perf-summary-label">Event Hire (current month)</span>
                           <strong>{fmtRandCompact(bnbComparisonSummary.eventHireRevenue)}</strong>
@@ -1637,6 +1702,38 @@ export default function ExecutiveHomeDashboard({ variant }) {
             </div>
             <div className="card-body">{recentBookingsCard}</div>
           </div>
+
+          {(variant === 'finance' || variant === 'ceo') ? (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">Admin compiled reports</div>
+                <Link to={to('reports')} className="btn btn-outline btn-sm">
+                  Open reports
+                </Link>
+              </div>
+              <div className="card-body">
+                {adminCompiledReports.length ? (
+                  <div className="timeline">
+                    {adminCompiledReports.map((row, idx) => (
+                      <div className="timeline-item" key={String(row?.id || row?.generatedAt || `${row?.title || 'report'}-${idx}`)}>
+                        <div className="timeline-dot gold" />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{String(row?.title || 'Compiled report')}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                            {String(row?.periodLabel || 'Period')} · {String(row?.generatedAt || '').slice(0, 10)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                    No admin-compiled reports available yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </>

@@ -48,7 +48,7 @@ const emptyForm = () => ({
   booking: '',
 });
 
-export default function TransactionsPage() {
+export default function TransactionsPage({ forcedType = '' }) {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const qpStart = searchParams.get('start') || '';
@@ -79,10 +79,11 @@ export default function TransactionsPage() {
     },
   });
   const listRaw = data?.list ?? [];
+  const effectiveType = qpType || forcedType;
   const list = useMemo(() => {
-    if (!qpType) return listRaw;
-    return listRaw.filter((t) => (t.type || '') === qpType);
-  }, [listRaw, qpType]);
+    if (!effectiveType) return listRaw;
+    return listRaw.filter((t) => (t.type || '') === effectiveType);
+  }, [listRaw, effectiveType]);
   const listDisplayed = useMemo(() => {
     let rows = list;
     if (monthFilter) {
@@ -216,9 +217,11 @@ export default function TransactionsPage() {
     <div className="page-stack">
       <div className="page-header page-header--compact">
         <div className="page-header-left">
-          <div className="page-title">Transactions</div>
+          <div className="page-title">{effectiveType === 'expense' ? 'Expenses' : 'Transactions'}</div>
           <div className="page-subtitle">
-            Income and expense entries (posted to the ledger when accounting is configured)
+            {effectiveType === 'expense'
+              ? 'Expense entries (posted to the ledger when accounting is configured)'
+              : 'Income and expense entries (posted to the ledger when accounting is configured)'}
           </div>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>

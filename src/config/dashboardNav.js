@@ -18,6 +18,8 @@ export const dashboardNavConfig = {
           { icon: 'fas fa-calendar-check', label: 'Bookings & reservations', path: 'bookings' },
           { icon: 'fas fa-bed', label: 'Rooms', path: 'rooms' },
           { icon: 'fas fa-credit-card', label: 'Guest payments', path: 'booking-payments' },
+          { icon: 'fas fa-file-signature', label: 'Quotations', path: 'quotations' },
+          { icon: 'fas fa-receipt', label: 'Expenses', path: 'expenses' },
           { icon: 'fas fa-hand-holding-usd', label: 'Worker payments', path: 'staff' },
           { icon: 'fas fa-warehouse', label: 'Inventory & equipment', path: 'inventory' },
           { icon: 'fas fa-chart-bar', label: 'Reports', path: 'reports' },
@@ -38,6 +40,7 @@ export const dashboardNavConfig = {
         items: [
           { icon: 'fas fa-th-large', label: 'Dashboard', path: 'dashboard' },
           { icon: 'fas fa-exchange-alt', label: 'Transactions', path: 'transactions' },
+          { icon: 'fas fa-receipt', label: 'Expenses', path: 'expenses' },
           { icon: 'fas fa-hand-holding-usd', label: 'Payments', path: 'payments' },
           { icon: 'fas fa-money-bill-wave', label: 'Worker payments', path: 'salary' },
           { icon: 'fas fa-truck', label: 'Suppliers', path: 'suppliers' },
@@ -47,6 +50,7 @@ export const dashboardNavConfig = {
           { icon: 'fas fa-water', label: 'Cash Flow', path: 'cashflow' },
           { icon: 'fas fa-chart-line', label: 'Income Statement', path: 'income-statement' },
           { icon: 'fas fa-balance-scale', label: 'Balance Sheet', path: 'balance-sheet' },
+          { icon: 'fas fa-chart-bar', label: 'Reports', path: 'reports' },
           { icon: 'fas fa-list-alt', label: 'Chart of accounts', path: 'chart-of-accounts' },
           { icon: 'fas fa-book', label: 'Ledger', path: 'ledger' },
           { icon: 'fas fa-history', label: 'Audit trail', path: 'audit' },
@@ -65,6 +69,7 @@ export const dashboardNavConfig = {
         label: 'Operations (read-only)',
         items: [
           { icon: 'fas fa-calendar-check', label: 'Bookings', path: 'bookings' },
+          { icon: 'fas fa-receipt', label: 'Expenses', path: 'expenses' },
         ],
       },
       {
@@ -113,6 +118,7 @@ export const dashboardNavConfig = {
           { icon: 'fas fa-pen-fancy', label: 'Log Work', path: 'log-work' },
           { icon: 'fas fa-list', label: 'My Logs', path: 'my-logs' },
           { icon: 'fas fa-file-invoice-dollar', label: 'Payslips', path: 'payslips' },
+          { icon: 'fas fa-receipt', label: 'Expenses', path: 'expenses' },
         ],
       },
     ],
@@ -125,6 +131,8 @@ const pageTitlesByRole = {
     dashboard: "Admin Dashboard",
     bookings: "Bookings & reservations",
     'booking-payments': "Guest payments",
+    quotations: "Event quotations",
+    expenses: "Expenses",
     rooms: "Rooms",
     staff: "Worker payments",
     'work-logs': "Work logs & wage history",
@@ -135,6 +143,7 @@ const pageTitlesByRole = {
   finance: {
     dashboard: "Finance Dashboard",
     transactions: "Transactions",
+    expenses: "Expenses",
     payments: "Payments",
     salary: "Worker payments",
     suppliers: "Suppliers",
@@ -144,6 +153,7 @@ const pageTitlesByRole = {
     cashflow: "Cash Flow",
     'income-statement': "Income Statement",
     'balance-sheet': "Balance Sheet",
+    reports: "Reports",
     ledger: "Ledger",
     'chart-of-accounts': "Chart of accounts",
     audit: "Audit Trail",
@@ -151,6 +161,7 @@ const pageTitlesByRole = {
   ceo: {
     dashboard: "CEO Dashboard",
     bookings: "Reservations",
+    expenses: "Expenses",
     finance: "Financial Summary",
     cashflow: "Cash Flow",
     'income-statement': "Income Statement",
@@ -168,6 +179,7 @@ const pageTitlesByRole = {
     'log-work': "Log Work",
     'my-logs': "My Logs",
     payslips: "Payslips",
+    expenses: "Expenses",
   },
 };
 
@@ -177,6 +189,8 @@ export const pageDescriptions = {
     dashboard: "Today's bookings, low stock alerts, guest booking requests, staff on duty",
     bookings: "Create, update, and cancel BnB and event reservations; confirm to post income to Finance",
     'booking-payments': "Record guest cash or bank receipts against confirmed bookings (posts to Finance)",
+    quotations: "Create event quotations, then download/print and share by email or WhatsApp",
+    expenses: "Track and review expense transactions across suppliers, payroll, and operations",
     rooms: "Room listings, rates, photos, and availability",
     staff: "Record payments to workers for work done; view recent payout history",
     'work-logs': "Wage-related activity history — filter by worker or date",
@@ -187,6 +201,7 @@ export const pageDescriptions = {
   finance: {
     dashboard: "Income vs expense summary, month-to-date totals",
     transactions: "Add income/expense, view and filter all entries",
+    expenses: "Expense-only view of finance transactions",
     'booking-payments': "Record guest payments for confirmed bookings as finance transactions",
     payments: "Record guest payments for confirmed bookings as finance transactions",
     salary: "Record wage and salary payments, filter by employee or month",
@@ -197,6 +212,7 @@ export const pageDescriptions = {
     cashflow: "Cash flow statement with date range filter",
     'income-statement': "Income statement broken down by revenue stream",
     'balance-sheet': "Balance sheet view",
+    reports: "Compile weekly/monthly/quarterly/annual business report and export PDF",
     ledger: "Journal entries from posted transactions (/api/accounting)",
     'chart-of-accounts': "GL accounts and transaction activity per account",
     audit: "Audit trail filtered to finance-relevant actions",
@@ -204,6 +220,7 @@ export const pageDescriptions = {
   ceo: {
     dashboard: "Full business overview: revenue, occupancy, headcount, alerts",
     bookings: "Read-only bookings view",
+    expenses: "Read-only expense view for executive oversight",
     finance: "Financial summary with all statements",
     cashflow: "Cash flow statement with date range",
     'income-statement': "Income statement by period",
@@ -222,6 +239,7 @@ export const pageDescriptions = {
     'my-tasks': "Assignments from admin — view and link when logging work",
     'my-logs': "History of my own past work log submissions",
     payslips: "View own salary payment history",
+    expenses: "Expense entries visible in my workspace",
   },
 };
 

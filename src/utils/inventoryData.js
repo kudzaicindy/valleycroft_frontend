@@ -42,7 +42,11 @@ function normalizeRow(raw, kind, fallbackEmoji) {
   return {
     id: pick(raw, ['_id', 'id']) ?? `${kind}-${Math.random().toString(36).slice(2)}`,
     kind,
+    category: String(pick(raw, ['category']) ?? ''),
     name: String(pick(raw, ['name', 'itemName', 'title']) ?? 'Unnamed item'),
+    quantity: hasQty ? quantityRaw : 0,
+    reorderLevel: hasReorder ? reorderRaw : 0,
+    unit: String(raw?.unit || '').trim(),
     qty: quantityLabel,
     level,
     band,

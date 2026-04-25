@@ -19,3 +19,4 @@ export * from './inventory';
 export * from './reports';
 export * from './audit';
 export * from './health';
+export * from './quotations';

@@ -26,14 +26,39 @@ async function postWithAliases(paths, body, config) {
   throw lastErr || new Error('No matching API route found.');
 }
 
+async function putWithAliases(paths, body, config) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.put(path, body, config || {});
+    } catch (err) {
+      if (err?.response?.status !== 404) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No matching API route found.');
+}
+
+async function deleteWithAliases(paths, config) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.delete(path, config || {});
+    } catch (err) {
+      if (err?.response?.status !== 404) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No matching API route found.');
+}
+
 /** GET /api/finance/transactions — server allows `limit` up to this value when date filters are used. */
 export const FINANCE_TRANSACTIONS_MAX_LIMIT = 500;
 
 export function getTransactions(params) {
   return getWithAliases(
     ['/api/finance/transactions', '/api/admin/finance/transactions'],
-    params,
-    { skipAdminNamespaceRewrite: true }
+    params
   );
 }
 
@@ -114,19 +139,26 @@ export function getAccountTransactions(accountCode, params) {
       `/api/statements/accounts/${code}/transactions`,
       `/api/accounting/accounts/${code}/transactions`,
     ],
-    params,
-    { skipAdminNamespaceRewrite: true }
+    params
   );
 }
 
 export function getSalary(params) {
-  return axiosInstance.get('/api/finance/salary', { params: params || {} });
+  return axiosInstance.get('/api/salary', { params: params || {} });
 }
 
 export function createSalary(body) {
-  return axiosInstance.post('/api/finance/salary', body);
+  return axiosInstance.post('/api/salary', body);
+}
+
+export function updateSalary(id, body) {
+  return axiosInstance.put(`/api/salary/${id}`, body);
+}
+
+export function deleteSalary(id) {
+  return axiosInstance.delete(`/api/salary/${id}`);
 }
 
 export function getSalaryByEmployee(employeeId) {
-  return axiosInstance.get(`/api/finance/salary/employee/${employeeId}`);
+  return axiosInstance.get(`/api/salary/employee/${employeeId}`);
 }

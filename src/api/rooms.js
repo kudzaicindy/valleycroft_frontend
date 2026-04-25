@@ -1,11 +1,29 @@
 import { axiosInstance } from './axiosInstance';
 import { resolveApiBaseUrl } from './resolveApiBaseUrl';
 
+function roleFromToken(token) {
+  if (!token) return '';
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return String(payload?.role ?? payload?.role_id ?? '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function filterPathsForRole(paths) {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const role = roleFromToken(token);
+  if (role !== 'admin') return paths;
+  const adminOnly = (paths || []).filter((p) => String(p || '').startsWith('/api/admin/'));
+  return adminOnly.length > 0 ? adminOnly : paths;
+}
+
 async function getWithAliases(paths, params) {
   let lastError;
-  for (const path of paths) {
+  for (const path of filterPathsForRole(paths)) {
     try {
-      return await axiosInstance.get(path, { params, skipAdminNamespaceRewrite: true });
+      return await axiosInstance.get(path, { params });
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404 || status === 405) {
@@ -20,9 +38,9 @@ async function getWithAliases(paths, params) {
 
 async function postWithAliases(paths, body) {
   let lastError;
-  for (const path of paths) {
+  for (const path of filterPathsForRole(paths)) {
     try {
-      return await axiosInstance.post(path, body, { skipAdminNamespaceRewrite: true });
+      return await axiosInstance.post(path, body);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404 || status === 405) {
@@ -37,9 +55,9 @@ async function postWithAliases(paths, body) {
 
 async function putWithAliases(paths, body) {
   let lastError;
-  for (const path of paths) {
+  for (const path of filterPathsForRole(paths)) {
     try {
-      return await axiosInstance.put(path, body, { skipAdminNamespaceRewrite: true });
+      return await axiosInstance.put(path, body);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404 || status === 405) {
@@ -55,9 +73,10 @@ async function putWithAliases(paths, body) {
 async function putWithAliasesFetch(paths, body, token) {
   const authToken = token || (typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null);
   const base = resolveApiBaseUrl().replace(/\/+$/, '');
+  const resolvedPaths = filterPathsForRole(paths);
   let lastError;
 
-  for (const path of paths) {
+  for (const path of resolvedPaths) {
     const res = await fetch(`${base}${path}`, {
       method: 'PUT',
       headers: {
@@ -85,9 +104,9 @@ async function putWithAliasesFetch(paths, body, token) {
 
 async function deleteWithAliases(paths) {
   let lastError;
-  for (const path of paths) {
+  for (const path of filterPathsForRole(paths)) {
     try {
-      return await axiosInstance.delete(path, { skipAdminNamespaceRewrite: true });
+      return await axiosInstance.delete(path);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404 || status === 405) {
@@ -135,12 +154,13 @@ export async function uploadRoomImages(roomId, files) {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const base = resolveApiBaseUrl().replace(/\/$/, '');
   const id = encodeURIComponent(roomId);
-  const paths = [
+  const allPaths = [
     `/api/admin/rooms/${id}/images`,
     `/api/admin/rooms/${id}/photos`,
     `/api/rooms/${id}/images`,
     `/api/rooms/${id}/photos`,
   ];
+  const paths = filterPathsForRole(allPaths);
 
   let lastStatus = 0;
   for (const path of paths) {

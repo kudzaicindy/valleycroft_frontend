@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -6,7 +6,7 @@ import { getBookings, getBooking, updateBooking, createBooking, deleteBooking } 
 import { getGuestBookings, updateGuestBooking, deleteGuestBooking } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
-import { listFromSuccessEnvelope, metaFromSuccessEnvelope } from '@/utils/apiEnvelope';
+import { listFromSuccessEnvelope, metaFromSuccessEnvelope, unwrapApiBody } from '@/utils/apiEnvelope';
 import { getOccupiedRoomDayKeys } from '@/utils/availability';
 import {
   loadBookingPolicySettings,
@@ -139,11 +139,14 @@ function emptyInternalBookingForm() {
     guestName: '',
     guestEmail: '',
     guestPhone: '',
+    reference: '',
+    platform: 'direct',
     type: 'bnb',
     roomId: '',
     checkIn: '',
     checkOut: '',
-    amount: '',
+    receivedAmount: '',
+    platformCharge: '',
     deposit: '',
     notes: '',
   };
@@ -186,10 +189,11 @@ function formatBookingMutationMessage(err, fallback) {
 }
 
 function normalizeBookingEntity(data) {
-  if (!data || typeof data !== 'object') return null;
-  if (data.booking && typeof data.booking === 'object') return data.booking;
-  if (data.data && typeof data.data === 'object') return data.data;
-  return data;
+  const body = unwrapApiBody(data);
+  if (!body || typeof body !== 'object') return null;
+  if (body.booking && typeof body.booking === 'object') return body.booking;
+  if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) return body.data;
+  return body;
 }
 
 export default function BookingsPage() {
@@ -250,6 +254,7 @@ export default function BookingsPage() {
   const [guestStatusFilter, setGuestStatusFilter] = useState('');
   const [guestStatusSidebar, setGuestStatusSidebar] = useState('');
   const [guestSelectedId, setGuestSelectedId] = useState(null);
+  const [guestSelectedSnapshot, setGuestSelectedSnapshot] = useState(null);
   const [guestAvailResult, setGuestAvailResult] = useState(null);
   const [guestCheckingAvail, setGuestCheckingAvail] = useState(false);
   const [showAddInternalModal, setShowAddInternalModal] = useState(false);
@@ -268,6 +273,7 @@ export default function BookingsPage() {
   const [availCellModal, setAvailCellModal] = useState(null);
   const [policySettingsOpen, setPolicySettingsOpen] = useState(false);
   const [policyDraft, setPolicyDraft] = useState(null);
+  const internalSubmitRef = useRef({ ts: 0, signature: '' });
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['bookings', page, statusFilter || statusSidebar, typeFilter, search],
@@ -312,7 +318,10 @@ export default function BookingsPage() {
     queryFn: () => getBooking(selectedId),
     enabled: !!selectedId && activeTab === 'list',
   });
-  const booking = selectedBooking ?? list.find((b) => b._id === selectedId);
+  const booking = useMemo(
+    () => normalizeBookingEntity(selectedBooking) ?? list.find((b) => String(b._id) === String(selectedId)),
+    [selectedBooking, list, selectedId]
+  );
 
   const {
     data: guestBookingsData,
@@ -353,7 +362,17 @@ export default function BookingsPage() {
 
   const guestMeta = guestBookingsData?.meta ?? {};
   const guestTotalCount = guestMeta.total ?? guestList.length;
-  const guestSelected = guestSelectedId ? guestList.find((b) => b._id === guestSelectedId) : null;
+  const guestSelected = useMemo(() => {
+    if (!guestSelectedId) return null;
+    const inFiltered = guestList.find((b) => String(b._id) === String(guestSelectedId));
+    if (inFiltered) return inFiltered;
+    const inRaw = guestRawList.find((b) => String(b._id) === String(guestSelectedId));
+    if (inRaw) return inRaw;
+    if (guestSelectedSnapshot && String(guestSelectedSnapshot._id) === String(guestSelectedId)) {
+      return guestSelectedSnapshot;
+    }
+    return null;
+  }, [guestSelectedId, guestList, guestRawList, guestSelectedSnapshot]);
 
   const { data: roomsData, isPending: roomsPending, isError: roomsIsError, error: roomsErr } = useQuery({
     queryKey: ['rooms'],
@@ -367,7 +386,23 @@ export default function BookingsPage() {
     queryFn: () => getGuestBookings({ limit: 500 }),
     enabled: activeTab === 'availability',
   });
-  const allBookingsForAvail = Array.isArray(availGuestBookings) ? availGuestBookings : (availGuestBookings?.data ?? []);
+  const { data: availInternalBookings, isPending: availInternalBookingsPending } = useQuery({
+    queryKey: ['bookings', 'availability', availStart.toDateString()],
+    queryFn: () => getBookings({ limit: 500 }),
+    enabled: activeTab === 'availability',
+  });
+  const availGuestList = Array.isArray(availGuestBookings) ? availGuestBookings : (availGuestBookings?.data ?? []);
+  const availInternalList = useMemo(() => listFromSuccessEnvelope(availInternalBookings), [availInternalBookings]);
+  const allBookingsForAvail = useMemo(() => {
+    const merged = [...availGuestList, ...availInternalList];
+    if (merged.length <= 1) return merged;
+    const deduped = new Map();
+    merged.forEach((row, idx) => {
+      const key = String(row?._id ?? row?.id ?? `row-${idx}`);
+      if (!deduped.has(key)) deduped.set(key, row);
+    });
+    return [...deduped.values()];
+  }, [availGuestList, availInternalList]);
 
   const roomsFromApi = useMemo(() => normalizeRoomsResponse(roomsData), [roomsData]);
   const roomsFromBookings = useMemo(() => deriveRoomsFromGuestBookings(allBookingsForAvail), [allBookingsForAvail]);
@@ -389,22 +424,29 @@ export default function BookingsPage() {
     return Math.round(addInternalNights * addInternalNightlyRate);
   }, [addInternalSelectedRoom, addInternalNights, addInternalNightlyRate]);
 
+  const addInternalPlatformChargeNum = useMemo(() => {
+    const v = Number(addInternalForm.platformCharge ?? 0);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }, [addInternalForm.platformCharge]);
+
   useEffect(() => {
     if (!showAddInternalModal || addInternalAmountManual) return;
     if (addInternalForm.type !== 'bnb') return;
     if (!addInternalForm.roomId) {
-      setAddInternalForm((p) => ({ ...p, amount: '' }));
+      setAddInternalForm((p) => ({ ...p, receivedAmount: '' }));
       return;
     }
     if (addInternalSuggestedTotal != null) {
-      setAddInternalForm((p) => ({ ...p, amount: String(addInternalSuggestedTotal) }));
+      const net = Math.max(0, Math.round(addInternalSuggestedTotal - addInternalPlatformChargeNum));
+      setAddInternalForm((p) => ({ ...p, receivedAmount: String(net) }));
     } else {
-      setAddInternalForm((p) => ({ ...p, amount: '' }));
+      setAddInternalForm((p) => ({ ...p, receivedAmount: '' }));
     }
   }, [
     showAddInternalModal,
     addInternalAmountManual,
     addInternalSuggestedTotal,
+    addInternalPlatformChargeNum,
     addInternalForm.roomId,
     addInternalForm.type,
   ]);
@@ -418,7 +460,7 @@ export default function BookingsPage() {
   const availabilityRoomsLoading =
     activeTab === 'availability' &&
     rooms.length === 0 &&
-    (roomsPending || availBookingsPending);
+    (roomsPending || availBookingsPending || availInternalBookingsPending);
 
   const updateMutation = useMutation({
     mutationFn: ({ id, body }) => updateBooking(id, body),
@@ -434,6 +476,7 @@ export default function BookingsPage() {
     mutationFn: (body) => createBooking(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['guest-bookings', 'availability'] });
       setShowAddInternalModal(false);
       setAddInternalForm(emptyInternalBookingForm());
     },
@@ -450,11 +493,17 @@ export default function BookingsPage() {
 
   const guestUpdateMutation = useMutation({
     mutationFn: ({ id, body }) => updateGuestBooking(id, body),
-    onSuccess: () => {
+    onSuccess: (_resp, vars) => {
       queryClient.invalidateQueries({ queryKey: ['guest-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
-      setGuestSelectedId(null);
+      if (vars?.id) {
+        setGuestSelectedSnapshot((prev) => (
+          prev && String(prev._id) === String(vars.id)
+            ? { ...prev, ...(vars?.body || {}) }
+            : prev
+        ));
+      }
     },
   });
 
@@ -471,11 +520,14 @@ export default function BookingsPage() {
 
   const deleteGuestBookingMutation = useMutation({
     mutationFn: (id) => deleteGuestBooking(id),
-    onSuccess: () => {
+    onSuccess: (_resp, id) => {
       queryClient.invalidateQueries({ queryKey: ['guest-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
-      setGuestSelectedId(null);
+      if (id && String(guestSelectedId) === String(id)) {
+        setGuestSelectedId(null);
+        setGuestSelectedSnapshot(null);
+      }
     },
   });
 
@@ -598,6 +650,7 @@ export default function BookingsPage() {
 
   function submitAddInternal(e) {
     e.preventDefault();
+    if (createBookingMutation.isPending) return;
     const f = addInternalForm;
     if (!f.guestName.trim() || !f.guestEmail.trim() || !f.guestPhone.trim()) {
       window.alert('Please enter guest name, email, and phone.');
@@ -611,6 +664,9 @@ export default function BookingsPage() {
       guestName: f.guestName.trim(),
       guestEmail: f.guestEmail.trim(),
       guestPhone: f.guestPhone.trim(),
+      reference: f.reference.trim() || undefined,
+      platform: f.platform || 'direct',
+      source: f.platform || 'direct',
       type: f.type,
       checkIn: f.checkIn,
       checkOut: f.checkOut,
@@ -624,9 +680,29 @@ export default function BookingsPage() {
         ).trim();
       }
     }
-    if (f.amount !== '' && f.amount != null && !Number.isNaN(Number(f.amount))) body.amount = Number(f.amount);
+    if (f.receivedAmount !== '' && f.receivedAmount != null && !Number.isNaN(Number(f.receivedAmount))) {
+      const received = Number(f.receivedAmount);
+      body.amount = received;
+      body.receivedAmount = received;
+    }
+    if (f.platformCharge !== '' && f.platformCharge != null && !Number.isNaN(Number(f.platformCharge))) {
+      const platformCharge = Number(f.platformCharge);
+      body.platformCharge = platformCharge;
+      body.externalCharge = platformCharge;
+      body.grossAmount = Number(body.receivedAmount ?? body.amount ?? 0) + platformCharge;
+    }
     if (f.deposit !== '' && f.deposit != null && !Number.isNaN(Number(f.deposit))) body.deposit = Number(f.deposit);
     if (f.notes.trim()) body.notes = f.notes.trim();
+
+    const signature = JSON.stringify(body);
+    const now = Date.now();
+    if (
+      internalSubmitRef.current.signature === signature &&
+      now - internalSubmitRef.current.ts < 2500
+    ) {
+      return;
+    }
+    internalSubmitRef.current = { signature, ts: now };
     createBookingMutation.mutate(body);
   }
 
@@ -1028,6 +1104,7 @@ export default function BookingsPage() {
                             className={guestSelectedId === b._id ? 'selected' : ''}
                             onClick={() => {
                               setGuestSelectedId(b._id);
+                              setGuestSelectedSnapshot(b);
                               setGuestAvailResult(null);
                             }}
                           >
@@ -1383,7 +1460,7 @@ export default function BookingsPage() {
                 </tbody>
               </table>
             </div>
-            <p className="availability-footer">Based on confirmed guest website bookings. Dates in local time. Click a booked cell for details; Prev/Next change period; Today resets to current week.</p>
+            <p className="availability-footer">Based on website and internal bookings (excluding cancelled). Dates in local time. Click a booked cell for details; Prev/Next change period; Today resets to current week.</p>
           </div>
         </div>
       )}
@@ -1456,6 +1533,31 @@ export default function BookingsPage() {
                     />
                   </label>
                   <label className="bookings-add-field">
+                    <span>Reference</span>
+                    <input
+                      className="form-control"
+                      value={addInternalForm.reference}
+                      onChange={(e) => setAddInternalForm((p) => ({ ...p, reference: e.target.value }))}
+                      placeholder="e.g. OTA-APR-442"
+                    />
+                  </label>
+                  <label className="bookings-add-field">
+                    <span>Platform</span>
+                    <select
+                      className="form-control"
+                      value={addInternalForm.platform}
+                      onChange={(e) => setAddInternalForm((p) => ({ ...p, platform: e.target.value }))}
+                    >
+                      <option value="direct">Direct</option>
+                      <option value="booking.com">Booking.com</option>
+                      <option value="airbnb">Airbnb</option>
+                      <option value="expedia">Expedia</option>
+                      <option value="agoda">Agoda</option>
+                      <option value="trip.com">Trip.com</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label className="bookings-add-field">
                     <span>Type</span>
                     <select
                       className="form-control"
@@ -1510,6 +1612,9 @@ export default function BookingsPage() {
                               {addInternalSuggestedTotal != null && (
                                 <> → suggested total <strong>R {addInternalSuggestedTotal.toLocaleString('en-ZA')}</strong></>
                               )}
+                              {addInternalPlatformChargeNum > 0 && (
+                                <> · net received <strong>R {Math.max(0, addInternalSuggestedTotal - addInternalPlatformChargeNum).toLocaleString('en-ZA')}</strong></>
+                              )}
                             </>
                           )}
                         </span>
@@ -1546,22 +1651,34 @@ export default function BookingsPage() {
                     />
                   </label>
                   <label className="bookings-add-field">
-                    <span>Total (R)</span>
+                    <span>Amount received (R)</span>
                     <input
                       type="number"
                       min={0}
                       step={1}
                       className="form-control"
-                      value={addInternalForm.amount}
+                      value={addInternalForm.receivedAmount}
                       onChange={(e) => {
                         setAddInternalAmountManual(true);
-                        setAddInternalForm((p) => ({ ...p, amount: e.target.value }));
+                        setAddInternalForm((p) => ({ ...p, receivedAmount: e.target.value }));
                       }}
+                    />
+                  </label>
+                  <label className="bookings-add-field">
+                    <span>Charge on other site (R)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="form-control"
+                      value={addInternalForm.platformCharge}
+                      onChange={(e) => setAddInternalForm((p) => ({ ...p, platformCharge: e.target.value }))}
+                      placeholder="Optional gross/OTA charge"
                     />
                   </label>
                   {addInternalForm.type === 'bnb' && addInternalSelectedRoom && addInternalSuggestedTotal != null && (
                     <p className="bookings-add-field bookings-add-field--wide bookings-add-total-note">
-                      Total updates from nights × rate unless you edit the field above.
+                      Amount received auto-fills as net (suggested total minus site charge) unless you edit it.
                     </p>
                   )}
                   <label className="bookings-add-field">

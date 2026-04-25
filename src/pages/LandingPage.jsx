@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getRooms } from '@/api/rooms';
-import { FARM_STAYS, quickBookNameBySlug } from '@/content/farmStays';
+import { FARM_STAYS, apiRowMatchesStay, quickBookNameBySlug } from '@/content/farmStays';
 import { resolveRoomImageUrl, resolveRoomImageUrls } from '@/utils/roomImageUrl';
 import './LandingPage.css';
 
@@ -444,7 +444,7 @@ export default function LandingPage() {
 
   const experienceItems = [
     { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: '/PHOTO-2026-04-10-10-38-32_3.jpg' },
-    { title: 'Nature & Wildlife', desc: 'Birdlife, gardens and the rhythm of the seasons.', img: '/PHOTO-2026-04-10-10-38-31_2.jpg' },
+    { title: 'Gardens & Outdoor Spaces', desc: 'Open lawns, gardens, and peaceful farm surroundings for a quiet countryside stay.', img: '/PHOTO-2026-04-10-10-38-31_2.jpg' },
     { title: 'Pool & Summer Days', desc: 'Take a dip and unwind by the water between farm walks and sundowners.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
     { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
   ];
@@ -453,7 +453,10 @@ export default function LandingPage() {
     const tags = ['Popular', 'Cosy', 'Premium'];
     const ratings = [4.92, 4.89, 4.95];
     const imgs = [HOUSE1_IMAGE_PATHS, HOUSE2_IMAGE_PATHS, HOUSE3_IMAGE_PATHS][idx];
-    const gallery = resolveRoomImageUrls(imgs);
+    const apiRoom = landingApiRooms.find((row) => apiRowMatchesStay(row, stay));
+    const apiGallery = resolveRoomImageUrls(apiRoom?.images || []);
+    const fallbackGallery = resolveRoomImageUrls(imgs);
+    const gallery = apiGallery.length ? apiGallery : fallbackGallery;
     return {
       tag: tags[idx],
       avail: 'yes',
@@ -471,9 +474,9 @@ export default function LandingPage() {
   });
 
   const events = [
-    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Catering for up to 200 guests with full coordination support.', features: ['Up to 200 guests', 'In-house catering available', 'Overnight accommodation for wedding party', 'Scenic photo backdrops throughout'], price: 'From R 28,000', sub: 'Full day venue hire', link: '/booking?type=wedding' },
-    { icon: '🏢', name: 'Corporate Events', desc: 'Team retreats, strategy sessions, product launches. Escape the city for a productive day surrounded by nature.', features: ['20–120 delegates', 'AV equipment included', 'Catering & tea stations', 'Overnight delegate packages'], price: 'From R 8,500', sub: 'Half-day from R 5,000', link: '/booking?type=corporate' },
-    { icon: '🎂', name: 'Private Celebrations', desc: 'Birthdays, anniversaries, family reunions. Our garden venue creates magical memories for every occasion.', features: ['Up to 80 guests', 'Entertainment area', 'Bar & catering options', 'Ample parking'], price: 'From R 6,500', sub: 'Venue hire per day', link: '/booking?type=celebration' },
+    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Venue capacity supports events of up to 300 guests.', features: ['Up to 300 guests', 'Self-catering venue', 'Decor and events management available', 'Scenic photo backdrops throughout'], price: 'From R 28,000', sub: 'Full day venue hire', link: '/booking?type=wedding' },
+    { icon: '🏢', name: 'Corporate Events', desc: 'Team retreats, strategy sessions, product launches. Escape the city for a productive day surrounded by nature.', features: ['20–120 delegates', 'AV equipment included', 'Self-catering setup', 'Decor and events management available'], price: 'From R 8,500', sub: 'Half-day from R 5,000', link: '/booking?type=corporate' },
+    { icon: '🎂', name: 'Private Celebrations', desc: 'Birthdays, anniversaries, family reunions. Our garden venue creates magical memories for every occasion.', features: ['Up to 80 guests', 'Entertainment area', 'Self-catering setup', 'Decor and events management available'], price: 'From R 6,500', sub: 'Venue hire per day', link: '/booking?type=celebration' },
     { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities, and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/booking?type=retreat' },
   ];
 
@@ -716,7 +719,7 @@ export default function LandingPage() {
         <div className="feature-item"><i className="fas fa-undo" /> Free Cancellation 48h</div>
         <div className="feature-item"><i className="fas fa-wifi" /> Free WiFi Throughout</div>
         <div className="feature-item"><i className="fas fa-person-swimming" /> Swimming pool</div>
-        <div className="feature-item"><i className="fas fa-utensils" /> Farm Breakfast Included</div>
+        <div className="feature-item"><i className="fas fa-utensils" /> Self-catering stays</div>
       </div>
 
       <div className="about-strip" id="about">
@@ -1030,8 +1033,8 @@ export default function LandingPage() {
           <h3 className="modal-title">Book {bookingContext.name}</h3>
           <p className="modal-desc">
             {bookingContext.type === 'event'
-              ? 'Send us your event details and we\'ll get back with availability and a quote.'
-              : 'Choose your dates and we\'ll confirm your stay. Farm breakfast included.'}
+              ? 'Send us your event details and we\'ll get back with availability and a quote. Decor and events management are available.'
+              : 'Choose your dates and we\'ll confirm your self-catering stay.'}
           </p>
           <Link to="/booking" className="btn-modal-primary">Continue to booking</Link>
           <p className="modal-contact">Or contact us: <a href="mailto:stay@valleycroft.com">stay@valleycroft.com</a> · <a href="tel:+27112345678">+27 11 234 5678</a></p>
@@ -1048,10 +1051,10 @@ export default function LandingPage() {
               <div className="footer-brand-name">ValleyCroft</div>
               <p className="footer-brand-desc">A working farm offering authentic BnB accommodation and premier event venue hire in the heart of South Africa&apos;s countryside.</p>
               <div className="footer-socials" style={{ marginTop: 20 }}>
-                <a href="#" className="social-btn"><i className="fab fa-facebook-f" /></a>
-                <a href="#" className="social-btn"><i className="fab fa-instagram" /></a>
-                <a href="#" className="social-btn"><i className="fab fa-whatsapp" /></a>
-                <a href="#" className="social-btn"><i className="fab fa-tripadvisor" /></a>
+                <a href="#" className="social-btn" aria-label="Facebook"><i className="fa-brands fa-facebook-f" /></a>
+                <a href="#" className="social-btn" aria-label="Instagram"><i className="fa-brands fa-instagram" /></a>
+                <a href="#" className="social-btn" aria-label="WhatsApp"><i className="fa-brands fa-whatsapp" /></a>
+                <a href="#" className="social-btn" aria-label="Tripadvisor"><i className="fa-brands fa-tripadvisor" /></a>
               </div>
             </div>
             <div>

@@ -46,6 +46,7 @@ export default function SalaryPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
     employeeId: '',
+    employeeName: '',
     notes: '',
     amount: '',
     paidOn: new Date().toISOString().slice(0, 10),
@@ -85,6 +86,7 @@ export default function SalaryPage() {
   const paymentPaidTo = useCallback(
     (p) => {
       if (p.employee && typeof p.employee === 'object' && p.employee.name) return p.employee.name;
+      if (p.employeeName) return String(p.employeeName);
       return employeeNameById(p.employeeId);
     },
     [employeeNameById]
@@ -121,6 +123,7 @@ export default function SalaryPage() {
   const openAdd = useCallback(() => {
     setForm({
       employeeId: '',
+      employeeName: '',
       notes: '',
       amount: '',
       paidOn: new Date().toISOString().slice(0, 10),
@@ -148,8 +151,10 @@ export default function SalaryPage() {
   function handleSubmit(e) {
     e.preventDefault();
     setSaveError(null);
-    if (!form.employeeId) {
-      setSaveError('Select a worker.');
+    const hasEmployeeId = Boolean(String(form.employeeId || '').trim());
+    const employeeNameText = String(form.employeeName || '').trim();
+    if (!hasEmployeeId && !employeeNameText) {
+      setSaveError('Select a worker or type employee name.');
       return;
     }
     if (!String(form.notes || '').trim()) {
@@ -162,8 +167,12 @@ export default function SalaryPage() {
       return;
     }
     const paidOn = form.paidOn || new Date().toISOString().slice(0, 10);
+    const selectedEmployee = hasEmployeeId
+      ? rawEmployees.find((emp) => String(emp._id ?? emp.id) === String(form.employeeId))
+      : null;
     createMutation.mutate({
-      employeeId: form.employeeId,
+      ...(hasEmployeeId ? { employeeId: form.employeeId } : {}),
+      employeeName: employeeNameText || (selectedEmployee ? empName(selectedEmployee) : undefined),
       amount: amt,
       paidOn,
       month: paidOn.length >= 7 ? paidOn.slice(0, 7) : undefined,
@@ -235,6 +244,16 @@ export default function SalaryPage() {
                         );
                       })}
                     </select>
+                  </div>
+                  <div className="transactions-form-field transactions-form-field--wide">
+                    <label htmlFor="sal-employee-name">Employee name (manual)</label>
+                    <input
+                      id="sal-employee-name"
+                      className="form-control"
+                      value={form.employeeName}
+                      onChange={(e) => setForm((f) => ({ ...f, employeeName: e.target.value }))}
+                      placeholder="Use when worker is not yet in employee list"
+                    />
                   </div>
                   <div className="transactions-form-field transactions-form-field--wide">
                     <label htmlFor="sal-notes">Notes</label>
