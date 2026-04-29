@@ -6,6 +6,9 @@ import { resolveTransactionCategoryForApi } from '@/constants/transactionCategor
  *
  * Refund UI uses `type: 'refund'`; the API documents `income` | `expense` only, so we POST
  * `type: 'expense'` with `category: 'refund'` and Dr Revenue / Cr Cash (or chosen accounts).
+ *
+ * **CAPEX:** `category: 'fixed_asset'` (aliases `capex`, `equipment_purchase` → `fixed_asset`) with
+ * `type: 'expense'`, Dr fixed asset / Cr bank — v3 investing cash flow, not income-statement opex.
  */
 const READ_ONLY_KEYS = new Set([
   'journalEntryId',

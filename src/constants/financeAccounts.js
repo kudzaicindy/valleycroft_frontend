@@ -1,6 +1,8 @@
 /** Default GL accounts for transaction / refund forms (codes must match API seed). */
 export const ACCOUNT_OPTIONS = [
   { value: '1000', label: '1000 - Cash' },
+  { value: '1001', label: '1001 - Cash / Bank' },
+  { value: '1100', label: '1100 - Equipment (fixed asset)' },
   { value: '1010', label: '1010 - Accounts Receivable' },
   { value: '1020', label: '1020 - Bank' },
   { value: '2000', label: '2000 - Accounts Payable' },

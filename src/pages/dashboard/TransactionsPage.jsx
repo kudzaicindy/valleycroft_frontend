@@ -8,7 +8,7 @@ import {
   deleteTransaction,
   FINANCE_TRANSACTIONS_MAX_LIMIT,
 } from '@/api/finance';
-import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel } from '@/constants/transactionCategories';
+import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel, resolveTransactionCategoryForApi } from '@/constants/transactionCategories';
 import { useAccountsSelectOptions } from '@/hooks/useAccountsSelectOptions';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
@@ -122,13 +122,13 @@ export default function TransactionsPage({ forcedType = '' }) {
       debitAccount: String(
         row.debitAccount ||
           row.debitAccountCode ||
-          (isRefundRow ? '4000' : row.type === 'expense' ? '6000' : '1000') ||
+          (isRefundRow ? '4000' : resolveTransactionCategoryForApi(row.category) === 'fixed_asset' ? '1100' : row.type === 'expense' ? '6000' : '1000') ||
           ''
       ),
       creditAccount: String(
         row.creditAccount ||
           row.creditAccountCode ||
-          (isRefundRow ? '1000' : row.type === 'expense' ? '1000' : '4000') ||
+          (isRefundRow ? '1000' : resolveTransactionCategoryForApi(row.category) === 'fixed_asset' ? '1001' : row.type === 'expense' ? '1000' : '4000') ||
           ''
       ),
       date: row.date ? String(row.date).slice(0, 10) : '',
@@ -274,20 +274,37 @@ export default function TransactionsPage({ forcedType = '' }) {
                       value={form.type}
                       onChange={(e) => {
                         const nextType = e.target.value;
-                        setForm((f) => ({
-                          ...f,
-                          type: nextType,
-                          category:
-                            nextType === 'refund'
-                              ? 'refund'
-                              : f.category === 'refund'
-                                ? ''
-                                : f.category,
-                          debitAccount:
-                            nextType === 'refund' ? '4000' : nextType === 'expense' ? '6000' : '1000',
-                          creditAccount:
-                            nextType === 'refund' ? '1000' : nextType === 'expense' ? '1000' : '4000',
-                        }));
+                        setForm((f) => {
+                          const cat = resolveTransactionCategoryForApi(f.category);
+                          if (nextType === 'income' && cat === 'fixed_asset') {
+                            return {
+                              ...f,
+                              type: nextType,
+                              category: '',
+                              debitAccount: '1000',
+                              creditAccount: '4000',
+                            };
+                          }
+                          if (nextType === 'refund') {
+                            return {
+                              ...f,
+                              type: nextType,
+                              category: 'refund',
+                              debitAccount: '4000',
+                              creditAccount: '1000',
+                            };
+                          }
+                          if (cat === 'fixed_asset' && nextType === 'expense') {
+                            return { ...f, type: nextType, debitAccount: '1100', creditAccount: '1001' };
+                          }
+                          return {
+                            ...f,
+                            type: nextType,
+                            category: f.category === 'refund' ? '' : f.category,
+                            debitAccount: nextType === 'expense' ? '6000' : '1000',
+                            creditAccount: nextType === 'expense' ? '1000' : '4000',
+                          };
+                        });
                       }}
                     >
                       <option value="income">Income</option>
@@ -313,7 +330,22 @@ export default function TransactionsPage({ forcedType = '' }) {
                           list="tx-category-datalist"
                           required
                           value={form.category}
-                          onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setForm((f) => {
+                              const cat = resolveTransactionCategoryForApi(raw);
+                              if (cat === 'fixed_asset') {
+                                return {
+                                  ...f,
+                                  category: 'fixed_asset',
+                                  type: 'expense',
+                                  debitAccount: '1100',
+                                  creditAccount: '1001',
+                                };
+                              }
+                              return { ...f, category: raw };
+                            });
+                          }}
                           placeholder="Choose a suggestion or type your own"
                           autoComplete="off"
                         />
@@ -328,6 +360,13 @@ export default function TransactionsPage({ forcedType = '' }) {
                           Presets match the ledger; any other text is sent as a category code (e.g. &quot;council rates&quot; →{' '}
                           <code>council_rates</code>).
                         </p>
+                        {resolveTransactionCategoryForApi(form.category) === 'fixed_asset' ? (
+                          <p className="transactions-form-hint" style={{ marginTop: 8 }}>
+                            CAPEX: posted as <strong>expense</strong> cash outflow with category <code>fixed_asset</code> — use Dr
+                            fixed asset (e.g. 1100) and Cr cash/bank (e.g. 1001). v3 treats this as <strong>investing</strong>, not
+                            income-statement operating expense.
+                          </p>
+                        ) : null}
                       </>
                     )}
                   </div>
