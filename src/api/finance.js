@@ -143,22 +143,43 @@ export function getAccountTransactions(accountCode, params) {
   );
 }
 
+/** Worker / salary payments (Staff page, Salary page, payslips). Tries finance-scoped routes first — plain `/api/salary` often 404s if the API only mounts under `/api/finance`. */
+const SALARY_GET_PATHS = ['/api/finance/salary', '/api/accounting/salary', '/api/salary'];
+const SALARY_POST_PATHS = ['/api/finance/salary', '/api/accounting/salary', '/api/salary'];
+
+function salaryPathsWithId(id) {
+  const enc = encodeURIComponent(String(id ?? '').trim());
+  return [
+    `/api/finance/salary/${enc}`,
+    `/api/accounting/salary/${enc}`,
+    `/api/salary/${enc}`,
+  ];
+}
+
 export function getSalary(params) {
-  return axiosInstance.get('/api/salary', { params: params || {} });
+  return getWithAliases(SALARY_GET_PATHS, params);
 }
 
 export function createSalary(body) {
-  return axiosInstance.post('/api/salary', body);
+  return postWithAliases(SALARY_POST_PATHS, body);
 }
 
 export function updateSalary(id, body) {
-  return axiosInstance.put(`/api/salary/${id}`, body);
+  return putWithAliases(salaryPathsWithId(id), body);
 }
 
 export function deleteSalary(id) {
-  return axiosInstance.delete(`/api/salary/${id}`);
+  return deleteWithAliases(salaryPathsWithId(id));
 }
 
 export function getSalaryByEmployee(employeeId) {
-  return axiosInstance.get(`/api/salary/employee/${employeeId}`);
+  const enc = encodeURIComponent(String(employeeId ?? '').trim());
+  return getWithAliases(
+    [
+      `/api/finance/salary/employee/${enc}`,
+      `/api/accounting/salary/employee/${enc}`,
+      `/api/salary/employee/${enc}`,
+    ],
+    {}
+  );
 }
