@@ -8,7 +8,7 @@ import {
   deleteTransaction,
   FINANCE_TRANSACTIONS_MAX_LIMIT,
 } from '@/api/finance';
-import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel, resolveTransactionCategoryForApi } from '@/constants/transactionCategories';
+import { TRANSACTION_CATEGORY_OPTIONS, transactionCategoryLabel, resolveTransactionCategoryForApi, isFixedAssetCapexTransaction } from '@/constants/transactionCategories';
 import { useAccountsSelectOptions } from '@/hooks/useAccountsSelectOptions';
 import { buildTransactionWritePayload } from '@/utils/transactionWritePayload';
 import { formatTransactionMutationMessage } from '@/utils/apiError';
@@ -85,6 +85,9 @@ export default function TransactionsPage({ forcedType = '' }) {
   const effectiveType = qpType || forcedType;
   const list = useMemo(() => {
     if (!effectiveType) return listRaw;
+    if (effectiveType === 'expense') {
+      return listRaw.filter((t) => (t.type || '') === 'expense' && !isFixedAssetCapexTransaction(t));
+    }
     return listRaw.filter((t) => (t.type || '') === effectiveType);
   }, [listRaw, effectiveType]);
   const listDisplayed = useMemo(() => {
@@ -115,7 +118,13 @@ export default function TransactionsPage({ forcedType = '' }) {
     const isRefundRow = row.category === 'refund';
     setEditingId(row._id ?? row.id);
     setForm({
-      type: isRefundRow ? 'refund' : row.type === 'expense' ? 'expense' : 'income',
+      type: isRefundRow
+        ? 'refund'
+        : resolveTransactionCategoryForApi(row.category) === 'fixed_asset' && row.type === 'expense'
+          ? 'capex'
+          : row.type === 'expense'
+            ? 'expense'
+            : 'income',
       category: row.category || '',
       description: row.description || '',
       amount: row.amount != null ? String(row.amount) : '',
@@ -230,7 +239,7 @@ export default function TransactionsPage({ forcedType = '' }) {
           <div className="page-title">{effectiveType === 'expense' ? 'Expenses' : 'Transactions'}</div>
           <div className="page-subtitle">
             {effectiveType === 'expense'
-              ? 'Expense entries (posted to the ledger when accounting is configured)'
+              ? 'Operating expenses only — capital (fixed-asset) purchases stay on the full Transactions page.'
               : 'Income and expense entries (posted to the ledger when accounting is configured)'}
           </div>
         </div>
@@ -276,7 +285,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                         const nextType = e.target.value;
                         setForm((f) => {
                           const cat = resolveTransactionCategoryForApi(f.category);
-                          if (nextType === 'income' && cat === 'fixed_asset') {
+                          if (nextType === 'income' && (cat === 'fixed_asset' || f.type === 'capex')) {
                             return {
                               ...f,
                               type: nextType,
@@ -294,7 +303,25 @@ export default function TransactionsPage({ forcedType = '' }) {
                               creditAccount: '1000',
                             };
                           }
-                          if (cat === 'fixed_asset' && nextType === 'expense') {
+                          if (nextType === 'capex') {
+                            return {
+                              ...f,
+                              type: 'capex',
+                              category: 'fixed_asset',
+                              debitAccount: '1100',
+                              creditAccount: '1001',
+                            };
+                          }
+                          if (nextType === 'expense' && f.type === 'capex') {
+                            return {
+                              ...f,
+                              type: 'expense',
+                              category: '',
+                              debitAccount: '6000',
+                              creditAccount: '1000',
+                            };
+                          }
+                          if (cat === 'fixed_asset' && nextType === 'expense' && f.type !== 'capex') {
                             return { ...f, type: nextType, debitAccount: '1100', creditAccount: '1001' };
                           }
                           return {
@@ -308,18 +335,19 @@ export default function TransactionsPage({ forcedType = '' }) {
                       }}
                     >
                       <option value="income">Income</option>
-                      <option value="expense">Expense</option>
+                      <option value="expense">Operating expense</option>
+                      <option value="capex">Capital expenditure (CAPEX)</option>
                       <option value="refund">Refund</option>
                     </select>
                   </div>
                   <div className="transactions-form-field">
                     <label htmlFor="tx-category">Category</label>
-                    {form.type === 'refund' ? (
+                    {form.type === 'refund' || form.type === 'capex' ? (
                       <input
                         id="tx-category"
                         className="form-control"
                         disabled
-                        value="refund"
+                        value={form.type === 'capex' ? 'fixed_asset' : 'refund'}
                         readOnly
                       />
                     ) : (
@@ -360,11 +388,17 @@ export default function TransactionsPage({ forcedType = '' }) {
                           Presets match the ledger; any other text is sent as a category code (e.g. &quot;council rates&quot; →{' '}
                           <code>council_rates</code>).
                         </p>
-                        {resolveTransactionCategoryForApi(form.category) === 'fixed_asset' ? (
+                        {resolveTransactionCategoryForApi(form.category) === 'fixed_asset' && form.type !== 'capex' ? (
                           <p className="transactions-form-hint" style={{ marginTop: 8 }}>
-                            CAPEX: posted as <strong>expense</strong> cash outflow with category <code>fixed_asset</code> — use Dr
-                            fixed asset (e.g. 1100) and Cr cash/bank (e.g. 1001). v3 treats this as <strong>investing</strong>, not
-                            income-statement operating expense.
+                            CAPEX: we still POST <code>type: expense</code> (cash out) with <code>category: fixed_asset</code> — Dr
+                            fixed asset / Cr bank. v3 uses this for <strong>investing</strong> cash flow; it does not appear in the
+                            Finance → <strong>Expenses</strong> operating list.
+                          </p>
+                        ) : null}
+                        {form.type === 'capex' ? (
+                          <p className="transactions-form-hint" style={{ marginTop: 8 }}>
+                            Same as above: saved as expense + <code>fixed_asset</code> for the API; use Finance →{' '}
+                            <strong>Transactions</strong> to review capital purchases alongside everything else.
                           </p>
                         ) : null}
                       </>
@@ -432,7 +466,9 @@ export default function TransactionsPage({ forcedType = '' }) {
                     <div className="form-control" style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                       <span style={{ color: 'var(--text-muted)' }}>
                         Dr{' '}
-                        {form.type === 'expense' || form.type === 'refund' ? moneyOrBlank(form.amount) : ''}
+                        {form.type === 'expense' || form.type === 'refund' || form.type === 'capex'
+                          ? moneyOrBlank(form.amount)
+                          : ''}
                       </span>
                       <span style={{ color: 'var(--text-muted)' }}>
                         Cr{' '}
@@ -474,7 +510,9 @@ export default function TransactionsPage({ forcedType = '' }) {
                 <p style={{ marginTop: 10, marginBottom: 0, fontSize: 11, color: 'var(--text-muted)' }}>
                   {form.type === 'refund'
                     ? 'Refunds post like other transactions (e.g. debit revenue, credit cash) and appear on the Transactions page.'
-                    : 'Every transaction must include both sides: one debit account and one credit account.'}
+                    : form.type === 'capex'
+                      ? 'CAPEX is stored as expense + fixed_asset for the ledger API; the Expenses page lists operating costs only.'
+                      : 'Every transaction must include both sides: one debit account and one credit account.'}
                 </p>
                 {saveError && (
                   <div className="card card--error" style={{ marginTop: 12 }}>
@@ -540,6 +578,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                   listDisplayed.map((t) => {
                     const id = t._id ?? t.id;
                     const refundLike = t.category === 'refund';
+                    const capexLike = isFixedAssetCapexTransaction(t) && !refundLike && (t.type || '') === 'expense';
                     const { rowDebit, rowCredit, rowNet } = getTransactionRowDebitCreditNet(t);
                     const runningNet = t.netBalance ?? ((Number(t.creditBalance) || 0) - (Number(t.debitBalance) || 0));
                     return (
@@ -551,12 +590,14 @@ export default function TransactionsPage({ forcedType = '' }) {
                               'badge ' +
                               (refundLike
                                 ? 'badge-pending'
-                                : t.type === 'income'
-                                  ? 'badge-confirmed'
-                                  : 'badge-cancelled')
+                                : capexLike
+                                  ? 'badge-pending'
+                                  : t.type === 'income'
+                                    ? 'badge-confirmed'
+                                    : 'badge-cancelled')
                             }
                           >
-                            {refundLike ? 'refund' : t.type || '—'}
+                            {refundLike ? 'refund' : capexLike ? 'capital' : t.type || '—'}
                           </span>
                         </td>
                         <td>{transactionCategoryLabel(t.category)}</td>

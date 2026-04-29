@@ -7,8 +7,7 @@ import { resolveTransactionCategoryForApi } from '@/constants/transactionCategor
  * Refund UI uses `type: 'refund'`; the API documents `income` | `expense` only, so we POST
  * `type: 'expense'` with `category: 'refund'` and Dr Revenue / Cr Cash (or chosen accounts).
  *
- * **CAPEX:** `category: 'fixed_asset'` (aliases `capex`, `equipment_purchase` → `fixed_asset`) with
- * `type: 'expense'`, Dr fixed asset / Cr bank — v3 investing cash flow, not income-statement opex.
+ * **CAPEX (form type `capex`):** POSTs `type: 'expense'` and `category: 'fixed_asset'` — API cash-out encoding only; not shown on the operating Expenses list.
  */
 const READ_ONLY_KEYS = new Set([
   'journalEntryId',
@@ -22,8 +21,13 @@ const READ_ONLY_KEYS = new Set([
 export function buildTransactionWritePayload(raw) {
   const uiType = String(raw.type || 'expense').toLowerCase();
   const isRefundUi = uiType === 'refund';
-  const type = isRefundUi ? 'expense' : uiType === 'income' ? 'income' : 'expense';
-  let category = isRefundUi ? 'refund' : resolveTransactionCategoryForApi(raw.category);
+  const isCapexUi = uiType === 'capex';
+  const type = isRefundUi || isCapexUi ? 'expense' : uiType === 'income' ? 'income' : 'expense';
+  let category = isRefundUi
+    ? 'refund'
+    : isCapexUi
+      ? 'fixed_asset'
+      : resolveTransactionCategoryForApi(raw.category);
   const description = String(raw.description || '').trim();
   const amount = Number(raw.amount);
   const debitAccount = String(raw.debitAccount || '').trim();

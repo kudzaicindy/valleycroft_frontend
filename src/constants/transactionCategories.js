@@ -1,7 +1,7 @@
 /**
  * Canonical `category` values for POST/PUT /api/finance/transactions.
  * Known values should match backend mapping (e.g. transactionJournalService / ACCOUNTING.md on the API).
- * **CAPEX:** use `fixed_asset` (alias `capex` → same) with `type: expense` and Dr fixed asset / Cr cash so v3 classifies **investing** cash flow, not P&amp;L operating expense.
+ * **CAPEX:** API stores `category: fixed_asset` (alias `capex` → same) and `type: expense` (cash out) with Dr fixed asset / Cr cash — v3 **investing** cash flow, not P&amp;L opex. The UI can use form type <code>capex</code> (see {@link buildTransactionWritePayload}); the Expenses list excludes <code>fixed_asset</code> from operating expenses.
  * The transactions form also allows free text; see {@link resolveTransactionCategoryForApi}.
  * UI shows labels; API receives the `value` or a slugified custom string.
  */
@@ -60,4 +60,10 @@ export function resolveTransactionCategoryForApi(rawInput) {
   const byLabel = TRANSACTION_CATEGORY_OPTIONS.find((o) => o.label.toLowerCase() === tl);
   if (byLabel) return byLabel.value;
   return slugifyCategoryInput(t);
+}
+
+/** True when this row is capital expenditure (stored as expense + fixed_asset for API). */
+export function isFixedAssetCapexTransaction(row) {
+  if (!row || typeof row !== 'object') return false;
+  return resolveTransactionCategoryForApi(row.category) === 'fixed_asset';
 }
