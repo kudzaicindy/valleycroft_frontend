@@ -2,14 +2,17 @@ import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { getFinanceDashboard } from '@/api/finance';
+import { getFinanceDashboard, getTransactions, FINANCE_TRANSACTIONS_MAX_LIMIT } from '@/api/finance';
+import { me as getMe } from '@/api/auth';
 import { getGuestBookings } from '@/api/guestBookings';
 import { getBookings } from '@/api/bookings';
+import { getRooms } from '@/api/rooms';
 import { getEquipment, getStock } from '@/api/inventory';
 import { normalizeFinanceDashboardResponse, fmtRand, mapFinanceQuickLinkHref } from '@/utils/financeDashboardResponse';
 import { getInventorySnapshotForMonth } from '@/utils/inventoryDemoData';
 import { inventorySnapshotFromRows, normalizeInventoryPayload } from '@/utils/inventoryData';
 import { FARM_STAYS } from '@/content/farmStays';
+import { isFixedAssetCapexTransaction } from '@/constants/transactionCategories';
 
 /** @typedef {'ceo' | 'finance' | 'admin'} HomeVariant */
 
@@ -36,6 +39,15 @@ function monthKey(d) {
   const y = dt.getFullYear();
   const m = String(dt.getMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
+}
+
+function daysInMonthFromMonthKey(mk) {
+  const m = String(mk || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return null;
+  return new Date(y, mm, 0).getDate();
 }
 
 function recentMonthKeys(count) {
@@ -89,7 +101,8 @@ function displayOccupancyPct(occupancy) {
 }
 
 function occupancyOverallMonthRow(operationsDashboard, monthKey) {
-  const arr = operationsDashboard?.monthlyByRoom?.overallByMonth;
+  const byRoom = operationsDashboard?.monthlyByRoom ?? operationsDashboard?.monthly_by_room ?? null;
+  const arr = byRoom?.overallByMonth ?? byRoom?.overall_by_month ?? byRoom?.overall ?? null;
   if (!Array.isArray(arr) || !monthKey) return null;
   return arr.find((r) => String(r?.key) === String(monthKey)) ?? null;
 }
@@ -257,8 +270,22 @@ export default function ExecutiveHomeDashboard({ variant }) {
   const to = (segment) => `${c.basePath}/${segment}`;
   const { user } = useAuth();
   const userRole = String(user?.role || '').toLowerCase();
+  const meQuery = useQuery({
+    queryKey: ['auth', 'me'],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const res = await getMe();
+      // axiosInstance unwraps { success, data } to `data`
+      return res?.data ?? res;
+    },
+  });
+  const meUser = meQuery.data && typeof meQuery.data === 'object' ? meQuery.data : null;
   const firstName =
-    (user && (user.name || user.firstName || user.email || '').toString().trim().split(/\s+/)[0]) || 'there';
+    (meUser && (meUser.name || meUser.firstName || meUser.email || '').toString().trim().split(/\s+/)[0]) ||
+    (user && (user.name || user.firstName || user.email || '').toString().trim().split(/\s+/)[0]) ||
+    'there';
 
   const liveEnabled = variant === 'finance' || variant === 'ceo' || variant === 'admin';
   const showBnbInsights = variant === 'finance' || variant === 'admin' || variant === 'ceo';
@@ -332,7 +359,17 @@ export default function ExecutiveHomeDashboard({ variant }) {
     ? operationsDashboard.movementsToday
     : [];
   const paymentQueue = Array.isArray(dash?.paymentQueue) ? dash.paymentQueue : [];
-  const ledgerSnapshot = root?.ledgerSnapshot ?? null;
+  const ledgerSnapshot =
+    root?.ledgerSnapshot ??
+    root?.ledger_snapshot ??
+    root?.ledger ??
+    root?.ledgerSummary ??
+    root?.ledger_summary ??
+    root?.accounting?.ledgerSnapshot ??
+    root?.accounting?.ledger_snapshot ??
+    root?.kpis?.ledgerSnapshot ??
+    root?.snapshot?.ledgerSnapshot ??
+    null;
   const cashflowMonthly = root?.cashflowMonthly ?? null;
   const revenueMonthly = root?.revenueMonthly ?? null;
   const revenueReceiptsMonthly = root?.revenueReceiptsMonthly ?? null;
@@ -349,8 +386,19 @@ export default function ExecutiveHomeDashboard({ variant }) {
     staleTime: 60 * 1000,
     queryFn: () => getBookings({ limit: 500 }),
   });
+  const roomsQuery = useQuery({
+    queryKey: ['rooms', 'dashboard-bnb-performance'],
+    enabled: liveEnabled && showBnbInsights,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const res = await getRooms();
+      return res?.data ?? res;
+    },
+  });
   const bnbBookingsRaw = listFromResponseEnvelope(bnbBookingsQuery.data);
   const internalBookingsRaw = listFromResponseEnvelope(internalBookingsQuery.data);
+  const roomsRaw = listFromResponseEnvelope(roomsQuery.data);
   const dashboardBookings = useMemo(() => {
     const rows = [...bnbBookingsRaw, ...internalBookingsRaw];
     if (rows.length <= 1) return rows;
@@ -367,6 +415,29 @@ export default function ExecutiveHomeDashboard({ variant }) {
     });
     return [...deduped.values()];
   }, [bnbBookingsRaw, internalBookingsRaw]);
+
+  const expensesMonthQuery = useQuery({
+    queryKey: ['finance', 'expenses-month', selectedMonthKey],
+    enabled: liveEnabled,
+    staleTime: 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const start = `${selectedMonthKey}-01`;
+      const startDate = new Date(`${selectedMonthKey}-01T00:00:00`);
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + 1);
+      endDate.setDate(endDate.getDate() - 1);
+      const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+      const res = await getTransactions({
+        start,
+        end,
+        limit: FINANCE_TRANSACTIONS_MAX_LIMIT,
+        includeByAccount: 0,
+      });
+      return res?.data ?? res;
+    },
+  });
+  const expensesMonthRows = listFromResponseEnvelope(expensesMonthQuery.data);
 
   const loading = liveEnabled && dashQuery.isPending;
   const settled = liveEnabled && !dashQuery.isPending;
@@ -461,24 +532,136 @@ export default function ExecutiveHomeDashboard({ variant }) {
 
   const ring = useMemo(() => {
     const base = { ...c.ring };
+    const monthLabel = dash?.periodLabel || formatMonthKeyLabel(selectedMonthKey);
+    const daysInMonth = daysInMonthFromMonthKey(selectedMonthKey);
+    const bookings = Array.isArray(dashboardBookings) ? dashboardBookings : [];
+    const isCancelled = (b) => String(b?.status || '').toLowerCase().includes('cancel');
+    const isBnb = (b) => {
+      const t = String(b?.type ?? b?.bookingType ?? b?.category ?? '').toLowerCase().trim();
+      if (t === 'bnb' || t === 'room' || t === 'accommodation') return true;
+      if (b?.roomId || b?.room_id || b?.room?._id || b?.room?.id || b?.roomName || b?.room?.name) return true;
+      return false;
+    };
+    const dateOrNull = (raw) => {
+      const s = String(raw || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+      const d = new Date(`${s}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const monthStart = new Date(`${selectedMonthKey}-01T00:00:00`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    const nightsOverlap = (checkIn, checkOut) => {
+      const start = dateOrNull(checkIn);
+      let end = dateOrNull(checkOut);
+      if (!start) return 0;
+      if (!end || end <= start) {
+        end = new Date(start);
+        end.setDate(end.getDate() + 1);
+      }
+      const a = Math.max(start.getTime(), monthStart.getTime());
+      const b = Math.min(end.getTime(), monthEnd.getTime());
+      const ms = Math.max(0, b - a);
+      return Math.floor(ms / (1000 * 60 * 60 * 24));
+    };
+
+    const roomsCount =
+      (Array.isArray(roomsRaw) && roomsRaw.length
+        ? roomsRaw.filter((r) => {
+            if (!r || typeof r !== 'object') return false;
+            if (r.isEventSpace === true) return false;
+            const t = String(r.type ?? '').toLowerCase();
+            if (t.includes('venue')) return false;
+            return true;
+          }).length
+        : null) ??
+      (Array.isArray(FARM_STAYS) ? FARM_STAYS.length : null) ??
+      null;
+    const availableNights = roomsCount != null && daysInMonth ? roomsCount * daysInMonth : null;
+    const soldNights = bookings.reduce((sum, b) => {
+      if (!b || isCancelled(b) || !isBnb(b)) return sum;
+      const n = nightsOverlap(b?.checkIn || b?.startDate || b?.date, b?.checkOut || b?.endDate);
+      return sum + n;
+    }, 0);
+    const roomsPct =
+      availableNights && availableNights > 0 ? Math.min(100, Math.max(0, (soldNights / availableNights) * 100)) : null;
+
+    // Venue occupancy: booked days in selected month from event-type bookings.
+    const venueBookedDays = (() => {
+      const set = new Set();
+      for (const b of bookings) {
+        if (!b || isCancelled(b)) continue;
+        const bt = String(b?.type ?? b?.bookingType ?? b?.category ?? '').toLowerCase();
+        const isEvent =
+          bt === 'event' ||
+          bt === 'wedding' ||
+          bt === 'corporate' ||
+          bt === 'celebration' ||
+          bt === 'retreat' ||
+          String(b?.eventType ?? b?.event?.type ?? '').toLowerCase().includes('wedding') ||
+          String(b?.eventType ?? b?.event?.type ?? '').toLowerCase().includes('event');
+        if (!isEvent) continue;
+        const d = String(b?.eventDate ?? b?.event?.date ?? b?.date ?? b?.startDate ?? b?.createdAt ?? '').slice(0, 10);
+        if (!d || d.length < 7) continue;
+        if (d.slice(0, 7) !== selectedMonthKey) continue;
+        set.add(d);
+      }
+      return set.size;
+    })();
+    const venuePct =
+      daysInMonth && daysInMonth > 0 ? Math.min(100, Math.max(0, (venueBookedDays / daysInMonth) * 100)) : null;
+
+    // If we have booking-derived room occupancy, use it. Otherwise fall back to API occupancy.
+    if (roomsPct != null) {
+      const circumference = 226;
+      const soldArc = Math.max(0, Math.min(circumference, (roomsPct / 100) * circumference));
+      const remainingArc = Math.max(0, circumference - soldArc);
+      return {
+        ...base,
+        badge: `${Math.round(roomsPct)}% · rooms`,
+        badgeClass: 'badge badge-confirmed',
+        stroke: 'var(--forest)',
+        dashArray: `${soldArc} ${circumference}`,
+        dashOffset: 56,
+        dashArraySecondary: `${remainingArc} ${circumference}`,
+        dashOffsetSecondary: 56 - soldArc,
+        centerText: `${Math.round(roomsPct)}%`,
+        textFill: 'var(--forest-dark)',
+        legend: {
+          sold: { label: 'Sold nights', color: 'var(--forest)' },
+          remaining: { label: 'Available nights', color: 'rgba(36, 56, 24, 0.18)' },
+        },
+        info: (
+          <>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Rooms occupancy ({monthLabel})</div>
+              <div style={{ fontWeight: 700, color: 'var(--forest)' }}>
+                {soldNights} sold out of {availableNights} available nights
+              </div>
+              {roomsCount != null && daysInMonth ? (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {availableNights} = {roomsCount} rooms × {daysInMonth} days
+                </div>
+              ) : null}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Wedding venue ({monthLabel})</div>
+              <div style={{ fontWeight: 700, color: 'var(--gold)' }}>
+                {venueBookedDays} / {daysInMonth} days booked{venuePct != null ? ` (${Math.round(venuePct)}%)` : ''}
+              </div>
+            </div>
+          </>
+        ),
+      };
+    }
+
     if (occupancy) {
       const pctRaw = displayOccupancyPct(occupancy);
       const pct = pctRaw != null ? pctRaw : 0;
-      const occupied = occupancy.occupiedRooms;
-      const vacant = occupancy.vacantRooms;
-      const maintenance = occupancy.maintenanceRooms;
       const arc = Math.max(0, Math.round((pct / 100) * 196));
-      const monthLabel = dash?.periodLabel || formatMonthKeyLabel(selectedMonthKey);
-      const soldN = occupancyMonthRow != null ? Number(occupancyMonthRow.soldNights) : NaN;
-      const availN = occupancyMonthRow != null ? Number(occupancyMonthRow.availableNights) : NaN;
-      const hasNights = Number.isFinite(soldN) && Number.isFinite(availN);
-      const usesMonthPct =
-        occupancy.selectedMonthOccupancyPct != null &&
-        occupancy.selectedMonthOccupancyPct !== '' &&
-        Number.isFinite(Number(occupancy.selectedMonthOccupancyPct));
       return {
         ...base,
-        badge: usesMonthPct ? `${Math.round(pct)}% · month` : `${Math.round(pct)}% full`,
+        badge: `${Math.round(pct)}%`,
         badgeClass: 'badge badge-confirmed',
         stroke: 'var(--forest)',
         dashArray: `${arc} 226`,
@@ -486,28 +669,9 @@ export default function ExecutiveHomeDashboard({ variant }) {
         centerText: `${Math.round(pct)}%`,
         textFill: 'var(--forest-dark)',
         info: (
-          <>
-            {hasNights ? (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Sold nights ({monthLabel})</div>
-                <div style={{ fontWeight: 700, color: 'var(--forest)' }}>
-                  {soldN} / {availN}
-                </div>
-              </div>
-            ) : null}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Occupied now</div>
-              <div style={{ fontWeight: 700, color: 'var(--forest)' }}>{occupied ?? '—'} rooms</div>
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vacant</div>
-              <div style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{vacant ?? '—'} rooms</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Maintenance</div>
-              <div style={{ fontWeight: 700, color: 'var(--gold)' }}>{maintenance ?? '—'} rooms</div>
-            </div>
-          </>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Occupancy from dashboard feed (no booking-derived room nights found for {monthLabel}).
+          </div>
         ),
       };
     }
@@ -526,7 +690,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
         </div>
       ),
     };
-  }, [occupancy, occupancyMonthRow, dash?.periodLabel, selectedMonthKey, c.ring, loading]);
+  }, [occupancy, dash?.periodLabel, selectedMonthKey, c.ring, loading, dashboardBookings, roomsRaw]);
 
   const mainTable = useMemo(() => {
     const base = c.mainTable;
@@ -700,8 +864,72 @@ export default function ExecutiveHomeDashboard({ variant }) {
   }, [ledgerSnapshot]);
 
   const ledgerForUi = useMemo(() => {
-    if (ledger) return ledger;
     const fmt = (n) => (n == null ? '—' : fmtRand(n));
+
+    const inSelectedMonth = (b) => {
+      const mk = monthKey(b?.checkIn || b?.eventDate || b?.startDate || b?.date || b?.createdAt);
+      return !!mk && mk === selectedMonthKey;
+    };
+    const amountFor = (b) => {
+      const raw = Number(
+        b?.totalAmount ??
+          b?.total ??
+          b?.receivedAmount ??
+          b?.amount ??
+          b?.grossAmount ??
+          b?.grandTotal ??
+          0
+      );
+      return Number.isFinite(raw) ? raw : 0;
+    };
+    const isCancelled = (b) => String(b?.status || '').toLowerCase().includes('cancel');
+    const isBnb = (b) => {
+      const t = String(b?.type ?? b?.bookingType ?? b?.category ?? '').toLowerCase().trim();
+      if (t === 'bnb' || t === 'room' || t === 'accommodation') return true;
+      if (b?.roomId || b?.room_id || b?.room?._id || b?.room?.id || b?.roomName || b?.room?.name) return true;
+      return false;
+    };
+
+    const bookingRows = Array.isArray(dashboardBookings) ? dashboardBookings : [];
+    const monthRows = bookingRows.filter((b) => b && !isCancelled(b) && inSelectedMonth(b));
+    const hasBookingSignals = monthRows.length > 0;
+
+    if (hasBookingSignals) {
+      const bnbRevenue = monthRows.reduce((sum, b) => (isBnb(b) ? sum + amountFor(b) : sum), 0);
+      const eventHire = monthRows.reduce((sum, b) => (!isBnb(b) ? sum + amountFor(b) : sum), 0);
+      const bnbAbs = Math.max(0, Number(bnbRevenue ?? 0));
+      const eventAbs = Math.max(0, Number(eventHire ?? 0));
+      const baseline = Math.max(1, bnbAbs, eventAbs);
+
+      const totalExpenses = (() => {
+        const rows = Array.isArray(expensesMonthRows) ? expensesMonthRows : [];
+        // This "Total Expenses" is intended to reflect operating expenses (exclude CAPEX fixed assets).
+        // Refunds/credits can exist; only count expense-type cash outflows here.
+        return rows.reduce((sum, t) => {
+          if (!t || typeof t !== 'object') return sum;
+          if (String(t.type || '').toLowerCase() !== 'expense') return sum;
+          if (isFixedAssetCapexTransaction(t)) return sum;
+          const amt = Number(t.amount ?? t.total ?? t.value ?? 0);
+          const n = Number.isFinite(amt) ? amt : 0;
+          return sum + Math.max(0, n);
+        }, 0);
+      })();
+
+      const netProfit = Number.isFinite(Number(totalExpenses)) ? bnbRevenue + eventHire - totalExpenses : null;
+      return {
+        bnbRevenue,
+        eventHire,
+        totalExpenses,
+        netProfit,
+        bnbPct: (bnbAbs / baseline) * 100,
+        eventPct: (eventAbs / baseline) * 100,
+        expensePct: 0,
+        fmt,
+      };
+    }
+
+    if (ledger) return ledger;
+
     return {
       bnbRevenue: null,
       eventHire: null,
@@ -712,7 +940,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
       expensePct: 0,
       fmt,
     };
-  }, [ledger]);
+  }, [dashboardBookings, ledger, selectedMonthKey, expensesMonthRows]);
 
   const buildTrend = (chartRoot, limit = 6, anchorDate = null) => {
     const pickNum = (obj, keys) => {
@@ -900,11 +1128,50 @@ export default function ExecutiveHomeDashboard({ variant }) {
       return out;
     })();
     const monthSet = new Set(monthKeys);
-    const stayDefs = FARM_STAYS.map((s) => ({
+    const roomList = Array.isArray(roomsRaw)
+      ? roomsRaw.filter((r) => {
+          if (!r || typeof r !== 'object') return false;
+          if (r.isEventSpace === true) return false;
+          const t = String(r.type ?? '').toLowerCase();
+          if (t.includes('venue')) return false;
+          return true;
+        })
+      : [];
+    const roomDefs = roomList
+      .map((r, i) => {
+        if (!r || typeof r !== 'object') return null;
+        const id = String(r._id ?? r.id ?? '').trim();
+        const key = String(r.slug ?? id ?? r.name ?? `room_${i}`).trim();
+        const name = String(r.name ?? r.title ?? r.label ?? key).trim() || key;
+        const aliases = [
+          name,
+          r.title,
+          r.label,
+          ...(Array.isArray(r.legacyNames) ? r.legacyNames : []),
+        ]
+          .map((x) => String(x || '').trim().toLowerCase())
+          .filter(Boolean);
+        return { key, name, id, aliases };
+      })
+      .filter(Boolean);
+    const fallbackStayDefs = FARM_STAYS.map((s) => ({
       key: s.slug,
       name: s.name,
       aliases: [s.name, ...(s.legacyNames || [])].map((x) => String(x || '').trim().toLowerCase()).filter(Boolean),
     }));
+    const stayDefs = roomDefs.length
+      ? roomDefs.map(({ key, name, aliases }) => ({ key, name, aliases }))
+      : fallbackStayDefs;
+    const stayKeyByRoomId = new Map(
+      roomDefs
+        .map((r) => [String(r.id || '').trim(), String(r.key || '').trim()])
+        .filter(([id, key]) => id && key)
+    );
+    const stayNameByRoomId = new Map(
+      roomDefs
+        .map((r) => [String(r.id || '').trim(), String(r.name || '').trim()])
+        .filter(([id, name]) => id && name)
+    );
     const unknownKey = 'unknown';
     const byStay = new Map();
     const ensure = (key, name) => {
@@ -941,9 +1208,30 @@ export default function ExecutiveHomeDashboard({ variant }) {
       );
       const amount = Number.isFinite(amountRaw) ? amountRaw : 0;
 
-      const rawName = String(b?.roomName ?? b?.room?.name ?? b?.propertyName ?? '').trim().toLowerCase();
-      const matched = stayDefs.find((s) => rawName && s.aliases.includes(rawName));
-      const group = matched ? ensure(matched.key, matched.name) : ensure(unknownKey, 'Unmapped stay');
+      const roomId = String(
+        b?.roomId ??
+          b?.room_id ??
+          b?.room?._id ??
+          b?.room?.id ??
+          b?.propertyId ??
+          b?.property_id ??
+          ''
+      ).trim();
+      const rawName = String(
+        b?.roomName ??
+          b?.room?.name ??
+          b?.propertyName ??
+          (roomId ? stayNameByRoomId.get(roomId) : '') ??
+          ''
+      )
+        .trim()
+        .toLowerCase();
+      const fromIdKey = roomId ? stayKeyByRoomId.get(roomId) : '';
+      const matched =
+        fromIdKey && stayDefs.some((s) => s.key === fromIdKey)
+          ? stayDefs.find((s) => s.key === fromIdKey)
+          : stayDefs.find((s) => rawName && s.aliases.includes(rawName));
+      const group = matched ? ensure(matched.key, matched.name) : ensure(unknownKey, rawName ? `Unmapped: ${rawName}` : 'Unmapped stay');
 
       group.totalRevenue += amount;
       group.bookingCount += 1;
@@ -964,7 +1252,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
 
     const maxRevenue = Math.max(1, ...rows.map((r) => r.totalRevenue));
     return { monthKeys, rows, maxRevenue };
-  }, [showBnbInsights, dashboardBookings, revenueMonths, selectedAnchorDate]);
+  }, [showBnbInsights, dashboardBookings, revenueMonths, selectedAnchorDate, roomsRaw]);
 
   const bnbSnapshot = useMemo(() => {
     if (!showBnbInsights || !bnbPerformance) return null;
@@ -975,13 +1263,16 @@ export default function ExecutiveHomeDashboard({ variant }) {
       if (idx < 0) return sum;
       return sum + (Number(r.monthly[idx] || 0) > 0 ? 1 : 0);
     }, 0);
-    const totalBnbs = FARM_STAYS.length;
+    // Use the tracked rows length as the baseline to avoid contradictory counts when FARM_STAYS
+    // is out of sync with the actual stays/rooms present in the dataset.
+    const totalBnbs = trackedRows.length || FARM_STAYS.length;
+    const clampedBooked = Math.max(0, Math.min(totalBnbs, bookedCount));
     return {
       monthKey: activeMonthKey,
       monthLabel: formatMonthKeyLabel(activeMonthKey),
-      bookedCount,
+      bookedCount: clampedBooked,
       totalBnbs,
-      unbookedCount: Math.max(0, totalBnbs - bookedCount),
+      unbookedCount: Math.max(0, totalBnbs - clampedBooked),
     };
   }, [showBnbInsights, bnbPerformance, selectedAnchorDate]);
 
@@ -1508,6 +1799,19 @@ export default function ExecutiveHomeDashboard({ variant }) {
                     <div className="kpi-ring-wrap">
                       <svg className="donut-svg" width={90} height={90} viewBox="0 0 90 90">
                         <circle cx={45} cy={45} r={36} fill="none" stroke="var(--linen)" strokeWidth={10} />
+                        {ring.dashArraySecondary ? (
+                          <circle
+                            cx={45}
+                            cy={45}
+                            r={36}
+                            fill="none"
+                            stroke={ring.legend?.remaining?.color ?? 'rgba(36, 56, 24, 0.18)'}
+                            strokeWidth={10}
+                            strokeDasharray={ring.dashArraySecondary}
+                            strokeDashoffset={ring.dashOffsetSecondary ?? ring.dashOffset}
+                            strokeLinecap="butt"
+                          />
+                        ) : null}
                         <circle
                           cx={45}
                           cy={45}
@@ -1531,7 +1835,21 @@ export default function ExecutiveHomeDashboard({ variant }) {
                           {ring.centerText}
                         </text>
                       </svg>
-                      <div className="kpi-ring-info">{ring.info}</div>
+                      <div className="kpi-ring-info">
+                        {ring.legend ? (
+                          <div className="donut-legend" style={{ marginBottom: 8 }}>
+                            <div className="legend-item">
+                              <span className="legend-dot" style={{ background: ring.legend.sold.color }} />
+                              <span>{ring.legend.sold.label}</span>
+                            </div>
+                            <div className="legend-item" style={{ marginBottom: 0 }}>
+                              <span className="legend-dot" style={{ background: ring.legend.remaining.color }} />
+                              <span>{ring.legend.remaining.label}</span>
+                            </div>
+                          </div>
+                        ) : null}
+                        {ring.info}
+                      </div>
                     </div>
                   </div>
                 </div>

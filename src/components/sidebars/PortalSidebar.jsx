@@ -11,6 +11,7 @@ export default function PortalSidebar({
   sections,
   onLogout,
   profileName,
+  profileEmail,
   profileRole,
   onRequestCloseMobile,
 }) {
@@ -143,6 +144,7 @@ export default function PortalSidebar({
               <FaUserCircle className="portal-sidebar__profile-icon" />
               <p className="portal-sidebar__profile-name">{profileName}</p>
             </div>
+            {profileEmail ? <p className="portal-sidebar__profile-role">{profileEmail}</p> : null}
             {profileRole ? <p className="portal-sidebar__profile-role">{profileRole}</p> : null}
           </div>
         ) : null}

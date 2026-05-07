@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 import {
   getTransactions,
   createTransaction,
@@ -51,6 +52,9 @@ const emptyForm = () => ({
 
 export default function TransactionsPage({ forcedType = '' }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = String(user?.role || '').toLowerCase();
+  const readOnly = role === 'ceo';
   const [searchParams] = useSearchParams();
   const qpStart = searchParams.get('start') || '';
   const qpEnd = searchParams.get('end') || '';
@@ -108,13 +112,15 @@ export default function TransactionsPage({ forcedType = '' }) {
   const meta = data?.meta ?? {};
 
   const openAdd = useCallback(() => {
+    if (readOnly) return;
     setEditingId(null);
     setForm(emptyForm());
     setSaveError(null);
     setModalOpen(true);
-  }, []);
+  }, [readOnly]);
 
   const openEdit = useCallback((row) => {
+    if (readOnly) return;
     const isRefundRow = row.category === 'refund';
     setEditingId(row._id ?? row.id);
     setForm({
@@ -146,7 +152,7 @@ export default function TransactionsPage({ forcedType = '' }) {
     });
     setSaveError(null);
     setModalOpen(true);
-  }, []);
+  }, [readOnly]);
 
   const closeModal = useCallback(() => {
     setModalOpen(false);
@@ -187,6 +193,7 @@ export default function TransactionsPage({ forcedType = '' }) {
 
   function handleSubmit(e) {
     e.preventDefault();
+    if (readOnly) return;
     setSaveError(null);
     try {
       const body = buildTransactionWritePayload(form);
@@ -202,6 +209,7 @@ export default function TransactionsPage({ forcedType = '' }) {
   }
 
   function handleDelete(row) {
+    if (readOnly) return;
     const id = row._id ?? row.id;
     if (!id) return;
     setDeleteTarget({ id, description: row.description || 'this transaction' });
@@ -210,6 +218,7 @@ export default function TransactionsPage({ forcedType = '' }) {
   function confirmDelete() {
     const id = deleteTarget?.id;
     if (!id) return;
+    if (readOnly) return;
     deleteMutation.mutate(id, {
       onSettled: () => setDeleteTarget(null),
     });
@@ -243,9 +252,11 @@ export default function TransactionsPage({ forcedType = '' }) {
               : 'Income and expense entries (posted to the ledger when accounting is configured)'}
           </div>
         </div>
-        <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
-          <i className="fas fa-plus" /> Add
-        </button>
+        {!readOnly ? (
+          <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
+            <i className="fas fa-plus" /> Add
+          </button>
+        ) : null}
       </div>
       {error && <div className="card card--error"><div className="card-body">{error.message}</div></div>}
 
@@ -257,7 +268,7 @@ export default function TransactionsPage({ forcedType = '' }) {
         onMonthChange={setMonthFilter}
       />
 
-      {modalOpen && (
+      {modalOpen && !readOnly && (
         <div
           className="transactions-modal-overlay"
           role="dialog"
@@ -611,19 +622,21 @@ export default function TransactionsPage({ forcedType = '' }) {
                           {moneyOrBlank(runningNet)}
                         </td>
                         <td>
-                          <div className="transactions-table-actions">
-                            <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(t)}>
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-outline btn-sm"
-                              onClick={() => handleDelete(t)}
-                              disabled={deleteMutation.isPending}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                          {!readOnly ? (
+                            <div className="transactions-table-actions">
+                              <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(t)}>
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => handleDelete(t)}
+                                disabled={deleteMutation.isPending}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
                         </td>
                       </tr>
                     );

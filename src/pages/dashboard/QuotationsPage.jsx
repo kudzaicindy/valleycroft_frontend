@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { marked } from 'marked';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import ConfirmModal from '@/components/ConfirmModal';
+import { useAuth } from '@/context/AuthContext';
 import {
   createQuotation,
   deleteQuotation,
@@ -225,6 +226,10 @@ ${notesTermsBlock}
 
 export default function QuotationsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = String(user?.role || '').toLowerCase();
+  const readOnly = role === 'ceo';
+  const canDelete = role === 'admin';
   const [form, setForm] = useState(() => initialForm());
   const [createOpen, setCreateOpen] = useState(false);
   const [previewQuote, setPreviewQuote] = useState(null);
@@ -447,12 +452,14 @@ export default function QuotationsPage() {
   }, [statusMutation]);
 
   const removeQuote = useCallback((id, label) => {
+    if (!canDelete) return;
     setDeleteTarget({ id, label: label || 'this quotation' });
-  }, []);
+  }, [canDelete]);
 
   const confirmDeleteQuote = useCallback(async () => {
     const id = String(deleteTarget?.id || '').trim();
     if (!id) return;
+    if (!canDelete) return;
     setActionBusyId(id);
     try {
       await deleteMutation.mutateAsync(id);
@@ -480,9 +487,11 @@ export default function QuotationsPage() {
           <div className="page-title">Event quotations</div>
           <div className="page-subtitle">Create professional event quotations for admin, then download/print or send by email.</div>
         </div>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
-          <i className="fas fa-plus" aria-hidden /> New quotation
-        </button>
+        {!readOnly ? (
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
+            <i className="fas fa-plus" aria-hidden /> New quotation
+          </button>
+        ) : null}
       </div>
 
       {quotationsQuery.error ? (
@@ -563,6 +572,18 @@ export default function QuotationsPage() {
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => sendByEmail(q)} disabled={actionBusyId === q.id}>Send Email</button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => sendWhatsApp(q)}>WhatsApp</button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => setPreviewQuote(q)}>Preview</button>
+                          {canDelete ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                              onClick={() => removeQuote(q.id, q.quotationNumber)}
+                              disabled={actionBusyId === q.id}
+                              title="Delete quotation permanently"
+                            >
+                              Delete
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -604,7 +625,7 @@ export default function QuotationsPage() {
         </div>
       ) : null}
 
-      {createOpen ? (
+      {createOpen && !readOnly ? (
         <div className="transactions-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="quotation-create-modal-title" onClick={() => setCreateOpen(false)}>
           <div className="transactions-modal" style={{ width: 'min(1100px, 96vw)', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div className="transactions-modal-header">

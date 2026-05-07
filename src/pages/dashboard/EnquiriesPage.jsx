@@ -93,7 +93,8 @@ export default function EnquiriesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = String(user?.role || '').toLowerCase();
-  const canRespondOrClose = role === 'admin' || role === 'ceo';
+  /** CEO dashboards are view-only: CEOs can view enquiries but not respond/close. */
+  const canRespondOrClose = role === 'admin' || role === 'finance';
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
@@ -303,7 +304,7 @@ export default function EnquiriesPage() {
         <div className="page-header-left">
           <div className="page-title">Event enquiries</div>
           <div className="page-subtitle">
-            Guest submissions from the public enquiry form. Open a row to view details; admins and CEOs can send a
+            Guest submissions from the public enquiry form. Open a row to view details; admins and finance can send a
             quotation email (PDF) and close threads when done.
           </div>
         </div>

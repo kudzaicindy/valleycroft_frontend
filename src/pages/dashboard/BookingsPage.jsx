@@ -200,7 +200,9 @@ function normalizeBookingEntity(data) {
 export default function BookingsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
+  const role = String(user?.role || '').toLowerCase();
+  const isAdmin = role === 'admin';
+  const readOnly = role === 'ceo';
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = useMemo(() => {
@@ -562,6 +564,7 @@ export default function BookingsPage() {
   }
 
   function handleConfirm(id) {
+    if (readOnly) return;
     const fallbackBooking = list.find((b) => String(b._id ?? b.id) === String(id));
     updateMutation.mutate(
       { id, body: { status: 'confirmed' } },
@@ -575,17 +578,21 @@ export default function BookingsPage() {
     );
   }
   function handleCheckIn(id) {
+    if (readOnly) return;
     updateMutation.mutate({ id, body: { status: 'checked-in' } });
   }
   function handleCheckOut(id) {
+    if (readOnly) return;
     updateMutation.mutate({ id, body: { status: 'checked-out' } });
   }
   function handleCancel(id) {
+    if (readOnly) return;
     setConfirmAction({ kind: 'cancelInternal', id, message: 'Cancel this booking?' });
   }
 
   function handleDeleteInternalBooking(id) {
     if (!isAdmin) return;
+    if (readOnly) return;
     setConfirmAction({
       kind: 'deleteInternal',
       id,
@@ -595,6 +602,7 @@ export default function BookingsPage() {
 
   function handleGuestStatusChange(id, newStatus, e) {
     e?.stopPropagation?.();
+    if (readOnly) return;
     guestUpdateMutation.mutate({ id, body: { status: newStatus } });
   }
 
@@ -627,6 +635,7 @@ export default function BookingsPage() {
 
   function handleGuestConfirm() {
     if (!guestSelected) return;
+    if (readOnly) return;
     const snapshot = { ...guestSelected };
     guestUpdateMutation.mutate(
       { id: guestSelected._id, body: { status: 'confirmed' } },
@@ -639,15 +648,18 @@ export default function BookingsPage() {
   }
   function handleGuestReject() {
     if (!guestSelected) return;
+    if (readOnly) return;
     guestUpdateMutation.mutate({ id: guestSelected._id, body: { status: 'cancelled' } });
   }
   function handleGuestWaitlist() {
     if (!guestSelected) return;
+    if (readOnly) return;
     guestUpdateMutation.mutate({ id: guestSelected._id, body: { status: 'waitlist' } });
   }
 
   function handleDeleteGuestReservation(id) {
     if (!isAdmin) return;
+    if (readOnly) return;
     setConfirmAction({
       kind: 'deleteGuest',
       id,
@@ -658,6 +670,7 @@ export default function BookingsPage() {
   function confirmBookingAction() {
     const action = confirmAction;
     if (!action?.id) return;
+    if (readOnly) return;
     if (action.kind === 'cancelInternal') {
       updateMutation.mutate({ id: action.id, body: { status: 'cancelled' } });
       setConfirmAction(null);
@@ -674,6 +687,7 @@ export default function BookingsPage() {
 
   function submitAddInternal(e) {
     e.preventDefault();
+    if (readOnly) return;
     if (createBookingMutation.isPending) return;
     const f = addInternalForm;
     if (!f.guestName.trim() || !f.guestEmail.trim() || !f.guestPhone.trim()) {
@@ -805,7 +819,7 @@ export default function BookingsPage() {
             )}
           </div>
         </div>
-        {isAdmin && (
+        {isAdmin && !readOnly && (
           <div className="page-header-right bookings-admin-actions">
             <button
               type="button"
@@ -1019,19 +1033,19 @@ export default function BookingsPage() {
                   <div className="review-row"><div className="rv-label">Phone</div><div className="rv-val">{booking.guestPhone || '—'}</div></div>
                 </div>
                 <div className="bookings-detail-actions">
-                  {statusStr(booking.status).toLowerCase() === 'pending' && (
+                  {!readOnly && statusStr(booking.status).toLowerCase() === 'pending' && (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => handleConfirm(booking._id)} disabled={updateMutation.isPending}>Confirm booking</button>
                   )}
-                  {statusStr(booking.status).toLowerCase() === 'confirmed' && (
+                  {!readOnly && statusStr(booking.status).toLowerCase() === 'confirmed' && (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => handleCheckIn(booking._id)} disabled={updateMutation.isPending}>Check in guest</button>
                   )}
-                  {statusStr(booking.status).toLowerCase() === 'checked-in' && (
+                  {!readOnly && statusStr(booking.status).toLowerCase() === 'checked-in' && (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => handleCheckOut(booking._id)} disabled={updateMutation.isPending}>Check out guest</button>
                   )}
-                  {['pending', 'confirmed'].includes(statusStr(booking.status).toLowerCase()) && (
+                  {!readOnly && ['pending', 'confirmed'].includes(statusStr(booking.status).toLowerCase()) && (
                     <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => handleCancel(booking._id)} disabled={updateMutation.isPending}>Cancel booking</button>
                   )}
-                  {isAdmin && (
+                  {isAdmin && !readOnly && (
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"

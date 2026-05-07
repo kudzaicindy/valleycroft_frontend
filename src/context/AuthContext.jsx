@@ -3,7 +3,8 @@
  * Role is read from decoded JWT (admin, ceo, finance, employee).
  */
 
-import { createContext, useContext, useMemo, useState, useCallback } from 'react';
+import { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
+import { me as getMe } from '@/api/auth';
 
 const TOKEN_KEY = 'token';
 
@@ -27,8 +28,9 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [token, setTokenState] = useState(() => localStorage.getItem(TOKEN_KEY));
+  const [meUser, setMeUser] = useState(null);
 
-  const user = useMemo(() => {
+  const jwtUser = useMemo(() => {
     if (!token) return null;
     const payload = parseJwt(token);
     if (!payload) return null;
@@ -40,6 +42,41 @@ export function AuthProvider({ children }) {
     };
   }, [token]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!token) {
+        setMeUser(null);
+        return;
+      }
+      try {
+        const res = await getMe();
+        const data = res?.data ?? res;
+        if (!cancelled) setMeUser(data && typeof data === 'object' ? data : null);
+      } catch {
+        // Keep JWT-derived user as fallback if /me fails
+        if (!cancelled) setMeUser(null);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const user = useMemo(() => {
+    if (!jwtUser && !meUser) return null;
+    // Prefer server profile; fall back to JWT fields
+    return {
+      ...(jwtUser || {}),
+      ...(meUser || {}),
+      role: (meUser?.role ?? jwtUser?.role ?? null),
+      email: (meUser?.email ?? jwtUser?.email ?? null),
+    };
+  }, [jwtUser, meUser]);
+
   const login = useCallback((newToken) => {
     localStorage.setItem(TOKEN_KEY, newToken);
     setTokenState(newToken);
@@ -48,6 +85,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     setTokenState(null);
+    setMeUser(null);
   }, []);
 
   const value = useMemo(

@@ -13,6 +13,7 @@ import {
   FaUserClock,
 } from 'react-icons/fa';
 import PortalSidebar from '@/components/sidebars/PortalSidebar';
+import { useAuth } from '@/context/AuthContext';
 
 const sections = [
   {
@@ -57,11 +58,16 @@ const sections = [
 
 export default function FinanceSidebar(props) {
   const { onLogout, ...rest } = props;
+  const { user } = useAuth();
+  const profileName = (user?.name || user?.email || '').toString().trim() || '—';
+  const profileEmail = user?.email ? String(user.email) : '';
+  const profileRole = user?.role ? String(user.role).toUpperCase() : '';
   return (
     <PortalSidebar
       portalLabel="Finance Portal"
-      profileName="Peter van Rooyen"
-      profileRole="Finance Manager"
+      profileName={profileName}
+      profileEmail={profileEmail}
+      profileRole={profileRole}
       sections={sections}
       onLogout={onLogout}
       {...rest}
