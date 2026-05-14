@@ -79,12 +79,18 @@ export function getStatementsCatalog() {
 
 /**
  * Create a transaction. Do not send `journalEntryId` — the API sets it when the ledger posts.
- * Body: type, category, description, amount, debitAccount, creditAccount, date?, reference?, booking?
- * Send `idempotencyKey` (or header) so duplicate submits (e.g. Strict Mode) do not create two documents.
+ * Body: type, category, description, amount, debitAccount?, creditAccount?, date?, reference?, booking?
+ * Duplicate-safe submits: pass `idempotencyKey` — sent as **`Idempotency-Key`** and **`X-Idempotency-Key`**
+ * (backend `server.js` must allow both in CORS `Access-Control-Allow-Headers`).
  */
 export function createTransaction(body, { idempotencyKey } = {}) {
   const config = idempotencyKey
-    ? { headers: { 'Idempotency-Key': idempotencyKey } }
+    ? {
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+          'X-Idempotency-Key': idempotencyKey,
+        },
+      }
     : {};
   return postWithAliases(
     ['/api/finance/transactions', '/api/admin/finance/transactions'],

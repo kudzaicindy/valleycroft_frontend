@@ -7,6 +7,7 @@ export const ACCOUNT_OPTIONS = [
   { value: '1020', label: '1020 - Bank' },
   { value: '2000', label: '2000 - Accounts Payable' },
   { value: '3000', label: '3000 - Equity' },
+  { value: '3001', label: '3001 - Owner’s capital' },
   { value: '4000', label: '4000 - Revenue' },
   { value: '5000', label: '5000 - Cost of Sales' },
   { value: '6000', label: '6000 - Operating Expenses' },

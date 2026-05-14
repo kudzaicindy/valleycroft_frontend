@@ -2,6 +2,7 @@
  * Canonical `category` values for POST/PUT /api/finance/transactions.
  * Known values should match backend mapping (e.g. transactionJournalService / ACCOUNTING.md on the API).
  * **CAPEX:** API stores `category: fixed_asset` (alias `capex` → same) and `type: expense` (cash out) with Dr fixed asset / Cr cash — v3 **investing** cash flow, not P&amp;L opex. The UI can use form type <code>capex</code> (see {@link buildTransactionWritePayload}); the Expenses list excludes <code>fixed_asset</code> from operating expenses.
+ * **Owner capital:** `category: owner_investment` (alias `capital_injection`) with `type: income` — cash in / equity up; API maps to **Dr 1001 / Cr 3001** and `transactionType` **owner_investment** (not revenue).
  * The transactions form also allows free text; see {@link resolveTransactionCategoryForApi}.
  * UI shows labels; API receives the `value` or a slugified custom string.
  */
@@ -9,6 +10,8 @@ export const TRANSACTION_CATEGORY_OPTIONS = [
   { value: 'booking', label: 'Booking revenue' },
   { value: 'event', label: 'Event revenue' },
   { value: 'refund', label: 'Refund' },
+  /** Cash in, equity up — Dr bank / Cr owner’s capital (API default 1001 / 3001). */
+  { value: 'owner_investment', label: 'Owner capital / capital injection' },
   { value: 'salary', label: 'Salary & wages' },
   { value: 'utilities', label: 'Utilities' },
   { value: 'marketing', label: 'Marketing' },
@@ -55,6 +58,7 @@ export function resolveTransactionCategoryForApi(rawInput) {
   if (!t) return '';
   const tl = t.toLowerCase();
   if (tl === 'capex' || tl === 'equipment_purchase') return 'fixed_asset';
+  if (tl === 'capital_injection' || tl === 'capital injection') return 'owner_investment';
   const byValue = TRANSACTION_CATEGORY_OPTIONS.find((o) => o.value === tl);
   if (byValue) return byValue.value;
   const byLabel = TRANSACTION_CATEGORY_OPTIONS.find((o) => o.label.toLowerCase() === tl);

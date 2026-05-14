@@ -137,13 +137,29 @@ export default function TransactionsPage({ forcedType = '' }) {
       debitAccount: String(
         row.debitAccount ||
           row.debitAccountCode ||
-          (isRefundRow ? '4000' : resolveTransactionCategoryForApi(row.category) === 'fixed_asset' ? '1100' : row.type === 'expense' ? '6000' : '1000') ||
+          (isRefundRow
+            ? '4000'
+            : resolveTransactionCategoryForApi(row.category) === 'owner_investment'
+              ? '1001'
+              : resolveTransactionCategoryForApi(row.category) === 'fixed_asset'
+                ? '1100'
+                : row.type === 'expense'
+                  ? '6000'
+                  : '1000') ||
           ''
       ),
       creditAccount: String(
         row.creditAccount ||
           row.creditAccountCode ||
-          (isRefundRow ? '1000' : resolveTransactionCategoryForApi(row.category) === 'fixed_asset' ? '1001' : row.type === 'expense' ? '1000' : '4000') ||
+          (isRefundRow
+            ? '1000'
+            : resolveTransactionCategoryForApi(row.category) === 'owner_investment'
+              ? '3001'
+              : resolveTransactionCategoryForApi(row.category) === 'fixed_asset'
+                ? '1001'
+                : row.type === 'expense'
+                  ? '1000'
+                  : '4000') ||
           ''
       ),
       date: row.date ? String(row.date).slice(0, 10) : '',
@@ -335,12 +351,15 @@ export default function TransactionsPage({ forcedType = '' }) {
                           if (cat === 'fixed_asset' && nextType === 'expense' && f.type !== 'capex') {
                             return { ...f, type: nextType, debitAccount: '1100', creditAccount: '1001' };
                           }
+                          const resolvedCat = resolveTransactionCategoryForApi(f.category);
+                          const incDebit = resolvedCat === 'owner_investment' ? '1001' : '1000';
+                          const incCredit = resolvedCat === 'owner_investment' ? '3001' : '4000';
                           return {
                             ...f,
                             type: nextType,
                             category: f.category === 'refund' ? '' : f.category,
-                            debitAccount: nextType === 'expense' ? '6000' : '1000',
-                            creditAccount: nextType === 'expense' ? '1000' : '4000',
+                            debitAccount: nextType === 'expense' ? '6000' : incDebit,
+                            creditAccount: nextType === 'expense' ? '1000' : incCredit,
                           };
                         });
                       }}
@@ -373,6 +392,9 @@ export default function TransactionsPage({ forcedType = '' }) {
                             const raw = e.target.value;
                             setForm((f) => {
                               const cat = resolveTransactionCategoryForApi(raw);
+                              if (cat === 'owner_investment') {
+                                return { ...f, category: raw, type: 'income', debitAccount: '1001', creditAccount: '3001' };
+                              }
                               if (cat === 'fixed_asset') {
                                 return {
                                   ...f,
@@ -399,6 +421,13 @@ export default function TransactionsPage({ forcedType = '' }) {
                           Presets match the ledger; any other text is sent as a category code (e.g. &quot;council rates&quot; →{' '}
                           <code>council_rates</code>).
                         </p>
+                        {resolveTransactionCategoryForApi(form.category) === 'owner_investment' ? (
+                          <p className="transactions-form-hint" style={{ marginTop: 8 }}>
+                            Owner capital / capital injection: posted as <strong>Dr 1001</strong> (bank) / <strong>Cr 3001</strong>{' '}
+                            (owner’s capital) — <code>transactionType</code> <strong>owner_investment</strong>, not revenue. Clear both
+                            account selects to let the API apply the same defaults automatically.
+                          </p>
+                        ) : null}
                         {resolveTransactionCategoryForApi(form.category) === 'fixed_asset' && form.type !== 'capex' ? (
                           <p className="transactions-form-hint" style={{ marginTop: 8 }}>
                             CAPEX: we still POST <code>type: expense</code> (cash out) with <code>category: fixed_asset</code> — Dr
@@ -443,7 +472,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                     <select
                       id="tx-debit-account"
                       className="form-control"
-                      required
+                      required={resolveTransactionCategoryForApi(form.category) !== 'owner_investment'}
                       value={form.debitAccount}
                       onChange={(e) => setForm((f) => ({ ...f, debitAccount: e.target.value }))}
                     >
@@ -460,7 +489,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                     <select
                       id="tx-credit-account"
                       className="form-control"
-                      required
+                      required={resolveTransactionCategoryForApi(form.category) !== 'owner_investment'}
                       value={form.creditAccount}
                       onChange={(e) => setForm((f) => ({ ...f, creditAccount: e.target.value }))}
                     >
@@ -590,6 +619,7 @@ export default function TransactionsPage({ forcedType = '' }) {
                     const id = t._id ?? t.id;
                     const refundLike = t.category === 'refund';
                     const capexLike = isFixedAssetCapexTransaction(t) && !refundLike && (t.type || '') === 'expense';
+                    const ownerInvLike = resolveTransactionCategoryForApi(t.category) === 'owner_investment';
                     const { rowDebit, rowCredit, rowNet } = getTransactionRowDebitCreditNet(t);
                     const runningNet = t.netBalance ?? ((Number(t.creditBalance) || 0) - (Number(t.debitBalance) || 0));
                     return (
@@ -603,12 +633,12 @@ export default function TransactionsPage({ forcedType = '' }) {
                                 ? 'badge-pending'
                                 : capexLike
                                   ? 'badge-pending'
-                                  : t.type === 'income'
+                                  : ownerInvLike || t.type === 'income'
                                     ? 'badge-confirmed'
                                     : 'badge-cancelled')
                             }
                           >
-                            {refundLike ? 'refund' : capexLike ? 'capital' : t.type || '—'}
+                            {refundLike ? 'refund' : capexLike ? 'capital' : ownerInvLike ? 'equity' : t.type || '—'}
                           </span>
                         </td>
                         <td>{transactionCategoryLabel(t.category)}</td>
