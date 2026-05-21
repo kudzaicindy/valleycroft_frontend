@@ -20,9 +20,27 @@ function localDefault() {
   return 'http://localhost:5000';
 }
 
+/** VITE_API_URL must not point at the static SPA host (POST /api/* returns 405 there). */
+function isMisconfiguredApiUrl(url) {
+  const trimmed = String(url || '').trim();
+  if (!trimmed) return false;
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    if (/\.vercel\.app$/i.test(host) && !host.includes('backend')) return true;
+    if (typeof window !== 'undefined') {
+      const pageOrigin = window.location.origin;
+      const apiOrigin = new URL(trimmed, pageOrigin).origin;
+      if (apiOrigin === pageOrigin) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 export function resolveApiBaseUrl() {
   const explicit = import.meta.env.VITE_API_URL;
-  if (typeof explicit === 'string' && explicit.trim()) {
+  if (typeof explicit === 'string' && explicit.trim() && !isMisconfiguredApiUrl(explicit)) {
     return stripTrailingSlashes(explicit.trim());
   }
 
@@ -34,6 +52,10 @@ export function resolveApiBaseUrl() {
     const h = window.location.hostname;
     if (h === 'localhost' || h === '127.0.0.1') {
       return localDefault();
+    }
+    // Production SPA on Vercel: use same-origin /api (vercel.json rewrites to Render) or direct API URL.
+    if (/\.vercel\.app$/i.test(h)) {
+      return '';
     }
   }
 

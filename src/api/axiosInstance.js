@@ -1,10 +1,8 @@
 import axios from 'axios';
 import { resolveApiBaseUrl } from './resolveApiBaseUrl';
 
-const baseURL = resolveApiBaseUrl();
-
 export const axiosInstance = axios.create({
-  baseURL,
+  baseURL: resolveApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -27,6 +25,7 @@ function toAdminApiUrl(url) {
 }
 
 axiosInstance.interceptors.request.use((config) => {
+  config.baseURL = resolveApiBaseUrl();
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   const role = readRoleFromToken(token);
