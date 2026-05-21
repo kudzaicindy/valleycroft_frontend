@@ -13,15 +13,14 @@ import {
   statementKeyToTransactionCategory,
 } from '@/utils/statementDrilldown';
 
-/** Reference-style: `R 6,495.00`, outflows `(R 100.00)`, empty months `--`, zero `-`. */
+/** Amounts without currency symbol; outflows `(1,234.56)`, empty months `--`, zero `-`. */
 function cashflowStatementMoney(n) {
   const num = Number(n);
   if (n == null || Number.isNaN(num)) return '--';
   if (num === 0) return '-';
   const core = Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const withSym = `R ${core}`;
-  if (num < 0) return `(${withSym})`;
-  return withSym;
+  if (num < 0) return `(${core})`;
+  return core;
 }
 
 function cashflowCellDisplay(value, monthHasData) {

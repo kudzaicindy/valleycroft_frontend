@@ -17,6 +17,7 @@ import { getApiErrorHint, looksLikeLedgerPostError } from '@/utils/apiError';
 import RoomBookingCalendarModal from '@/components/dashboard/RoomBookingCalendarModal';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import ConfirmModal from '@/components/ConfirmModal';
+import { fmtRand } from '@/utils/formatMoney';
 
 const LIMIT = 100;
 const STATUS_OPTIONS = ['pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled'];
@@ -64,7 +65,7 @@ function fmtDate(val) {
 }
 
 function fmtNum(n) {
-  return n != null ? Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 }) : '—';
+  return fmtRand(n);
 }
 
 function roomDisplay(b) {

@@ -3,10 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getSalaryByEmployee } from '@/api/finance';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
-
-function fmt(n) {
-  return n == null ? '—' : 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
-}
+import { fmtRand as fmt } from '@/utils/formatMoney';
 
 export default function PayslipsPage() {
   const { user } = useAuth();

@@ -86,7 +86,7 @@ function landingAmenityTagsFromApi(room) {
 function landingPriceLabelFromApi(room) {
   const n = Number(room.pricePerNight);
   if (!Number.isFinite(n) || n <= 0) return 'See booking';
-  return `R ${Math.round(n).toLocaleString('en-ZA')}`;
+  return `R ${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function landingBedsLabelFromApi(room) {

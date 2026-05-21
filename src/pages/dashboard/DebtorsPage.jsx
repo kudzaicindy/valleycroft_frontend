@@ -3,9 +3,9 @@ import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getDebtors } from '@/api/debtors';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
+import { fmtRand as fmt } from '@/utils/formatMoney';
 
 const LIMIT = 20;
-function fmt(n) { return n == null ? '—' : 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 }); }
 
 export default function DebtorsPage() {
   const location = useLocation();

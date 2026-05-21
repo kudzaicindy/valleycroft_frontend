@@ -15,6 +15,7 @@ import {
 } from '@/utils/bookingDisplay';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { listFromSuccessEnvelope } from '@/utils/apiEnvelope';
+import { fmtRand as fmtMoney } from '@/utils/formatMoney';
 
 const LIMIT = 300;
 
@@ -30,11 +31,6 @@ function statusBadgeClass(s) {
   if (v === 'paid') return 'badge-paid';
   if (v === 'partial' || v === 'outstanding') return 'badge-pending';
   return 'badge-pending';
-}
-
-function fmtMoney(n) {
-  if (n == null || Number.isNaN(Number(n))) return '—';
-  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
 }
 
 function roomLabel(b) {

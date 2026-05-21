@@ -6,13 +6,14 @@ import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { transactionCategoryLabel } from '@/constants/transactionCategories';
 import { parseLocalDate } from '@/utils/availability';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
+import { fmtRand } from '@/utils/formatMoney';
 
 const LIMIT = 20;
 const EMPLOYEES_LIMIT = 200;
 
 function moneyOrBlank(n) {
-  if (n == null || Number.isNaN(Number(n))) return '';
-  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
+  const s = fmtRand(n);
+  return s === '—' ? '' : s;
 }
 
 function formatTableDate(val) {

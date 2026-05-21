@@ -40,7 +40,7 @@ function toLocalDateStr(d) {
 function fmtVenueRate(n) {
   const x = Number(n) || 0;
   if (x <= 0) return 'Price on request';
-  return `From R ${x.toLocaleString('en-ZA', { maximumFractionDigits: 0 })} / night`;
+  return `From R ${x.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / night`;
 }
 
 /**

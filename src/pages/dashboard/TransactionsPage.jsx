@@ -19,14 +19,15 @@ import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { newIdempotencyKey, getTransactionRowDebitCreditNet } from '@/utils/transactionLedgerUi';
 import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 import ConfirmModal from '@/components/ConfirmModal';
+import { fmtRand } from '@/utils/formatMoney';
 
 const LIMIT = 20;
 /** When URL has a date range, request up to the finance route max so the table matches statement drill-down. */
 const LIST_LIMIT_WITH_RANGE = FINANCE_TRANSACTIONS_MAX_LIMIT;
 
 function moneyOrBlank(n) {
-  if (n == null || Number.isNaN(Number(n))) return '';
-  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
+  const s = fmtRand(n);
+  return s === '—' ? '' : s;
 }
 
 /** Table display: day + full month + year (API may send YYYY-MM-DD or ISO). */

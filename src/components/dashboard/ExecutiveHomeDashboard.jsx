@@ -9,6 +9,7 @@ import { getBookings } from '@/api/bookings';
 import { getRooms } from '@/api/rooms';
 import { getEquipment, getStock } from '@/api/inventory';
 import { normalizeFinanceDashboardResponse, fmtRand, mapFinanceQuickLinkHref } from '@/utils/financeDashboardResponse';
+import { fmtRandCompact, fmtPercent } from '@/utils/formatMoney';
 import { getInventorySnapshotForMonth } from '@/utils/inventoryDemoData';
 import { inventorySnapshotFromRows, normalizeInventoryPayload } from '@/utils/inventoryData';
 import { FARM_STAYS } from '@/content/farmStays';
@@ -21,15 +22,6 @@ function greetingPrefix() {
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
-}
-
-function fmtRandCompact(n) {
-  if (n == null || Number.isNaN(Number(n))) return '—';
-  const v = Number(n);
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${v < 0 ? '-' : ''}R${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${v < 0 ? '-' : ''}R${(abs / 1_000).toFixed(1)}K`;
-  return `${v < 0 ? '-' : ''}R${Math.round(abs)}`;
 }
 
 function monthKey(d) {
@@ -182,7 +174,7 @@ function financeTilesToStatCards(tilesList, dash, occupancy, monthNightRow, peri
   const unifiedRevenue = dash?.revenueMtd ?? dash?.incomeMtd;
   const occPct = displayOccupancyPct(occupancy);
   const occupancyPct =
-    occPct != null ? `${Math.round(occPct)}%` : '—';
+    occPct != null ? fmtPercent(occPct) : '—';
   return tilesList.slice(0, 4).map((tile, i) => {
     const lower = String(tile?.title ?? '').toLowerCase();
     const isCollectionsTile = lower.includes('collection');
@@ -618,14 +610,14 @@ export default function ExecutiveHomeDashboard({ variant }) {
       const remainingArc = Math.max(0, circumference - soldArc);
       return {
         ...base,
-        badge: `${Math.round(roomsPct)}% · rooms`,
+        badge: `${fmtPercent(roomsPct)} · rooms`,
         badgeClass: 'badge badge-confirmed',
         stroke: 'var(--forest)',
         dashArray: `${soldArc} ${circumference}`,
         dashOffset: 56,
         dashArraySecondary: `${remainingArc} ${circumference}`,
         dashOffsetSecondary: 56 - soldArc,
-        centerText: `${Math.round(roomsPct)}%`,
+        centerText: fmtPercent(roomsPct),
         textFill: 'var(--forest-dark)',
         legend: {
           sold: { label: 'Sold nights', color: 'var(--forest)' },
@@ -647,7 +639,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
             <div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Wedding venue ({monthLabel})</div>
               <div style={{ fontWeight: 700, color: 'var(--gold)' }}>
-                {venueBookedDays} / {daysInMonth} days booked{venuePct != null ? ` (${Math.round(venuePct)}%)` : ''}
+                {venueBookedDays} / {daysInMonth} days booked{venuePct != null ? ` (${fmtPercent(venuePct)})` : ''}
               </div>
             </div>
           </>
@@ -661,12 +653,12 @@ export default function ExecutiveHomeDashboard({ variant }) {
       const arc = Math.max(0, Math.round((pct / 100) * 196));
       return {
         ...base,
-        badge: `${Math.round(pct)}%`,
+        badge: fmtPercent(pct),
         badgeClass: 'badge badge-confirmed',
         stroke: 'var(--forest)',
         dashArray: `${arc} 226`,
         dashOffset: 56,
-        centerText: `${Math.round(pct)}%`,
+        centerText: fmtPercent(pct),
         textFill: 'var(--forest-dark)',
         info: (
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -1434,13 +1426,13 @@ export default function ExecutiveHomeDashboard({ variant }) {
       ];
     }
     const pctRaw = occupancy ? displayOccupancyPct(occupancy) : null;
-    const pct = pctRaw != null ? Math.round(pctRaw) : null;
+    const pct = pctRaw != null ? Number(pctRaw) : null;
     const bookingsToday =
       operationsDashboard?.cards?.checkInsToday?.count ??
       operationsDashboard?.cards?.checkOutsToday?.count ??
       movementsToday.length;
     return [
-      { value: pct != null ? `${pct}%` : '—', label: 'Occupancy' },
+      { value: pct != null ? fmtPercent(pct) : '—', label: 'Occupancy' },
       { value: bookingsToday != null ? String(bookingsToday) : '—', label: 'Bookings today' },
       { value: fmtRand(dash?.incomeMtd), label: 'Receipts MTD' },
     ];
@@ -1563,8 +1555,8 @@ export default function ExecutiveHomeDashboard({ variant }) {
                     ) : revenueExpenseTrend?.series?.length ? (
                       <div className="rev-exp-wrap">
                         <div className="rev-exp-summary-line">
-                          <span>Net margin {(financeChartSummary?.netMargin ?? 0).toFixed(1)}%</span>
-                          <span>Income vs expense {(financeChartSummary?.incomeVsExpenses ?? 0).toFixed(1)}%</span>
+                          <span>Net margin {fmtPercent(financeChartSummary?.netMargin ?? 0)}</span>
+                          <span>Income vs expense {fmtPercent(financeChartSummary?.incomeVsExpenses ?? 0)}</span>
                         </div>
                         <div className="rev-exp-panel">
                           <div className="rev-exp-yaxis">
@@ -1888,7 +1880,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
                       ) : (
                         <div className="bnb-perf-summary">
                           <span className="bnb-perf-summary-label">Average occupancy ({revenueMonths}M)</span>
-                          <strong>{`${Math.round(Number(bnbComparisonSummary.avgOccupancyPct || 0))}%`}</strong>
+                          <strong>{fmtPercent(Number(bnbComparisonSummary.avgOccupancyPct || 0))}</strong>
                         </div>
                       )}
                       <div className="bnb-perf-summary">
@@ -1915,7 +1907,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
                             </span>
                             <span className="bnb-perf-meta">
                               {fmtRandCompact(row.revenue)}
-                              {` · ${Math.round(Number(row.occupancyPct || 0))}% occupancy coverage · ${row.bookingCount} booking${row.bookingCount === 1 ? '' : 's'} in ${revenueMonths}M`}
+                              {` · ${fmtPercent(Number(row.occupancyPct || 0))} occupancy coverage · ${row.bookingCount} booking${row.bookingCount === 1 ? '' : 's'} in ${revenueMonths}M`}
                             </span>
                           </div>
                           <div className="bnb-perf-compare-track">

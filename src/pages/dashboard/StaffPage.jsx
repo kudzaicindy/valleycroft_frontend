@@ -7,6 +7,7 @@ import { createSalary, deleteSalary, getSalary, updateSalary } from '@/api/finan
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import ConfirmModal from '@/components/ConfirmModal';
+import { fmtRand } from '@/utils/formatMoney';
 import './StaffPage.css';
 
 const LIMIT = 50;
@@ -38,11 +39,6 @@ function worklogTime(log) {
   const end = log.endTime ?? log.end_time;
   if (start && end) return `${start} – ${end}`;
   return '—';
-}
-
-function fmtRand(n) {
-  if (n == null || Number.isNaN(Number(n))) return '—';
-  return `R ${Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 })}`;
 }
 
 export default function StaffPage() {

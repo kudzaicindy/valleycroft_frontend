@@ -17,12 +17,13 @@ import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
 import ConfirmModal from '@/components/ConfirmModal';
 import { listFromSuccessEnvelope } from '@/utils/apiEnvelope';
 import { bookingReferenceDisplay, bookingGuestLabel } from '@/utils/bookingDisplay';
+import { fmtRand } from '@/utils/formatMoney';
 
 const LIMIT = 20;
 
 function moneyOrBlank(n) {
-  if (n == null || Number.isNaN(Number(n))) return '';
-  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
+  const s = fmtRand(n);
+  return s === '—' ? '' : s;
 }
 
 function buildRefundDescription(guestName, reason) {

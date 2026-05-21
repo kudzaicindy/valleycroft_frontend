@@ -28,7 +28,9 @@ function moneyCell(n) {
 
 function moneyOrBlank(n) {
   if (n == null || Number.isNaN(Number(n))) return '—';
-  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
+  const num = Number(n);
+  if (num === 0) return '-';
+  return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function accountLabel(code, labelByCode) {

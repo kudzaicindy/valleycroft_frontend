@@ -16,6 +16,7 @@ import { getGuestBookings } from '@/api/guestBookings';
 import { parseLocalDate } from '@/utils/availability';
 import { formatDateDayMonthYear, formatDateWeekdayDayMonthYear, formatMonthYear } from '@/utils/formatDate';
 import { resolveRoomImageUrl } from '@/utils/roomImageUrl';
+import { fmtRand as fmtNum } from '@/utils/formatMoney';
 
 const ROOM_STATUSES = [
   { value: 'available', label: 'Available' },
@@ -64,10 +65,6 @@ function getRoomImage(room) {
 
 function fmtDate(val) {
   return formatDateDayMonthYear(val);
-}
-
-function fmtNum(n) {
-  return n != null ? Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 }) : '—';
 }
 
 function fmtOverviewDate() {

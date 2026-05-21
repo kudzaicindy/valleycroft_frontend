@@ -1,4 +1,5 @@
 import { unwrapApiBody } from '@/utils/apiEnvelope';
+import { fmtRand, fmtPercent } from '@/utils/formatMoney';
 
 function firstNum(obj, keys) {
   if (!obj || typeof obj !== 'object') return null;
@@ -73,7 +74,7 @@ export function formatControlCentreTile(key, val) {
     const amt = firstNum(o, ['amount', 'value', 'total', 'balance']);
     const cnt = firstNum(o, ['count', 'openCount', 'scheduledCount']);
     if (amt != null) primary = fmtRand(amt);
-    else if (cnt != null) primary = String(Math.round(cnt));
+    else if (cnt != null) primary = String(cnt);
     else if (o.primary != null) primary = String(o.primary);
 
     const lines = [];
@@ -273,15 +274,7 @@ export function normalizeFinanceDashboardResponse(payload) {
   };
 }
 
-export function fmtRand(n) {
-  if (n == null || Number.isNaN(Number(n))) return '—';
-  return (
-    'R ' +
-    Number(n).toLocaleString('en-ZA', {
-      maximumFractionDigits: 0,
-    })
-  );
-}
+export { fmtRand, fmtPercent };
 
 /**
  * Map API quick-link href to a path that works for the current app shell (finance vs ceo vs admin).

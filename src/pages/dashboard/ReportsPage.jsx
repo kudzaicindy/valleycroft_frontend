@@ -6,6 +6,7 @@ import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { marked } from 'marked';
+import { fmtRand, fmtPercent } from '@/utils/formatMoney';
 
 marked.use({
   gfm: true,
@@ -43,23 +44,14 @@ function toIsoDate(value) {
   return d.toISOString().slice(0, 10);
 }
 
-function fmtRand(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 'R0';
-  return `R ${Math.round(n).toLocaleString('en-ZA')}`;
-}
-
 function fmtCount(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return String(value ?? '').trim() || '—';
-  return Math.round(n).toLocaleString('en-ZA');
+  return n.toLocaleString('en-ZA', { maximumFractionDigits: 2 });
 }
 
 function fmtPercentDisplay(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '—';
-  const rounded = Math.abs(n - Math.round(n)) < 1e-9 ? Math.round(n) : Math.round(n * 10) / 10;
-  return `${Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)}%`;
+  return fmtPercent(value);
 }
 
 /** Table cell: ISO-ish dates → short local; otherwise escaped as-is. */

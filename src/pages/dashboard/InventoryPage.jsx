@@ -6,6 +6,7 @@ import { createStockItem, deleteStockItem, getEquipment, getStock, updateStockIt
 import { INVENTORY_DEMO_STOCK } from '@/utils/inventoryDemoData';
 import { normalizeInventoryPayload } from '@/utils/inventoryData';
 import ConfirmModal from '@/components/ConfirmModal';
+import { fmtPercent } from '@/utils/formatMoney';
 import './InventoryPage.css';
 
 function inferInventoryEmoji(name, kind = 'consumable') {
@@ -385,7 +386,7 @@ export default function InventoryPage() {
                               style={{ width: `${row.level}%` }}
                             />
                           </div>
-                          <span className="inventory-inline-pct">{row.level}%</span>
+                          <span className="inventory-inline-pct">{fmtPercent(row.level)}</span>
                         </div>
                       </td>
                       <td>

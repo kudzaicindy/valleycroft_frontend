@@ -2,9 +2,9 @@ import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import { getInvoicePdf, getInvoices } from '@/api/invoices';
+import { fmtRand as fmt } from '@/utils/formatMoney';
 
 const LIMIT = 20;
-function fmt(n) { return n == null ? '—' : 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 }); }
 function looksLikeHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || '').trim());
 }

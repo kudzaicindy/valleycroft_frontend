@@ -24,6 +24,7 @@ import {
   getJournalLineDebitCredit,
   getJournalLineAccountCode,
 } from '@/utils/coaLedgerMerge';
+import { fmtRand as moneyOrBlank } from '@/utils/formatMoney';
 
 const TX_LIMIT = 500;
 const JOURNAL_LIMIT = 500;
@@ -89,11 +90,6 @@ function humanizeLabel(s) {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
-}
-
-function moneyOrBlank(n) {
-  if (n == null || Number.isNaN(Number(n))) return '—';
-  return 'R ' + Number(n).toLocaleString('en-ZA', { maximumFractionDigits: 0 });
 }
 
 function transactionTouchesAccount(t, code) {

@@ -7,6 +7,7 @@ import {
   fmtRand,
   mapFinanceQuickLinkHref,
 } from '@/utils/financeDashboardResponse';
+import { fmtNumber } from '@/utils/formatMoney';
 
 /**
  * Routes differ by layout: only `/finance` has transactions + invoices; CEO has ledger + debtors; admin has reports.
@@ -72,7 +73,8 @@ export default function FinanceDashboardApiPanel({ basePath }) {
 
   const pctVsPrior = (current, prior) => {
     if (current == null || prior == null || prior === 0) return null;
-    return (((current - prior) / Math.abs(prior)) * 100).toFixed(1);
+    const pct = ((current - prior) / Math.abs(prior)) * 100;
+    return Number.isFinite(pct) ? pct : null;
   };
 
   const incomeTrend = pctVsPrior(dash.incomeMtd, dash.priorIncomeMtd);
@@ -228,7 +230,7 @@ export default function FinanceDashboardApiPanel({ basePath }) {
                 <span className="finance-dash-kpi-value">{fmtRand(dash.incomeMtd)}</span>
                 {incomeTrend != null ? (
                   <span className={'finance-dash-kpi-trend ' + (Number(incomeTrend) >= 0 ? 'up' : 'down')}>
-                    {Number(incomeTrend) >= 0 ? '↑' : '↓'} {Math.abs(Number(incomeTrend))}% vs prior month
+                    {Number(incomeTrend) >= 0 ? '↑' : '↓'} {fmtNumber(Math.abs(Number(incomeTrend)), { maxFraction: 2 })}% vs prior month
                   </span>
                 ) : null}
               </div>
@@ -239,7 +241,7 @@ export default function FinanceDashboardApiPanel({ basePath }) {
                 <span className="finance-dash-kpi-value">{fmtRand(dash.expenseMtd)}</span>
                 {expenseTrend != null ? (
                   <span className={'finance-dash-kpi-trend ' + (Number(expenseTrend) <= 0 ? 'up' : 'down')}>
-                    {Number(expenseTrend) <= 0 ? '↓' : '↑'} {Math.abs(Number(expenseTrend))}% vs prior month
+                    {Number(expenseTrend) <= 0 ? '↓' : '↑'} {fmtNumber(Math.abs(Number(expenseTrend)), { maxFraction: 2 })}% vs prior month
                   </span>
                 ) : null}
               </div>
