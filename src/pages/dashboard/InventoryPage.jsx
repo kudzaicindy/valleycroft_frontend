@@ -29,6 +29,16 @@ function inferInventoryEmoji(name, kind = 'consumable') {
   return kind === 'equipment' ? '🔧' : '📦';
 }
 
+const INVENTORY_CATEGORIES = [
+  { value: 'consumable', label: 'Consumable' },
+  { value: 'equipment', label: 'Equipment' },
+];
+
+function inventoryCategoryLabel(category) {
+  const c = String(category || 'consumable').toLowerCase();
+  return INVENTORY_CATEGORIES.find((o) => o.value === c)?.label ?? (c ? c.charAt(0).toUpperCase() + c.slice(1) : 'Consumable');
+}
+
 function parseQtyLabel(value) {
   const raw = String(value || '').trim();
   if (!raw || raw === '—') return { quantity: 0, unit: '' };
@@ -56,7 +66,13 @@ export default function InventoryPage() {
   });
   const sourceItems = useMemo(() => {
     const apiItems = Array.isArray(inventoryQuery.data) ? inventoryQuery.data : [];
-    return apiItems.length ? apiItems : INVENTORY_DEMO_STOCK.map((x) => ({ ...x }));
+    return apiItems.length
+      ? apiItems
+      : INVENTORY_DEMO_STOCK.map((x) => ({
+          ...x,
+          category: x.category ?? x.kind ?? 'consumable',
+          kind: x.category ?? x.kind ?? 'consumable',
+        }));
   }, [inventoryQuery.data]);
   const [items, setItems] = useState(() => sourceItems);
   useEffect(() => {
@@ -65,9 +81,9 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [bandFilter, setBandFilter] = useState('');
-  const [kindFilter, setKindFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [addOpen, setAddOpen] = useState(false);
-  const [addKind, setAddKind] = useState('consumable');
+  const [addCategory, setAddCategory] = useState('consumable');
   const [addName, setAddName] = useState('');
   const [addQty, setAddQty] = useState('');
   const [addReorderLevel, setAddReorderLevel] = useState('');
@@ -80,7 +96,9 @@ export default function InventoryPage() {
 
   const rows = useMemo(() => {
     let r = items;
-    if (kindFilter) r = r.filter((x) => (x.kind || 'consumable') === kindFilter);
+    if (categoryFilter) {
+      r = r.filter((x) => String(x.category || x.kind || 'consumable').toLowerCase() === categoryFilter);
+    }
     if (bandFilter) r = r.filter((x) => x.band === bandFilter);
     if (monthFilter) {
       r = r.filter((x) => !x.asOfMonth || x.asOfMonth === monthFilter);
@@ -88,11 +106,11 @@ export default function InventoryPage() {
     if (!search.trim()) return r;
     const q = search.trim().toLowerCase();
     return r.filter((x) => x.name.toLowerCase().includes(q));
-  }, [items, search, bandFilter, kindFilter, monthFilter]);
+  }, [items, search, bandFilter, categoryFilter, monthFilter]);
 
   const closeModal = useCallback(() => {
     setAddOpen(false);
-    setAddKind('consumable');
+    setAddCategory('consumable');
     setAddName('');
     setAddQty('');
     setAddReorderLevel('');
@@ -142,11 +160,11 @@ export default function InventoryPage() {
     const reorderLevel = Math.max(0, Number(addReorderLevel) || 0);
     const body = {
       name,
-      category: addKind === 'equipment' ? 'equipment' : 'consumable',
+      category: addCategory === 'equipment' ? 'equipment' : 'consumable',
       quantity,
       reorderLevel,
       ...(unit ? { unit } : {}),
-      emoji: inferInventoryEmoji(name, addKind),
+      emoji: inferInventoryEmoji(name, addCategory),
     };
     await createMutation.mutateAsync(body);
   }
@@ -181,7 +199,7 @@ export default function InventoryPage() {
   }
 
   const editingRow = editId != null ? items.find((it) => it.id === editId) : null;
-  const addPreviewEmoji = useMemo(() => inferInventoryEmoji(addName, addKind), [addName, addKind]);
+  const addPreviewEmoji = useMemo(() => inferInventoryEmoji(addName, addCategory), [addName, addCategory]);
 
   const handleDeleteStock = useCallback(
     (row) => {
@@ -204,7 +222,7 @@ export default function InventoryPage() {
   const filteredCount = rows.length;
   const totalCount = items.length;
   const showFilterHint =
-    filteredCount !== totalCount || search.trim() || bandFilter || kindFilter || monthFilter;
+    filteredCount !== totalCount || search.trim() || bandFilter || categoryFilter || monthFilter;
 
   return (
     <div className="inventory-page">
@@ -247,13 +265,16 @@ export default function InventoryPage() {
         />
         <select
           className="inventory-filter"
-          value={kindFilter}
-          onChange={(e) => setKindFilter(e.target.value)}
-          aria-label="Filter by type"
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          aria-label="Filter by category"
         >
-          <option value="">All types</option>
-          <option value="consumable">Consumables</option>
-          <option value="equipment">Equipment</option>
+          <option value="">All categories</option>
+          {INVENTORY_CATEGORIES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
         <select
           className="inventory-filter"
@@ -270,8 +291,7 @@ export default function InventoryPage() {
         <p className="inventory-toolbar-meta">
           Showing <strong>{filteredCount}</strong> of <strong>{totalCount}</strong> items
           {search.trim() ? ` matching “${search.trim()}”` : ''}
-          {kindFilter === 'consumable' ? ' · consumables' : ''}
-          {kindFilter === 'equipment' ? ' · equipment' : ''}
+          {categoryFilter ? ` · ${inventoryCategoryLabel(categoryFilter).toLowerCase()}` : ''}
           {bandFilter === 'low' ? ' · low stock filter' : ''}
           {bandFilter === 'ok' ? ' · adequate filter' : ''}
           {monthFilter ? ' · month filter' : ''}
@@ -314,7 +334,7 @@ export default function InventoryPage() {
                 <thead>
                   <tr>
                     <th>Item</th>
-                    <th>Type</th>
+                    <th>Category</th>
                     <th>Quantity</th>
                     <th>Level</th>
                     <th>Status</th>
@@ -333,8 +353,14 @@ export default function InventoryPage() {
                         </span>
                       </td>
                       <td>
-                        <span className={`inventory-type-tag ${(row.kind || 'consumable') === 'equipment' ? 'inventory-type-tag--eq' : ''}`}>
-                          {(row.kind || 'consumable') === 'equipment' ? 'Equipment' : 'Consumable'}
+                        <span
+                          className={`inventory-type-tag ${
+                            String(row.category || row.kind || 'consumable').toLowerCase() === 'equipment'
+                              ? 'inventory-type-tag--eq'
+                              : ''
+                          }`}
+                        >
+                          {inventoryCategoryLabel(row.category || row.kind)}
                         </span>
                       </td>
                       <td className="inventory-cell-muted">{row.qty}</td>
@@ -406,16 +432,19 @@ export default function InventoryPage() {
             <div className="rooms-events-modal-body">
               <form className="form-stack" onSubmit={handleAddSubmit}>
                 <div className="form-group">
-                  <label className="form-label">Type *</label>
+                  <label className="form-label">Category *</label>
                   <select
                     className="form-control"
-                    value={addKind}
+                    value={addCategory}
                     onChange={(e) => {
-                      setAddKind(e.target.value);
+                      setAddCategory(e.target.value);
                     }}
                   >
-                    <option value="consumable">Consumable / supplies</option>
-                    <option value="equipment">Equipment / assets</option>
+                    {INVENTORY_CATEGORIES.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.value === 'consumable' ? 'Consumable / supplies' : 'Equipment / assets'}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group">

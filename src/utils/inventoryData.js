@@ -16,7 +16,16 @@ function pick(obj, keys) {
   return null;
 }
 
-function normalizeRow(raw, kind, fallbackEmoji) {
+/** API uses `category` (e.g. equipment, consumable); `fallbackKind` is only when category is missing. */
+function resolveInventoryCategory(raw, fallbackKind) {
+  const rawCat = String(pick(raw, ['category']) ?? '').toLowerCase().trim();
+  if (rawCat === 'equipment') return 'equipment';
+  if (rawCat === 'consumable' || rawCat === 'supply' || rawCat === 'supplies') return 'consumable';
+  return fallbackKind === 'equipment' ? 'equipment' : 'consumable';
+}
+
+function normalizeRow(raw, fallbackKind, fallbackEmoji) {
+  const category = resolveInventoryCategory(raw, fallbackKind);
   const quantityRaw = Number(pick(raw, ['quantity', 'qty', 'stock']));
   const reorderRaw = Number(pick(raw, ['reorderLevel', 'minimumStock', 'threshold']));
   const explicitLevelRaw = Number(pick(raw, ['level', 'percentage', 'stockLevel', 'currentLevel']));
@@ -40,9 +49,9 @@ function normalizeRow(raw, kind, fallbackEmoji) {
     ? `${quantityRaw}${raw?.unit ? ` ${raw.unit}` : ''}`
     : String(pick(raw, ['qty', 'quantityLabel']) ?? '—');
   return {
-    id: pick(raw, ['_id', 'id']) ?? `${kind}-${Math.random().toString(36).slice(2)}`,
-    kind,
-    category: String(pick(raw, ['category']) ?? ''),
+    id: pick(raw, ['_id', 'id']) ?? `${category}-${Math.random().toString(36).slice(2)}`,
+    kind: category,
+    category,
     name: String(pick(raw, ['name', 'itemName', 'title']) ?? 'Unnamed item'),
     quantity: hasQty ? quantityRaw : 0,
     reorderLevel: hasReorder ? reorderRaw : 0,

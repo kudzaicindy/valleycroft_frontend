@@ -208,12 +208,12 @@ function financeTilesToStatCards(tilesList, dash, occupancy, monthNightRow, peri
         ? tile.lines.join(' · ')
         : '—';
     return {
-      tone: tones[i % tones.length],
+    tone: tones[i % tones.length],
       icon: isCollectionsTile ? 'fas fa-bed' : icons[i % icons.length],
       label: isCollectionsTile ? 'Occupancy' : tile.title,
       value: <>{displayValue}</>,
-      trendDir: 'up',
-      trendIcon: 'fas fa-circle',
+    trendDir: 'up',
+    trendIcon: 'fas fa-circle',
       trendText,
     };
   });
@@ -637,7 +637,7 @@ export default function ExecutiveHomeDashboard({ variant }) {
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Rooms occupancy ({monthLabel})</div>
               <div style={{ fontWeight: 700, color: 'var(--forest)' }}>
                 {soldNights} sold out of {availableNights} available nights
-              </div>
+            </div>
               {roomsCount != null && daysInMonth ? (
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                   {availableNights} = {roomsCount} rooms × {daysInMonth} days
@@ -1687,35 +1687,35 @@ export default function ExecutiveHomeDashboard({ variant }) {
               </>
             ) : (
               <>
-                <div className="card">
-                  <div className="card-header">
-                    <div>
-                      <div className="card-title">
-                        {c.chart1.title} <span>{revenueMonths === 12 ? '12M' : '6M'}</span>
-                      </div>
-                    </div>
-                    <div className="filter-tabs">
-                      <div
-                        className={`filter-tab ${revenueMonths === 6 ? 'active' : ''}`}
-                        onClick={() => setRevenueMonths(6)}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        6M
-                      </div>
-                      <div
-                        className={`filter-tab ${revenueMonths === 12 ? 'active' : ''}`}
-                        onClick={() => setRevenueMonths(12)}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        12M
-                      </div>
-                    </div>
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">
+                    {c.chart1.title} <span>{revenueMonths === 12 ? '12M' : '6M'}</span>
                   </div>
-                  <div className="card-body">
-                    {loading ? (
-                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
+                </div>
+                <div className="filter-tabs">
+                  <div
+                    className={`filter-tab ${revenueMonths === 6 ? 'active' : ''}`}
+                    onClick={() => setRevenueMonths(6)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    6M
+                  </div>
+                  <div
+                    className={`filter-tab ${revenueMonths === 12 ? 'active' : ''}`}
+                    onClick={() => setRevenueMonths(12)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    12M
+                  </div>
+                </div>
+              </div>
+              <div className="card-body">
+                {loading ? (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Loading chart…</p>
                     ) : revenueExpenseTrend?.labels?.length ? (
                       <div className="line-chart-wrap">
                         <div className="line-chart-panel">
@@ -1725,15 +1725,15 @@ export default function ExecutiveHomeDashboard({ variant }) {
                                 {fmtRandCompact(tick)}
                               </span>
                             ))}
-                          </div>
+                        </div>
                           <div className="line-chart-canvas">
                             <svg viewBox="0 0 100 100" className="line-chart-svg" aria-label="Revenue trend">
                               {[0, 1, 2, 3, 4].map((i) => {
                                 const y = (revenueExpenseTrend.yMin ?? 12) + (((revenueExpenseTrend.yMax ?? 88) - (revenueExpenseTrend.yMin ?? 12)) * i) / 4;
                                 return (
                                   <line key={`y-${i}`} x1={revenueExpenseTrend.xMin ?? 8} y1={y} x2={revenueExpenseTrend.xMax ?? 92} y2={y} className="line-chart-guide" />
-                                );
-                              })}
+                      );
+                    })}
                               {revenueExpenseTrend.xGuides?.map((x, i) => (
                                 <line
                                   key={`x-${i}`}
@@ -1778,27 +1778,27 @@ export default function ExecutiveHomeDashboard({ variant }) {
                           <span><i className="fas fa-circle line-chart-dot line-chart-dot--out" /> Expenses</span>
                           <span><i className="fas fa-circle line-chart-dot line-chart-dot--net" /> Net</span>
                         </div>
-                      </div>
-                    ) : (
-                      <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
-                        No monthly revenue series in the dashboard response for this range.
-                      </p>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.chart1.footerLeft}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{chartFooterRight}</span>
-                    </div>
                   </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                    No monthly revenue series in the dashboard response for this range.
+                  </p>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.chart1.footerLeft}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>{chartFooterRight}</span>
                 </div>
-                <div className="card">
-                  <div className="card-header">
-                    <div className="card-title">{ring.title}</div>
-                    {ring.badge ? <span className={ring.badgeClass}>{ring.badge}</span> : null}
-                  </div>
-                  <div className="card-body">
-                    <div className="kpi-ring-wrap">
-                      <svg className="donut-svg" width={90} height={90} viewBox="0 0 90 90">
-                        <circle cx={45} cy={45} r={36} fill="none" stroke="var(--linen)" strokeWidth={10} />
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">{ring.title}</div>
+                {ring.badge ? <span className={ring.badgeClass}>{ring.badge}</span> : null}
+              </div>
+              <div className="card-body">
+                <div className="kpi-ring-wrap">
+                  <svg className="donut-svg" width={90} height={90} viewBox="0 0 90 90">
+                    <circle cx={45} cy={45} r={36} fill="none" stroke="var(--linen)" strokeWidth={10} />
                         {ring.dashArraySecondary ? (
                           <circle
                             cx={45}
@@ -1812,41 +1812,41 @@ export default function ExecutiveHomeDashboard({ variant }) {
                             strokeLinecap="butt"
                           />
                         ) : null}
-                        <circle
-                          cx={45}
-                          cy={45}
-                          r={36}
-                          fill="none"
-                          stroke={ring.stroke}
-                          strokeWidth={10}
-                          strokeDasharray={ring.dashArray}
-                          strokeDashoffset={ring.dashOffset}
-                          strokeLinecap="round"
-                        />
-                        <text
-                          x={45}
-                          y={50}
-                          textAnchor="middle"
-                          fontSize={16}
-                          fontWeight={700}
-                          fill={ring.textFill}
-                          fontFamily="Cormorant Garamond, serif"
-                        >
-                          {ring.centerText}
-                        </text>
-                      </svg>
+                    <circle
+                      cx={45}
+                      cy={45}
+                      r={36}
+                      fill="none"
+                      stroke={ring.stroke}
+                      strokeWidth={10}
+                      strokeDasharray={ring.dashArray}
+                      strokeDashoffset={ring.dashOffset}
+                      strokeLinecap="round"
+                    />
+                    <text
+                      x={45}
+                      y={50}
+                      textAnchor="middle"
+                      fontSize={16}
+                      fontWeight={700}
+                      fill={ring.textFill}
+                      fontFamily="Cormorant Garamond, serif"
+                    >
+                      {ring.centerText}
+                    </text>
+                  </svg>
                       <div className="kpi-ring-info">
                         {ring.legend ? (
                           <div className="donut-legend" style={{ marginBottom: 8 }}>
                             <div className="legend-item">
                               <span className="legend-dot" style={{ background: ring.legend.sold.color }} />
                               <span>{ring.legend.sold.label}</span>
-                            </div>
+                </div>
                             <div className="legend-item" style={{ marginBottom: 0 }}>
                               <span className="legend-dot" style={{ background: ring.legend.remaining.color }} />
                               <span>{ring.legend.remaining.label}</span>
-                            </div>
-                          </div>
+              </div>
+            </div>
                         ) : null}
                         {ring.info}
                       </div>
