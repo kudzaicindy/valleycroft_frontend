@@ -89,6 +89,8 @@ export default function InventoryPage() {
   const [addReorderLevel, setAddReorderLevel] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('consumable');
   const [editQty, setEditQty] = useState('');
   const [editReorderLevel, setEditReorderLevel] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -170,7 +172,10 @@ export default function InventoryPage() {
   }
 
   function openEditStock(row) {
+    const cat = String(row.category || row.kind || 'consumable').toLowerCase();
     setEditId(row.id);
+    setEditName(String(row.name || ''));
+    setEditCategory(cat === 'equipment' ? 'equipment' : 'consumable');
     setEditQty(row.qty ?? '');
     setEditReorderLevel(String(row.reorderLevel ?? ''));
     setEditOpen(true);
@@ -179,6 +184,8 @@ export default function InventoryPage() {
   function closeEditModal() {
     setEditOpen(false);
     setEditId(null);
+    setEditName('');
+    setEditCategory('consumable');
     setEditQty('');
     setEditReorderLevel('');
     setSaveError('');
@@ -187,18 +194,24 @@ export default function InventoryPage() {
   async function handleEditSubmit(e) {
     e.preventDefault();
     if (editId == null || !canMutateInventory) return;
+    const name = editName.trim();
+    if (!name) return;
     setSaveError('');
     const { quantity, unit } = parseQtyLabel(editQty);
     const reorderLevel = Math.max(0, Number(editReorderLevel) || 0);
     const body = {
+      name,
+      category: editCategory === 'equipment' ? 'equipment' : 'consumable',
       quantity,
       reorderLevel,
       ...(unit ? { unit } : {}),
+      emoji: inferInventoryEmoji(name, editCategory),
     };
     await updateMutation.mutateAsync({ id: editId, body });
   }
 
   const editingRow = editId != null ? items.find((it) => it.id === editId) : null;
+  const editPreviewEmoji = useMemo(() => inferInventoryEmoji(editName, editCategory), [editName, editCategory]);
   const addPreviewEmoji = useMemo(() => inferInventoryEmoji(addName, addCategory), [addName, addCategory]);
 
   const handleDeleteStock = useCallback(
@@ -501,11 +514,9 @@ export default function InventoryPage() {
             <div className="rooms-events-modal-header">
               <div>
                 <h2 id="inv-edit-title" className="rooms-events-modal-title">
-                  Update stock
+                  Edit item
                 </h2>
-                <p className="rooms-events-modal-sub">
-                  {editingRow.emoji} {editingRow.name}
-                </p>
+                <p className="rooms-events-modal-sub">Update name, category, quantity, and reorder threshold</p>
               </div>
               <button type="button" className="rooms-events-modal-close" onClick={closeEditModal} aria-label="Close">
                 <i className="fas fa-times" />
@@ -513,6 +524,30 @@ export default function InventoryPage() {
             </div>
             <div className="rooms-events-modal-body">
               <form className="form-stack" onSubmit={handleEditSubmit}>
+                <div className="form-group">
+                  <label className="form-label">Item name *</label>
+                  <input
+                    className="form-control"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="e.g. Dish soap"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Category *</label>
+                  <select
+                    className="form-control"
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                  >
+                    {INVENTORY_CATEGORIES.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.value === 'consumable' ? 'Consumable / supplies' : 'Equipment / assets'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="form-group">
                   <label className="form-label">Quantity / unit label</label>
                   <input
@@ -523,7 +558,7 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Reorder level *</label>
+                  <label className="form-label">Reorder threshold *</label>
                   <input
                     type="number"
                     min={0}
@@ -533,7 +568,13 @@ export default function InventoryPage() {
                     required
                     style={{ maxWidth: 160 }}
                   />
-                  <small className="text-muted">Low stock is calculated when quantity is at or below this threshold.</small>
+                  <small className="text-muted">Low stock when quantity is at or below this threshold.</small>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Icon</label>
+                  <div className="form-control" style={{ maxWidth: 160 }}>
+                    {editPreviewEmoji} Auto-selected from name
+                  </div>
                 </div>
                 <div className="bookings-add-internal-actions">
                   <button type="button" className="btn btn-outline" onClick={closeEditModal}>
