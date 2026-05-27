@@ -228,10 +228,14 @@ export default function QuotationsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = String(user?.role || '').toLowerCase();
-  const readOnly = role === 'ceo';
+  const canEdit = role === 'admin' || role === 'finance' || role === 'ceo';
+  const readOnly = !canEdit;
   const canDelete = role === 'admin';
   const [form, setForm] = useState(() => initialForm());
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editStatus, setEditStatus] = useState('draft');
   const [previewQuote, setPreviewQuote] = useState(null);
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
@@ -277,6 +281,13 @@ export default function QuotationsPage() {
 
   const createMutation = useMutation({
     mutationFn: (body) => createQuotation(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }) => updateQuotation(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
     },
@@ -344,6 +355,85 @@ export default function QuotationsPage() {
     }
     setForm(initialForm());
     setCreateOpen(false);
+  };
+
+  const openEditQuotation = useCallback((quote) => {
+    if (!quote?.id) return;
+    const lines = Array.isArray(quote.lineItems) ? quote.lineItems : [];
+    const cleanedLines = lines
+      .filter((l) => String(l?.description || '').trim())
+      .filter((l) => String(l.description || '').trim().toLowerCase() !== 'other charges')
+      .map((l) => ({
+        description: String(l.description || '').trim(),
+        quantity: Math.max(1, Number(l.quantity) || 1),
+        unitPrice: Math.max(0, Number(l.unitPrice) || 0),
+      }));
+
+    setForm({
+      quotationNumber: String(quote.quotationNumber || quotationNumber()),
+      quotationDate: toInputDate(quote.quotationDate) || dateInputToday(),
+      validUntil: toInputDate(quote.validUntil) || '',
+      clientName: String(quote.clientName || ''),
+      clientEmail: String(quote.clientEmail || ''),
+      clientPhone: String(quote.clientPhone || ''),
+      eventType: String(quote.eventType || 'Wedding'),
+      eventDate: toInputDate(quote.eventDate) || '',
+      venue: String(quote.venue || 'ValleyCroft Farm'),
+      guests: String(quote.guests ?? ''),
+      otherCharges: Number(quote.otherCharges) || 0,
+      notes: String(quote.notes || ''),
+      terms: String(quote.terms || ''),
+      lineItems: cleanedLines.length ? cleanedLines : [emptyLineItem()],
+    });
+    setEditId(String(quote.id));
+    setEditStatus(String(quote.status || 'draft'));
+    setEditOpen(true);
+    setCreateOpen(false);
+  }, []);
+
+  const handleUpdateQuotation = async (e) => {
+    e.preventDefault();
+    const id = String(editId || '').trim();
+    if (!id) return;
+
+    const preparedLines = form.lineItems
+      .filter((x) => String(x.description || '').trim())
+      .map((line) => ({
+        description: String(line.description || '').trim(),
+        quantity: Math.max(1, Number(line.quantity) || 1),
+        unitPrice: Math.max(0, Number(line.unitPrice) || 0),
+      }));
+    if ((Number(form.otherCharges) || 0) > 0) {
+      preparedLines.push({
+        description: 'Other charges',
+        quantity: 1,
+        unitPrice: Math.max(0, Number(form.otherCharges) || 0),
+      });
+    }
+
+    const payload = {
+      quotationNumber: form.quotationNumber || undefined,
+      quotationDate: form.quotationDate || undefined,
+      validUntil: form.validUntil || undefined,
+      clientName: form.clientName,
+      clientEmail: form.clientEmail,
+      clientPhone: form.clientPhone,
+      eventType: form.eventType,
+      eventDate: form.eventDate,
+      venue: form.venue,
+      guests: Number(form.guests) || undefined,
+      notes: form.notes || '',
+      terms: form.terms || '',
+      status: editStatus || 'draft',
+      lineItems: preparedLines,
+      otherCharges: Math.max(0, Number(form.otherCharges) || 0),
+      tax: 0,
+      taxRate: 0,
+    };
+
+    await updateMutation.mutateAsync({ id, body: payload });
+    setEditOpen(false);
+    setEditId('');
   };
 
   const updateLineItem = (index, key, value) => {
@@ -487,7 +577,7 @@ export default function QuotationsPage() {
           <div className="page-title">Event quotations</div>
           <div className="page-subtitle">Create professional event quotations for admin, then download/print or send by email.</div>
         </div>
-        {!readOnly ? (
+        {canEdit ? (
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
             <i className="fas fa-plus" aria-hidden /> New quotation
           </button>
@@ -556,7 +646,7 @@ export default function QuotationsPage() {
                           style={{ maxWidth: 140 }}
                           value={q.status || 'draft'}
                           onChange={(e) => updateStatus(q, e.target.value)}
-                          disabled={actionBusyId === q.id}
+                          disabled={!canEdit || actionBusyId === q.id}
                         >
                           <option value="draft">Draft</option>
                           <option value="sent">Sent</option>
@@ -568,6 +658,16 @@ export default function QuotationsPage() {
                       <td className="statement-table-num">{fmtMoney(q.total)}</td>
                       <td>
                         <div className="transactions-table-actions">
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => openEditQuotation(q)}
+                              disabled={actionBusyId === q.id}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => downloadPdf(q)} disabled={actionBusyId === q.id}>Download PDF</button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => sendByEmail(q)} disabled={actionBusyId === q.id}>Send Email</button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => sendWhatsApp(q)}>WhatsApp</button>
@@ -625,7 +725,7 @@ export default function QuotationsPage() {
         </div>
       ) : null}
 
-      {createOpen && !readOnly ? (
+      {createOpen && canEdit ? (
         <div className="transactions-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="quotation-create-modal-title" onClick={() => setCreateOpen(false)}>
           <div className="transactions-modal" style={{ width: 'min(1100px, 96vw)', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div className="transactions-modal-header">
@@ -754,6 +854,143 @@ export default function QuotationsPage() {
                   </button>
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => setForm(initialForm())}>
                     Reset
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editOpen && canEdit ? (
+        <div className="transactions-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="quotation-edit-modal-title" onClick={() => setEditOpen(false)}>
+          <div className="transactions-modal" style={{ width: 'min(1100px, 96vw)', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div className="transactions-modal-header">
+              <h3 id="quotation-edit-modal-title">Edit quotation</h3>
+              <button type="button" className="transactions-modal-close" onClick={() => setEditOpen(false)} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <div className="transactions-modal-body">
+              <form className="form-stack" onSubmit={handleUpdateQuotation}>
+                <p className="chart-of-accounts-api-note">Fields marked with * are required.</p>
+                <div className="transactions-form-grid">
+                  <div className="transactions-form-field">
+                    <label>Quotation number *</label>
+                    <input className="form-control" value={form.quotationNumber} onChange={(e) => setForm((f) => ({ ...f, quotationNumber: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Quotation date *</label>
+                    <input type="date" className="form-control" value={form.quotationDate} onChange={(e) => setForm((f) => ({ ...f, quotationDate: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Valid until *</label>
+                    <input type="date" className="form-control" value={form.validUntil} onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Client name *</label>
+                    <input className="form-control" value={form.clientName} onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Client email *</label>
+                    <input type="email" className="form-control" value={form.clientEmail} onChange={(e) => setForm((f) => ({ ...f, clientEmail: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Client phone *</label>
+                    <input className="form-control" value={form.clientPhone} onChange={(e) => setForm((f) => ({ ...f, clientPhone: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Event type *</label>
+                    <input className="form-control" value={form.eventType} onChange={(e) => setForm((f) => ({ ...f, eventType: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Event date *</label>
+                    <input type="date" className="form-control" value={form.eventDate} onChange={(e) => setForm((f) => ({ ...f, eventDate: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Venue *</label>
+                    <input className="form-control" value={form.venue} onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))} required />
+                  </div>
+                  <div className="transactions-form-field">
+                    <label>Guest count *</label>
+                    <input type="number" min="1" className="form-control" value={form.guests} onChange={(e) => setForm((f) => ({ ...f, guests: e.target.value }))} required />
+                  </div>
+                </div>
+
+                <div className="statement-table-wrap" style={{ marginTop: 14 }}>
+                  <table className="statement-table">
+                    <thead>
+                      <tr>
+                        <th>Description *</th>
+                        <th>Qty *</th>
+                        <th>Unit price *</th>
+                        <th className="statement-table-num">Amount</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {form.lineItems.map((line, i) => {
+                        const amount = (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0);
+                        return (
+                          <tr key={`edit-line-${i}`}>
+                            <td><input className="form-control" placeholder="e.g. Venue hire" value={line.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} required /></td>
+                            <td><input type="number" min="1" className="form-control" value={line.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value)} required /></td>
+                            <td><input type="number" min="0" step="0.01" className="form-control" value={line.unitPrice} onChange={(e) => updateLineItem(i, 'unitPrice', e.target.value)} required /></td>
+                            <td className="statement-table-num"><strong>{fmtMoney(amount)}</strong></td>
+                            <td>
+                              <button type="button" className="btn btn-outline btn-sm" onClick={() => removeLine(i)}>
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="transactions-table-actions" style={{ marginTop: 10 }}>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={addLine}>
+                    <i className="fas fa-plus" aria-hidden /> Add line
+                  </button>
+                </div>
+
+                <div className="transactions-form-grid" style={{ marginTop: 14 }}>
+                  <div className="transactions-form-field">
+                    <label>Other charges</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="form-control"
+                      value={form.otherCharges}
+                      onChange={(e) => setForm((f) => ({ ...f, otherCharges: e.target.value }))}
+                    />
+                  </div>
+                  <div className="transactions-form-field transactions-form-field--wide">
+                    <label>Notes</label>
+                    <textarea className="form-control" rows={3} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+                  </div>
+                  <div className="transactions-form-field transactions-form-field--wide">
+                    <label>Terms *</label>
+                    <textarea className="form-control" rows={3} value={form.terms} onChange={(e) => setForm((f) => ({ ...f, terms: e.target.value }))} required />
+                  </div>
+                </div>
+
+                <div className="card" style={{ marginTop: 14 }}>
+                  <div className="card-body" style={{ display: 'grid', gap: 6 }}>
+                    <div>Subtotal: <strong>{fmtMoney(formTotals.subtotal)}</strong></div>
+                    <div>Other charges: <strong>{fmtMoney(formTotals.otherCharges)}</strong></div>
+                    <div>Total: <strong>{fmtMoney(formTotals.total)}</strong></div>
+                  </div>
+                </div>
+
+                <div className="transactions-modal-actions" style={{ marginTop: 14 }}>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={updateMutation.isPending}>
+                    <i className="fas fa-save" aria-hidden /> {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+                  </button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setEditOpen(false)}>
+                    Cancel
                   </button>
                 </div>
               </form>
