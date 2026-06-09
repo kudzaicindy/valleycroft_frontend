@@ -739,7 +739,6 @@ export default function LandingPage() {
           <a href="#contact" className="nav-link">Contact</a>
         </div>
         <div className="nav-actions">
-          <Link to="/login" className="btn-nav btn-outline-nav"><i className="fas fa-sign-in-alt" style={{ fontSize: '11px' }} /> Login</Link>
           <Link to="/booking-track" className="btn-nav btn-outline-nav"><i className="fas fa-search" style={{ fontSize: '11px' }} /> Track Booking</Link>
           <Link to="/booking" className="btn-nav btn-gold-nav"><i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book Now</Link>
         </div>
@@ -785,9 +784,6 @@ export default function LandingPage() {
           Track booking
         </a>
         <div className="nav-drawer-actions">
-          <Link to="/login" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
-            <i className="fas fa-sign-in-alt" style={{ fontSize: '11px' }} /> Login
-          </Link>
           <Link to="/booking-track" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
             <i className="fas fa-search" style={{ fontSize: '11px' }} /> Track booking
           </Link>
@@ -1316,10 +1312,6 @@ export default function LandingPage() {
         <Link to="/booking-track" className="landing-m-bottom-item">
           <i className="fas fa-suitcase" aria-hidden />
           <span>Trips</span>
-        </Link>
-        <Link to="/login" className="landing-m-bottom-item">
-          <i className="fas fa-user-circle" aria-hidden />
-          <span>Log in</span>
         </Link>
       </nav>
     </div>
