@@ -30,3 +30,22 @@ export function updateGuestBooking(id, body) {
 export function deleteGuestBooking(id) {
   return axiosInstance.delete(`/api/guest-bookings/${id}`);
 }
+
+// ── PayFast guest payment ──────────────────────────────────────────────────
+
+/** GET /api/payfast/guest-booking/options — balance/deposit info (public) */
+export function getPaymentOptions(email, trackingCode) {
+  return axiosInstance.get('/api/payfast/guest-booking/options', {
+    params: { email, trackingCode },
+  });
+}
+
+/** POST /api/payfast/guest-booking/checkout — start PayFast session (public) */
+export function startPayfastCheckout(body) {
+  return axiosInstance.post('/api/payfast/guest-booking/checkout', body);
+}
+
+/** GET /api/payfast/payments/:id/status — poll payment status */
+export function getPaymentStatus(id) {
+  return axiosInstance.get(`/api/payfast/payments/${id}/status`);
+}

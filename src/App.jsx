@@ -21,6 +21,9 @@ const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const BookingPage = lazy(() => import('@/pages/BookingPage'));
 const EventEnquiryPage = lazy(() => import('@/pages/EventEnquiryPage'));
 const BookingTrackPage = lazy(() => import('@/pages/BookingTrackPage'));
+const PayPage = lazy(() => import('@/pages/PayPage'));
+const PaymentSuccessPage = lazy(() => import('@/pages/PaymentSuccessPage'));
+const PaymentCancelledPage = lazy(() => import('@/pages/PaymentCancelledPage'));
 
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
 const CeoDashboard = lazy(() => import('@/pages/ceo/CeoDashboard'));
@@ -72,6 +75,9 @@ function App() {
               <Route path="/booking" element={<BookingPage />} />
               <Route path="/event-enquiry" element={<EventEnquiryPage />} />
               <Route path="/booking-track" element={<BookingTrackPage />} />
+              <Route path="/pay" element={<PayPage />} />
+              <Route path="/payment/success" element={<PaymentSuccessPage />} />
+              <Route path="/payment/cancelled" element={<PaymentCancelledPage />} />
               <Route path="/login" element={<LoginPage />} />
 
               {/* Admin */}

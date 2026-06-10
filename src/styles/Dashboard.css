@@ -2962,163 +2962,146 @@
 
 /* ── Card header ── */
 .bookings-page .availability-card--rooms-ref .availability-card-header {
-  padding: 18px 20px 14px;
-  background: linear-gradient(135deg, #162b1a 0%, #1e3d24 60%, #254a2c 100%);
+  padding: 20px 24px 16px;
+  background: linear-gradient(135deg, #132e1f 0%, #1e4a2b 100%);
   border-bottom: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
-  margin: 0 0 5px 0;
+  margin: 0 0 4px 0;
   color: #f0ede4;
   letter-spacing: 0.02em;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-subtitle {
-  font-size: 11.5px;
-  color: rgba(240, 237, 228, 0.65);
+  font-size: 11px;
+  color: rgba(240,237,228,0.55);
   margin: 0;
   font-weight: 400;
   line-height: 1.5;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-subtitle-hint {
-  color: rgba(196, 165, 100, 0.85);
+  color: rgba(196,165,100,0.8);
 }
 
 /* ── Navigation bar ── */
 .bookings-page .availability-card--rooms-ref .availability-nav {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 18px;
-  background: #fcfaf7;
+  padding: 10px 20px;
+  background: #fff;
   border-bottom: 1px solid var(--room-border);
 }
-
 .bookings-page .availability-card--rooms-ref .availability-nav-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 16px;
-  border-radius: 999px;
-  font-size: 11px;
+  padding: 5px 14px;
+  border-radius: 7px;
+  font-size: 11.5px;
   font-weight: 600;
-  background: var(--room-surface);
-  border: 1px solid var(--room-border);
+  background: #f4f2ee;
+  border: 1px solid #dedad2;
   color: var(--room-deep);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-  letter-spacing: 0.01em;
-  box-shadow: 0 1px 3px rgba(12, 28, 18, 0.06);
+  transition: background 0.15s, box-shadow 0.15s;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-nav-btn:hover {
-  background: #f0ede4;
-  border-color: #b8b0a0;
-  box-shadow: 0 2px 6px rgba(12, 28, 18, 0.1);
-  color: var(--room-deep);
+  background: #ebe8e0;
+  box-shadow: 0 1px 4px rgba(12,28,18,0.1);
 }
-
 .bookings-page .availability-card--rooms-ref .availability-nav-label {
+  flex: 1;
   font-size: 13px;
   font-weight: 700;
   color: var(--room-deep);
-  min-width: 180px;
   text-align: center;
   font-family: 'Cormorant Garamond', serif;
   letter-spacing: 0.01em;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-today-btn {
-  margin-left: auto;
-  padding: 6px 16px;
-  border-radius: 999px;
-  font-size: 11px;
+  padding: 5px 16px;
+  border-radius: 7px;
+  font-size: 11.5px;
   font-weight: 700;
   background: linear-gradient(135deg, #b8893e, #c9a05a);
   color: #fff;
-  border: 1px solid #a87a35;
+  border: none;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(184, 137, 62, 0.3);
-  transition: filter 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 6px rgba(184,137,62,0.28);
+  transition: filter 0.15s;
   letter-spacing: 0.02em;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-today-btn:hover {
-  filter: brightness(1.08);
-  box-shadow: 0 3px 12px rgba(184, 137, 62, 0.42);
-  color: #fff;
+  filter: brightness(1.1);
 }
 
-/* ── Legend bar ── */
+/* ── Legend + filter combined toolbar ── */
 .bookings-page .availability-card--rooms-ref .availability-legend {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px 18px;
-  font-size: 11px;
-  color: var(--room-muted);
-  background: var(--room-bg);
+  gap: 8px;
+  padding: 8px 20px;
+  background: #f8f6f2;
   border-bottom: 1px solid var(--room-border);
 }
-
 .bookings-page .availability-card--rooms-ref .availability-legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 12px 4px 8px;
-  border-radius: 999px;
+  gap: 6px;
+  padding: 3px 10px 3px 7px;
+  border-radius: 6px;
   font-weight: 600;
   font-size: 11px;
-  border: 1px solid var(--room-border);
-  background: var(--room-surface);
+  border: 1px solid transparent;
   color: var(--room-muted);
 }
-
 .bookings-page .availability-card--rooms-ref .availability-legend-item:first-child {
-  color: #245e38;
-  border-color: var(--chip-free-border);
-  background: var(--chip-free-bg);
+  background: #eaf5ee;
+  border-color: #b8dfc7;
+  color: #1e5c34;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-legend-item:nth-child(2) {
-  color: #8b2218;
-  border-color: var(--chip-booked-border);
-  background: var(--chip-booked-bg);
+  background: #1e4a2b;
+  border-color: #1e4a2b;
+  color: #fff;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-dot.available {
-  background: #52a370;
-  box-shadow: 0 0 0 2px rgba(82, 163, 112, 0.25);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a9e62;
 }
-
 .bookings-page .availability-card--rooms-ref .availability-dot.booked {
-  background: #c23428;
-  box-shadow: 0 0 0 2px rgba(194, 52, 40, 0.2);
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.7);
 }
-
 .bookings-page .availability-card--rooms-ref .availability-today-badge {
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 700;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: linear-gradient(135deg, #b8893e, #c9a05a);
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  box-shadow: 0 1px 4px rgba(184, 137, 62, 0.3);
 }
 
 /* ── Filter bar ── */
 .bookings-page .availability-filters-bar {
   margin: 0;
-  padding: 12px 18px;
-  background: var(--room-bg);
+  padding: 10px 20px;
+  background: #fff;
   border-bottom: 1px solid var(--room-border);
   display: flex;
   gap: 10px;
@@ -3126,19 +3109,19 @@
   align-items: center;
 }
 .bookings-page .availability-filters-bar .form-control {
-  background: var(--room-surface);
-  border: 1px solid var(--room-border);
-  border-radius: 8px;
-  padding: 7px 12px;
+  background: #f8f6f2;
+  border: 1px solid #dedad2;
+  border-radius: 7px;
+  padding: 6px 12px;
   font-size: 12px;
   color: var(--room-deep);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
-  box-shadow: 0 1px 3px rgba(12,28,18,0.05);
 }
 .bookings-page .availability-filters-bar .form-control:focus {
-  border-color: #4a8c62;
-  box-shadow: 0 0 0 3px rgba(74,140,98,0.12);
+  border-color: #3a9e62;
+  box-shadow: 0 0 0 3px rgba(58,158,98,0.1);
+  background: #fff;
 }
 
 /* ── Grid wrapper ── */

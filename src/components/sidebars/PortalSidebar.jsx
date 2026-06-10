@@ -65,9 +65,6 @@ export default function PortalSidebar({
       <header className="portal-sidebar__header">
         <div className="portal-sidebar__brand">
           <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="portal-sidebar__logo-img" />
-          <div className="portal-sidebar__brand-text">
-            <p className="portal-sidebar__brand-subtitle">{portalLabel}</p>
-          </div>
         </div>
         {onRequestCloseMobile ? (
           <button
