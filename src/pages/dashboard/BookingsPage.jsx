@@ -1484,10 +1484,10 @@ export default function BookingsPage() {
                               }}
                             >
                               <span className="availability-cell-inner">
-                                {booked ? <i className="fas fa-bed availability-cell-icon" /> : <i className="fas fa-check availability-cell-icon available" />}
-                                <span className="availability-cell-label">{booked ? 'Booked' : 'Free'}</span>
-                                {booked && guests.length > 0 && (
-                                  <span className="availability-cell-guest">{guests.map(guestLabel).join(', ')}</span>
+                                {booked && (
+                                  <span className="availability-cell-guest">
+                                    {guests.length > 0 ? guests.map(guestLabel).join(', ') : 'Reserved'}
+                                  </span>
                                 )}
                               </span>
                             </td>
