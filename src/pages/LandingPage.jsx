@@ -560,7 +560,7 @@ export default function LandingPage() {
 
   const aboutStrip = [
     { title: 'Farm Stays', desc: 'Comfortable farm accommodation', img: resolveRoomImageUrl(HOUSE1_IMAGE_PATHS[0]) },
-    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: FARM_BARN_INTERIOR_PHOTOS[0] },
+    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: '/barns.jpeg' },
     { title: 'Farm Experiences', desc: 'Picnics, walks & countryside living', img: '/PHOTO-2026-04-10-10-38-30_2.jpg' },
     { title: 'South Africa', desc: 'In the heart of the countryside', img: '/PHOTO-2026-04-10-10-38-33_1.jpg' },
   ];
@@ -576,7 +576,7 @@ export default function LandingPage() {
       title: 'Wedding & Events Venue',
       tag: 'Venue hire',
       desc: 'Garden terrace, open lawn & barn. Up to 300+ guests. Perfect for weddings, corporate days and celebrations.',
-      img: FARM_PREVIEW_GROUNDS,
+      img: '/wedding.jpeg',
     },
     {
       title: 'Pool, Braai & Fireside',
@@ -692,10 +692,10 @@ export default function LandingPage() {
   }, [catalogApiRooms, landingApiRooms, landingAvailByRoomId, bnbDatesValid, isSuccess]);
 
   const events = [
-    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or vineyard-view terrace. Venue capacity supports events of up to 300 guests.', features: ['Up to 300 guests', 'Self-catering venue', 'Decor and events management available', 'Scenic photo backdrops throughout'], price: 'From R 30,000', sub: 'Full day venue hire', link: '/event-enquiry?type=wedding' },
-    { icon: '🏢', name: 'Corporate Events', desc: 'Team retreats, strategy sessions, product launches. Escape the city for a productive day surrounded by nature.', features: ['20–120 delegates', 'AV equipment included', 'Self-catering setup', 'Decor and events management available'], price: 'From R 20,000', sub: 'Full day venue hire', link: '/event-enquiry?type=corporate' },
-    { icon: '🎂', name: 'Private Celebrations', desc: 'Birthdays, anniversaries, family reunions. Our garden venue creates magical memories for every occasion.', features: ['Up to 80 guests', 'Entertainment area', 'Self-catering setup', 'Decor and events management available'], price: 'From R 8,000', sub: 'Venue hire per day', link: '/event-enquiry?type=celebration' },
-    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities, and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
+    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or barn venue. Capacity for up to 300+ guests with stunning farm backdrops throughout.', features: ['Up to 300+ guests', 'Full day venue hire', 'Decor & events management available', 'Scenic photo backdrops'], price: 'From R 30,000', sub: 'Per day venue hire', link: '/event-enquiry?type=wedding' },
+    { icon: '🎊', name: 'Celebrations & Conferences', desc: 'Birthdays, anniversaries, team retreats and strategy days. Productive and memorable events in a tranquil farm setting.', features: ['20–120 guests / delegates', 'Indoor barn & outdoor spaces', 'Self-catering setup', 'Decor & events management available'], price: 'From R 8,000', sub: 'Per day venue hire', link: '/event-enquiry?type=celebration' },
+    { icon: '🧺', name: 'Picnics', desc: 'Curated outdoor picnic experiences on the farm lawns. Available on special request with full setup and optional private chef.', features: ['On special request', 'Picnic setup included', 'Private chef hire available', 'Blankets, décor & food spread'], price: 'On request', sub: 'Special request add-on', link: '/event-enquiry?type=picnic' },
+    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
   ];
 
   const testimonials = [
@@ -944,7 +944,6 @@ export default function LandingPage() {
         <div className="feature-item"><i className="fas fa-check-circle" /> Instant Confirmation</div>
         <div className="feature-item"><i className="fas fa-shield-alt" /> Secure Payment</div>
         <div className="feature-item"><i className="fas fa-clock" /> 24/7 Guest Support</div>
-        <div className="feature-item"><i className="fas fa-undo" /> Flexible Cancellation Policy</div>
         <div className="feature-item"><i className="fas fa-wifi" /> Free WiFi Throughout</div>
         <div className="feature-item"><i className="fas fa-person-swimming" /> Swimming pool</div>
         <div className="feature-item"><i className="fas fa-utensils" /> Self-catering stays</div>
@@ -977,7 +976,7 @@ export default function LandingPage() {
             <button type="button" className="quick-action-card" onClick={() => navigate('/event-enquiry')} data-animate>
               <i className="fas fa-glass-cheers" />
               <h3>Event hire enquiry</h3>
-              <p>Weddings, corporate events and celebrations. Request a quote</p>
+              <p>Weddings, celebrations, conferences and picnics. Request a quote</p>
             </button>
             <a href="mailto:valleycroftfarm@gmail.com" className="quick-action-card" data-animate>
               <i className="fas fa-envelope" />
@@ -1072,7 +1071,7 @@ export default function LandingPage() {
           <div className="eyebrow">Available at extra cost</div>
           <h2 className="section-heading">Food &amp; Picnic Setups</h2>
           <p className="section-desc">
-            Enjoy a curated picnic spread or farm-prepared meals during your stay. Breakfast, picnic setups, and catering are available on request at an additional cost. Simply let us know when booking.
+            Enjoy a curated picnic spread or farm-prepared meals during your stay. Breakfast, picnic setups, catering, and private chef hire are available on special request at an additional cost. Simply let us know when booking.
           </p>
         </div>
         <div className="food-addons-grid" data-animate>
@@ -1093,7 +1092,7 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="food-addons-cta" data-animate>
-          <p>To arrange food or a picnic setup, mention it in your special requests when booking.</p>
+          <p>To arrange a picnic setup, private chef hire, or catering, mention it in your special requests when booking.</p>
         </div>
       </section>
 
@@ -1153,7 +1152,7 @@ export default function LandingPage() {
           <div className="cta-banner-bg" />
           <div className="cta-banner-overlay" />
           <div className="cta-inner">
-            <div className="cta-eyebrow"><span className="cta-eyebrow-dot" /><span>ValleyCroft Farm · Midrand, SA</span></div>
+            <div className="cta-eyebrow"><span className="cta-eyebrow-dot" /><span>ValleyCroft Farm · Hekpoort, Gauteng, SA</span></div>
             <h2 className="cta-heading">Your next escape<br />starts <em>here</em></h2>
             <div className="cta-buttons">
               <Link to="/booking" className="btn-cta btn-cta-primary"><i className="fas fa-calendar-check" /> Book a Stay</Link>
@@ -1284,7 +1283,7 @@ export default function LandingPage() {
           >
             Continue to booking
           </Link>
-          <p className="modal-contact">Or contact us: <a href="mailto:valleycroftfarm@gmail.com">valleycroftfarm@gmail.com</a> · <a href="tel:+263774295840">+263 774 295 840</a></p>
+          <p className="modal-contact">Or contact us: <a href="mailto:valleycroftfarm@gmail.com">valleycroftfarm@gmail.com</a> · <a href="tel:+27718024479">+27 718 024 479</a></p>
         </div>
       </div>
 
@@ -1298,7 +1297,7 @@ export default function LandingPage() {
               <div className="footer-socials">
                 <a href="https://www.facebook.com/valleycroftfarm" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="Facebook"><i className="fa-brands fa-facebook-f" /></a>
                 <a href="https://www.instagram.com/valleycroftfarm" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="Instagram"><i className="fa-brands fa-instagram" /></a>
-                <a href="https://wa.me/263774295840" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +263 774 295 840"><i className="fa-brands fa-whatsapp" /></a>
+                <a href="https://wa.me/27718024479" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +27 718 024 479"><i className="fa-brands fa-whatsapp" /></a>
                 <a href="https://wa.me/27734059419" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +27 734 059 419"><i className="fa-brands fa-whatsapp" /></a>
               </div>
             </div>
@@ -1316,17 +1315,17 @@ export default function LandingPage() {
             <div>
               <div className="footer-col-title">Events</div>
               <Link to="/event-enquiry?type=wedding" className="footer-link">Weddings</Link>
-              <Link to="/event-enquiry?type=corporate" className="footer-link">Corporate Days</Link>
-              <Link to="/event-enquiry?type=celebration" className="footer-link">Celebrations</Link>
+              <Link to="/event-enquiry?type=celebration" className="footer-link">Celebrations &amp; Conferences</Link>
+              <Link to="/event-enquiry?type=picnic" className="footer-link">Picnics</Link>
               <Link to="/event-enquiry?type=retreat" className="footer-link">Farm Retreats</Link>
             </div>
 
             {/* Contact */}
             <div>
               <div className="footer-col-title">Get in Touch</div>
-              <a href="tel:+263774295840" className="footer-contact-row">
+              <a href="tel:+27718024479" className="footer-contact-row">
                 <span className="footer-contact-icon"><i className="fas fa-phone" /></span>
-                <span>+263 774 295 840</span>
+                <span>+27 718 024 479</span>
               </a>
               <a href="tel:+27734059419" className="footer-contact-row">
                 <span className="footer-contact-icon"><i className="fas fa-phone" /></span>
@@ -1342,7 +1341,7 @@ export default function LandingPage() {
               </a>
               <div className="footer-contact-row">
                 <span className="footer-contact-icon"><i className="fas fa-map-marker-alt" /></span>
-                <span>Midrand, Gauteng, SA</span>
+                <span>Hekpoort, Johannesburg, Gauteng, SA</span>
               </div>
               <div className="footer-col-title" style={{ marginTop: 20 }}>Guest Services</div>
               <Link to="/booking-track" className="footer-link">Track Reservation</Link>

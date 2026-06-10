@@ -51,10 +51,10 @@ const REQ_CHIPS = [
   '🎵 Anniversary Setup',
   '💑 Honeymoon Package',
   '🌍 Late Check-out',
-  '🏳️ Vegetarian Meals',
+  '🧺 Picnic Setup',
+  '👨‍🍳 Private Chef Hire',
   '🚕 Airport Transfer',
   '👶 Baby Crib',
-  '♿ Accessibility',
 ];
 
 /** Remotion iframe (?vc_embed=1): avoid /api/rooms — production API has no CORS for localhost. */
@@ -476,7 +476,7 @@ export default function BookingPage() {
             <i className="fas fa-lock" style={{ color: 'var(--gold-l)' }} /> Secure Booking
           </div>
           <div className="booking-header-phone">
-            <i className="fas fa-phone" style={{ color: 'var(--gold-l)' }} /> +263 774 295 840
+            <i className="fas fa-phone" style={{ color: 'var(--gold-l)' }} /> +27 718 024 479
           </div>
           <Link to="/" className="booking-header-back">
             ← Back to Site
@@ -1227,7 +1227,7 @@ export default function BookingPage() {
           <div style={{ background: 'var(--linen)', borderRadius: 12, padding: 16, marginTop: 14, textAlign: 'center' }}>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Need help with your booking?</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--forest)' }}>
-              <i className="fas fa-phone" /> +263 774 295 840
+              <i className="fas fa-phone" /> +27 718 024 479
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>valleycroftfarm@gmail.com</div>
           </div>

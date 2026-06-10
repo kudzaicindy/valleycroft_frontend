@@ -44,7 +44,7 @@ export default function BookingTrackPage() {
     setLoading(true);
     try {
       const data = await trackGuestBooking({ email: em, trackingCode });
-      setResult(data);
+      setResult(data.data ?? data);
     } catch (err) {
       setResult(null);
       setErrorModal({
@@ -132,31 +132,40 @@ export default function BookingTrackPage() {
             </form>
 
             {searched && result && !loading && (
-              <div className="review-block" style={{ marginTop: 24 }}>
-                <div className="review-block-header">Booking found</div>
-                <div className="review-row">
-                  <div className="rv-label">Tracking code</div>
-                  <div className="rv-val">{result.trackingCode || result.ref || '—'}</div>
+              <div style={{ marginTop: 24, borderRadius: 14, overflow: 'hidden', border: '1px solid #dde8da', background: '#fff' }}>
+                {/* Header banner */}
+                <div style={{ background: 'linear-gradient(135deg, #162b1a 0%, #1e3d24 100%)', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 18, fontWeight: 700, color: '#f0ede4', marginBottom: 2 }}>Booking Found</div>
+                    <div style={{ fontSize: 11, color: 'rgba(240,237,228,0.6)', fontWeight: 500 }}>ValleyCroft Farm reservation</div>
+                  </div>
+                  {result.status && (
+                    <span style={{
+                      display: 'inline-block', padding: '4px 14px', borderRadius: 999, fontSize: 11, fontWeight: 700, textTransform: 'capitalize', letterSpacing: '0.04em',
+                      background: result.status === 'confirmed' ? 'rgba(56,142,90,0.22)' : result.status === 'cancelled' ? 'rgba(185,50,37,0.2)' : 'rgba(184,137,62,0.22)',
+                      color: result.status === 'confirmed' ? '#a8f0c0' : result.status === 'cancelled' ? '#f0a8a0' : '#f0d8a0',
+                      border: `1px solid ${result.status === 'confirmed' ? 'rgba(56,142,90,0.4)' : result.status === 'cancelled' ? 'rgba(185,50,37,0.4)' : 'rgba(184,137,62,0.4)'}`,
+                    }}>{result.status}</span>
+                  )}
                 </div>
-                <div className="review-row">
-                  <div className="rv-label">Status</div>
-                  <div className="rv-val">{result.status || '—'}</div>
-                </div>
-                <div className="review-row">
-                  <div className="rv-label">Guest</div>
-                  <div className="rv-val">{result.guestName || '—'}</div>
-                </div>
-                <div className="review-row">
-                  <div className="rv-label">Check-in</div>
-                  <div className="rv-val">{result.checkIn ? formatDateDayMonthYear(result.checkIn) : '—'}</div>
-                </div>
-                <div className="review-row">
-                  <div className="rv-label">Check-out</div>
-                  <div className="rv-val">{result.checkOut ? formatDateDayMonthYear(result.checkOut) : '—'}</div>
-                </div>
-                <div className="review-row">
-                  <div className="rv-label">Total</div>
-                  <div className="rv-val">{result.totalAmount != null ? 'R ' + Number(result.totalAmount).toLocaleString('en-ZA') : '—'}</div>
+
+                {/* Fields */}
+                <div style={{ padding: '6px 0' }}>
+                  {[
+                    { label: 'Tracking code', value: result.trackingCode || result.ref, mono: true },
+                    { label: 'Guest name',    value: result.guestName },
+                    { label: 'Email',         value: result.guestEmail },
+                    { label: 'Room',          value: result.roomName || result.roomId?.name },
+                    { label: 'Check-in',      value: result.checkIn ? formatDateDayMonthYear(result.checkIn) : null },
+                    { label: 'Check-out',     value: result.checkOut ? formatDateDayMonthYear(result.checkOut) : null },
+                    { label: 'Total',         value: result.totalAmount != null ? 'R ' + Number(result.totalAmount).toLocaleString('en-ZA') : null, bold: true },
+                    { label: 'Deposit paid',  value: result.deposit != null ? 'R ' + Number(result.deposit).toLocaleString('en-ZA') : null },
+                  ].map(({ label, value, mono, bold }) => value ? (
+                    <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '10px 20px', borderBottom: '1px solid #f0ede6' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#7a8e80', minWidth: 110, letterSpacing: '0.02em', textTransform: 'uppercase', flexShrink: 0 }}>{label}</span>
+                      <span style={{ fontSize: 13, fontWeight: bold ? 700 : 500, color: bold ? '#1a3820' : '#2d3f2f', fontFamily: mono ? 'monospace' : 'inherit', letterSpacing: mono ? '0.06em' : 'inherit' }}>{value}</span>
+                    </div>
+                  ) : null)}
                 </div>
               </div>
             )}

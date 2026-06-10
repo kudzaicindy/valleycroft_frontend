@@ -345,7 +345,7 @@ export default function EventEnquiryPage() {
             <i className="fas fa-envelope-open-text" style={{ color: 'var(--gold-l)' }} /> Event enquiry
           </div>
           <div className="booking-header-phone">
-            <i className="fas fa-phone" /> +263 774 295 840
+            <i className="fas fa-phone" /> +27 718 024 479
           </div>
           <Link to="/booking" className="booking-header-back">
             BnB booking
@@ -620,7 +620,7 @@ export default function EventEnquiryPage() {
           <div className="event-enquiry-help-card">
             <div className="event-enquiry-help-label">Need help?</div>
             <div className="event-enquiry-help-phone">
-              <i className="fas fa-phone" /> +263 774 295 840
+              <i className="fas fa-phone" /> +27 718 024 479
             </div>
             <div className="event-enquiry-help-email">{MAIL}</div>
           </div>
