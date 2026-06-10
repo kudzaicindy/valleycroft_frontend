@@ -53,8 +53,13 @@ export function resolveApiBaseUrl() {
     if (h === 'localhost' || h === '127.0.0.1') {
       return localDefault();
     }
-    // Production SPA on Vercel: use same-origin /api (vercel.json rewrites to Render) or direct API URL.
-    if (/\.vercel\.app$/i.test(h)) {
+    // Production SPA on Vercel (including custom domains on the same deployment):
+    // return '' so all /api/* calls go through vercel.json rewrites → Render, avoiding CORS.
+    if (
+      /\.vercel\.app$/i.test(h) ||
+      h === 'valleycroftfarm.com' ||
+      h === 'www.valleycroftfarm.com'
+    ) {
       return '';
     }
   }
