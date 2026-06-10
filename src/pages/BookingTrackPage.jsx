@@ -61,13 +61,11 @@ export default function BookingTrackPage() {
     <div className="booking-page">
       <header className="booking-header">
         <Link to="/" className="header-brand">
-          <div className="header-icon">
-            <i className="fas fa-leaf" />
-          </div>
-          <div>
-            <div className="header-name">ValleyCroft</div>
-            <div className="header-sub">Agro-Tourism</div>
-          </div>
+          <img
+            src="/Valley_Croft_Farm-removebg-preview.png"
+            alt="ValleyCroft Farm"
+            className="booking-header-logo"
+          />
         </Link>
         <Link to="/" style={{ padding: '7px 14px', background: 'transparent', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.75)', borderRadius: 7, fontSize: 12, fontWeight: 600 }}>
           ← Back to Site
@@ -165,7 +163,7 @@ export default function BookingTrackPage() {
 
             {searched && !result && !loading && (
               <p style={{ marginTop: 20, fontSize: 14, color: 'var(--text-muted)' }}>
-                No booking found for this tracking code and email. Please check your details or contact us at stay@valleycroft.com.
+                No booking found for this tracking code and email. Please check your details or contact us at valleycroftfarm@gmail.com.
               </p>
             )}
           </div>

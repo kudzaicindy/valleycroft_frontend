@@ -64,11 +64,8 @@ export default function PortalSidebar({
     <aside className="portal-sidebar">
       <header className="portal-sidebar__header">
         <div className="portal-sidebar__brand">
-          <span className="portal-sidebar__logo">
-            <span className="portal-sidebar__logo-text">VC</span>
-          </span>
+          <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="portal-sidebar__logo-img" />
           <div className="portal-sidebar__brand-text">
-            <p className="portal-sidebar__brand-name">ValleyCroft</p>
             <p className="portal-sidebar__brand-subtitle">{portalLabel}</p>
           </div>
         </div>

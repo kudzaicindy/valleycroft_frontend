@@ -258,6 +258,7 @@ function RoomCardImageCarousel(props) {
 export default function LandingPage() {
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
+  const [navScrolled, setNavScrolled] = useState(false);
   const [bookingType, setBookingType] = useState('bnb');
   const [modalOpen, setModalOpen] = useState(false);
   const [farmGalleryOpen, setFarmGalleryOpen] = useState(false);
@@ -455,6 +456,12 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
+    const onScroll = () => setNavScrolled(window.scrollY > 60);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
     document.body.classList.toggle('landing-nav-open', navOpen);
     return () => document.body.classList.remove('landing-nav-open');
   }, [navOpen]);
@@ -552,17 +559,49 @@ export default function LandingPage() {
   }, [catalogApiRooms.length]);
 
   const aboutStrip = [
-    { title: 'BnB Stays', desc: 'Comfortable farm accommodation', img: resolveRoomImageUrl(HOUSE1_IMAGE_PATHS[0]) },
+    { title: 'Farm Stays', desc: 'Comfortable farm accommodation', img: resolveRoomImageUrl(HOUSE1_IMAGE_PATHS[0]) },
     { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: FARM_BARN_INTERIOR_PHOTOS[0] },
-    { title: 'Working Farm', desc: 'Authentic agro-tourism experiences', img: '/PHOTO-2026-04-10-10-38-30_2.jpg' },
+    { title: 'Farm Experiences', desc: 'Picnics, walks & countryside living', img: '/PHOTO-2026-04-10-10-38-30_2.jpg' },
     { title: 'South Africa', desc: 'In the heart of the countryside', img: '/PHOTO-2026-04-10-10-38-33_1.jpg' },
   ];
 
   const experienceItems = [
-    { title: 'Sunrise & Farm Walks', desc: 'Start the day with valley views and a guided farm walk.', img: '/PHOTO-2026-04-10-10-38-32_3.jpg' },
-    { title: 'Gardens & Outdoor Spaces', desc: 'Open lawns, gardens, and peaceful farm surroundings for a quiet countryside stay.', img: '/PHOTO-2026-04-10-10-38-31_2.jpg' },
-    { title: 'Pool & Summer Days', desc: 'Take a dip and unwind by the water between farm walks and sundowners.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
-    { title: 'Braai & Gatherings', desc: 'Evening braais and fireside gatherings under the stars.', img: VALLEYCROFT_POOL_BRAAI_IMAGE },
+    {
+      title: 'The Barn',
+      tag: 'Indoor venue',
+      desc: 'Spacious indoor barn with long wooden tables seating 100+ guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
+      img: '/barns.jpeg',
+    },
+    {
+      title: 'Wedding & Events Venue',
+      tag: 'Venue hire',
+      desc: 'Garden terrace, open lawn & barn. Up to 300+ guests. Perfect for weddings, corporate days and celebrations.',
+      img: FARM_PREVIEW_GROUNDS,
+    },
+    {
+      title: 'Pool, Braai & Fireside',
+      tag: 'Seasonal · Evenings',
+      desc: 'Cool off in the farm pool by day and gather around the fire pit for a traditional braai under the stars.',
+      img: VALLEYCROFT_POOL_BRAAI_IMAGE,
+    },
+    {
+      title: 'Gardens, Walks & Outdoor Spaces',
+      tag: 'Daily',
+      desc: 'Open lawns, lush gardens & sunrise farm trails. Unwind, explore, or simply breathe in the countryside.',
+      img: '/PHOTO-2026-04-10-10-38-31_2.jpg',
+    },
+    {
+      title: 'Food on Request',
+      tag: 'Add-on',
+      desc: 'Farm-prepared meals, breakfast spreads & catering available on request at an additional cost.',
+      img: '/food.jpeg',
+    },
+    {
+      title: 'Outdoor Picnic Setups',
+      tag: 'Add-on',
+      desc: 'Curated picnic on the farm lawns with blankets, food spread and décor. Available on request at extra cost.',
+      img: '/food2.jpeg',
+    },
   ];
 
   const rooms = useMemo(() => {
@@ -660,7 +699,7 @@ export default function LandingPage() {
   ];
 
   const testimonials = [
-    { stars: '★★★★★', text: '"An absolutely magical experience. Willow Cottage was breathtaking — we woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Willow Cottage', avatarBg: 'var(--forest)' },
+    { stars: '★★★★★', text: '"An absolutely magical experience. Willow Cottage was breathtaking. We woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Willow Cottage', avatarBg: 'var(--forest)' },
     { stars: '★★★★★', text: '"We hosted our company strategy day here and it was perfect. The team was relaxed, focused, and inspired by the environment. We\'ll be back every quarter."', author: 'LV', name: 'Lerato van Wyk', date: '18 January 2026 · Corporate Event', avatarBg: 'var(--gold)' },
     { stars: '★★★★★', text: '"Our wedding was beyond anything we could have dreamed of. The staff were incredible and every detail was handled perfectly. Our guests still talk about it."', author: 'TM', name: 'Thabo & Mercy', date: '12 December 2025 · Wedding', avatarBg: 'var(--sage)' },
   ];
@@ -723,13 +762,9 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
-      <nav className={`landing-nav ${navOpen ? 'nav-is-open' : ''}`.trim()} aria-label="Primary">
+      <nav className={['landing-nav', navOpen ? 'nav-is-open' : '', navScrolled ? 'nav-scrolled' : ''].filter(Boolean).join(' ')} aria-label="Primary">
         <a href="#" className="nav-brand" onClick={closeNav}>
-          <div className="nav-icon"><i className="fas fa-leaf" /></div>
-          <div>
-            <div className="nav-name">ValleyCroft</div>
-            <div className="nav-sub">Agro-Tourism</div>
-          </div>
+          <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="nav-logo-img" />
         </a>
         <div className="nav-links">
           <a href="#accommodation" className="nav-link">Accommodation</a>
@@ -799,9 +834,9 @@ export default function LandingPage() {
         <div className="hero-overlay" />
         <div className="hero-content">
           <div className="hero-text">
-            <div className="hero-eyebrow">South Africa · Working Farm & BnB</div>
+            <div className="hero-eyebrow">South Africa · Farm & BnB</div>
             <h1 className="hero-headline">Where the <em>Land</em><br />Comes to Life</h1>
-            <p className="hero-desc">Experience authentic farm living at ValleyCroft Agro-Tourism. Luxurious BnB rooms, unforgettable event venues, and the warmth of South African countryside hospitality.</p>
+            <p className="hero-desc">Experience authentic farm living at ValleyCroft Farm. Luxurious BnB rooms, unforgettable event venues, and the warmth of South African countryside hospitality.</p>
             <div className="hero-trust">
               <div className="hero-trust-item"><i className="fas fa-star" /> 4.9 / 5 Rating</div>
               <div className="hero-trust-item"><i className="fas fa-check-circle" /> Instant Confirmation</div>
@@ -909,7 +944,7 @@ export default function LandingPage() {
         <div className="feature-item"><i className="fas fa-check-circle" /> Instant Confirmation</div>
         <div className="feature-item"><i className="fas fa-shield-alt" /> Secure Payment</div>
         <div className="feature-item"><i className="fas fa-clock" /> 24/7 Guest Support</div>
-        <div className="feature-item"><i className="fas fa-undo" /> Free Cancellation 48h</div>
+        <div className="feature-item"><i className="fas fa-undo" /> Flexible Cancellation Policy</div>
         <div className="feature-item"><i className="fas fa-wifi" /> Free WiFi Throughout</div>
         <div className="feature-item"><i className="fas fa-person-swimming" /> Swimming pool</div>
         <div className="feature-item"><i className="fas fa-utensils" /> Self-catering stays</div>
@@ -942,9 +977,9 @@ export default function LandingPage() {
             <button type="button" className="quick-action-card" onClick={() => navigate('/event-enquiry')} data-animate>
               <i className="fas fa-glass-cheers" />
               <h3>Event hire enquiry</h3>
-              <p>Weddings, corporate events & celebrations — request a quote</p>
+              <p>Weddings, corporate events and celebrations. Request a quote</p>
             </button>
-            <a href="mailto:admin@valleycroft.com" className="quick-action-card" data-animate>
+            <a href="mailto:valleycroftfarm@gmail.com" className="quick-action-card" data-animate>
               <i className="fas fa-envelope" />
               <h3>Contact Admin</h3>
               <p>Questions? Get in touch</p>
@@ -959,8 +994,8 @@ export default function LandingPage() {
           <h2 className="section-heading">Our farm houses</h2>
           <p className="section-desc">
             {catalogApiRooms.length
-              ? `${catalogApiRooms.length} stay${catalogApiRooms.length === 1 ? '' : 's'} listed — descriptions, amenities, photos and rates from the live catalog you maintain in admin (date availability refines when you pick check-in and check-out).`
-              : 'Three houses on the farm — each with its own character, from cosy Studio Flier to the spacious Blue House.'}
+              ? `${catalogApiRooms.length} stay${catalogApiRooms.length === 1 ? '' : 's'} listed. Descriptions, amenities, photos and rates from the live catalog you maintain in admin (date availability refines when you pick check-in and check-out).`
+              : 'Three houses on the farm, each with its own character, from cosy Studio Flier to the spacious Blue House.'}
           </p>
         </div>
         <div className="landing-m-accom-head">
@@ -994,70 +1029,71 @@ export default function LandingPage() {
       </section>
 
       <section className="experience-farm-section" id="experience">
-        <div className="section-center" data-animate>
-          <div className="eyebrow">On the farm</div>
-          <h2 className="section-heading">What to expect at Valley Croft</h2>
+        <div className="exp-section-inner">
+          {/* Header */}
+          <div className="exp-header" data-animate>
+            <div className="eyebrow">On the farm</div>
+            <h2 className="section-heading">Life at Valley Croft</h2>
           <p className="section-desc">
-            Sunrise walks, pool days, braais under the stars — plus our welcoming entrance, lawns, pavilion, and rustic barn for gatherings. Open the gallery for the full photo tour.
+            From morning walks and pool days to fireside braais, picnics, and stunning event venues.
+          </p>
+          </div>
+
+          {/* Feature grid */}
+          <div className="exp-feature-grid" data-animate>
+            {experienceItems.map((exp) => (
+              <div key={exp.title} className="exp-feature-card">
+                <div className="exp-feature-photo" style={{ backgroundImage: `url("${exp.img}")` }}>
+                  {exp.tag && <span className="exp-feature-tag">{exp.tag}</span>}
+                </div>
+                <div className="exp-feature-body">
+                  <h3 className="exp-feature-title">{exp.title}</h3>
+                  <p className="exp-feature-desc">{exp.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Gallery CTA */}
+          <div className="exp-gallery-row" data-animate>
+            <div className="exp-gallery-text">
+              <i className="fas fa-images" />
+              <span>Want to see more? Browse the full photo gallery of our grounds, barn, and surroundings.</span>
+            </div>
+            <button type="button" className="btn-view-farm-gallery" onClick={openFarmGallery}>
+              View Gallery <i className="fas fa-arrow-right" aria-hidden />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="food-addons-section" id="food-addons">
+        <div className="section-center" data-animate>
+          <div className="eyebrow">Available at extra cost</div>
+          <h2 className="section-heading">Food &amp; Picnic Setups</h2>
+          <p className="section-desc">
+            Enjoy a curated picnic spread or farm-prepared meals during your stay. Breakfast, picnic setups, and catering are available on request at an additional cost. Simply let us know when booking.
           </p>
         </div>
-        <div className="experience-grid">
-          {experienceItems.map((exp) => (
-            <div
-              key={exp.title}
-              className="experience-card"
-              data-animate
-              id={exp.title === 'Pool & Summer Days' ? 'm-pool-spotlight' : undefined}
-            >
-              <div className="experience-img" style={{ backgroundImage: `url("${exp.img}")` }} />
-              <div className="experience-content">
-                <h3 className="experience-title">{exp.title}</h3>
-                <p className="experience-desc">{exp.desc}</p>
+        <div className="food-addons-grid" data-animate>
+          {[
+            { src: '/food.jpeg',  caption: 'Farm-style breakfast spread' },
+            { src: '/food2.jpeg', caption: 'Picnic setup on the lawns' },
+            { src: '/food3.jpeg', caption: 'Outdoor dining &amp; catering' },
+            { src: '/food4.jpeg', caption: 'Custom picnic arrangements' },
+          ].map((item) => (
+            <div key={item.src} className="food-addon-card">
+              <div className="food-addon-img" style={{ backgroundImage: `url("${item.src}")` }} />
+              <div className="food-addon-label">
+                <i className="fas fa-utensils" aria-hidden="true" />
+                <span dangerouslySetInnerHTML={{ __html: item.caption }} />
               </div>
+              <span className="food-addon-badge">Add-on</span>
             </div>
           ))}
         </div>
-
-        <div className="farm-gallery-inner" data-animate>
-          <p className="experience-farm-bridge" id="surroundings-barn">
-            Arrival, grounds &amp; barn
-          </p>
-          <div className="farm-preview-row">
-            <article className="farm-preview-card">
-              <div
-                className="farm-preview-visual"
-                style={{ backgroundImage: `url("${FARM_PREVIEW_GROUNDS}")` }}
-                role="img"
-                aria-label="Rustic covered entrance with chandelier, tiled path and barrel planters at ValleyCroft"
-              />
-              <div className="farm-preview-body">
-                <h3 className="farm-preview-title">Arrival &amp; grounds</h3>
-                <p className="farm-preview-desc">
-                  Chandelier-lit walkway and gardens — plus pool, fire pit, lawns, and pavilion in the gallery.
-                </p>
-              </div>
-            </article>
-            <article className="farm-preview-card">
-              <div
-                className="farm-preview-visual"
-                style={{ backgroundImage: `url("${FARM_PREVIEW_BARN}")` }}
-                role="img"
-                aria-label="Rustic barn interior with long wooden communal table"
-              />
-              <div className="farm-preview-body">
-                <h3 className="farm-preview-title">Barn interior</h3>
-                <p className="farm-preview-desc">A long hand-built table, straw-panel walls, and space for gatherings and celebrations.</p>
-              </div>
-            </article>
-          </div>
-
-          <div className="farm-gallery-actions">
-            <button type="button" className="btn-view-farm-gallery" onClick={openFarmGallery}>
-              <i className="fas fa-images" aria-hidden />
-              View gallery
-            </button>
-            <p className="farm-gallery-hint">{FARM_SURROUNDINGS_PHOTOS.length + FARM_BARN_INTERIOR_PHOTOS.length} photos</p>
-          </div>
+        <div className="food-addons-cta" data-animate>
+          <p>To arrange food or a picnic setup, mention it in your special requests when booking.</p>
         </div>
       </section>
 
@@ -1066,7 +1102,7 @@ export default function LandingPage() {
           <div data-animate>
             <div className="eyebrow" style={{ color: 'var(--gold-l)' }}>Celebrate in Style</div>
             <h2 className="section-heading" style={{ color: 'var(--white)' }}>Events &amp; Venue Hire</h2>
-            <p style={{ fontSize: 15, color: 'rgba(255,255,255,.65)', maxWidth: 540, lineHeight: 1.7 }}>From intimate garden gatherings to grand celebrations — ValleyCroft&apos;s venues offer unmatched beauty in the heart of South Africa&apos;s countryside.</p>
+            <p style={{ fontSize: 15, color: 'rgba(255,255,255,.65)', maxWidth: 540, lineHeight: 1.7 }}>From intimate garden gatherings to grand celebrations. ValleyCroft&apos;s venues offer unmatched beauty in the heart of South Africa&apos;s countryside.</p>
           </div>
           <div className="events-grid">
             {events.slice(0, 3).map((event) => (
@@ -1112,33 +1148,39 @@ export default function LandingPage() {
       </section>
 
       <div className="cta-track-row">
+        {/* Left — CTA */}
         <div className="cta-banner">
+          <div className="cta-banner-bg" />
+          <div className="cta-banner-overlay" />
           <div className="cta-inner">
-            <h2 className="cta-heading">Ready to escape to the farm?</h2>
-            <p className="cta-desc">Book your stay or enquire about your next event.</p>
+            <div className="cta-eyebrow"><span className="cta-eyebrow-dot" /><span>ValleyCroft Farm · Midrand, SA</span></div>
+            <h2 className="cta-heading">Your next escape<br />starts <em>here</em></h2>
             <div className="cta-buttons">
-              <Link to="/booking" className="btn-cta btn-cta-primary"><i className="fas fa-calendar-check" /> Book Your Stay</Link>
-              <a href="#book" className="btn-cta btn-cta-secondary">Enquire</a>
+              <Link to="/booking" className="btn-cta btn-cta-primary"><i className="fas fa-calendar-check" /> Book a Stay</Link>
+              <Link to="/event-enquiry" className="btn-cta btn-cta-secondary"><i className="fas fa-glass-cheers" /> Enquire</Link>
             </div>
           </div>
         </div>
 
+        {/* Right — Track */}
         <div className="track-banner" id="track">
           <div className="track-inner">
             <div className="track-left">
-              <h3 className="track-title">Track Your Booking</h3>
-              <p className="track-desc">Enter your booking reference number and email address to view your reservation status, make changes, or download your confirmation.</p>
+              <p className="track-eyebrow">Already booked?</p>
+              <h3 className="track-title">Track Your Reservation</h3>
             </div>
             <div className="track-form">
               <div className="track-input-wrap">
-                <div className="track-label">Booking Reference</div>
-                <input type="text" className="track-input" ref={trackRefRef} placeholder="e.g. VC-2026-089" />
+                <label className="track-label" htmlFor="trackRef">Reference</label>
+                <input id="trackRef" type="text" className="track-input" ref={trackRefRef} placeholder="e.g. VC-2026-089" />
               </div>
               <div className="track-input-wrap">
-                <div className="track-label">Your Email</div>
-                <input type="email" className="track-input" ref={trackEmailRef} placeholder="you@email.com" />
+                <label className="track-label" htmlFor="trackEmail">Email</label>
+                <input id="trackEmail" type="email" className="track-input" ref={trackEmailRef} placeholder="you@email.com" />
               </div>
-              <button type="button" className="btn-track" onClick={trackBooking}><i className="fas fa-search" /> Track Booking</button>
+              <button type="button" className="btn-track" onClick={trackBooking}>
+                <i className="fas fa-search" /> Track
+              </button>
             </div>
           </div>
         </div>
@@ -1162,10 +1204,10 @@ export default function LandingPage() {
             <i className="fas fa-times" />
           </button>
           <h3 id="farm-gallery-modal-title" className="farm-gallery-modal-title">
-            ValleyCroft — photo gallery
+            ValleyCroft photo gallery
           </h3>
           <p className="farm-gallery-modal-lead">
-            Outdoors includes the entrance walkway, pool, lawns, and patios; barn photos are the interior event space — labels match what you see.
+            Outdoors includes the entrance walkway, pool, lawns, and patios. Barn photos show the interior event space.
           </p>
           <div className="farm-gallery-modal-scroll">
             <h4 className="farm-gallery-modal-subhead">Grounds &amp; outdoors</h4>
@@ -1242,34 +1284,35 @@ export default function LandingPage() {
           >
             Continue to booking
           </Link>
-          <p className="modal-contact">Or contact us: <a href="mailto:stay@valleycroft.com">stay@valleycroft.com</a> · <a href="tel:+27112345678">+27 11 234 5678</a></p>
+          <p className="modal-contact">Or contact us: <a href="mailto:valleycroftfarm@gmail.com">valleycroftfarm@gmail.com</a> · <a href="tel:+263774295840">+263 774 295 840</a></p>
         </div>
       </div>
 
       <footer id="contact">
         <div className="footer-inner">
           <div className="footer-top">
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 38, height: 38, background: 'linear-gradient(135deg,var(--gold),var(--gold-l))', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'var(--forest-d)' }}><i className="fas fa-leaf" /></div>
-              </div>
-              <div className="footer-brand-name">ValleyCroft</div>
-              <p className="footer-brand-desc">A working farm offering authentic BnB accommodation and premier event venue hire in the heart of South Africa&apos;s countryside.</p>
-              <div className="footer-socials" style={{ marginTop: 20 }}>
-                <a href="#" className="social-btn" aria-label="Facebook"><i className="fa-brands fa-facebook-f" /></a>
-                <a href="#" className="social-btn" aria-label="Instagram"><i className="fa-brands fa-instagram" /></a>
-                <a href="#" className="social-btn" aria-label="WhatsApp"><i className="fa-brands fa-whatsapp" /></a>
-                <a href="#" className="social-btn" aria-label="Tripadvisor"><i className="fa-brands fa-tripadvisor" /></a>
+            {/* Brand column */}
+            <div className="footer-brand-col">
+              <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="footer-logo-img" />
+              <p className="footer-brand-desc">Authentic BnB accommodation and premier event venue hire in the heart of South Africa&apos;s countryside.</p>
+              <div className="footer-socials">
+                <a href="https://www.facebook.com/valleycroftfarm" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="Facebook"><i className="fa-brands fa-facebook-f" /></a>
+                <a href="https://www.instagram.com/valleycroftfarm" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="Instagram"><i className="fa-brands fa-instagram" /></a>
+                <a href="https://wa.me/263774295840" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +263 774 295 840"><i className="fa-brands fa-whatsapp" /></a>
+                <a href="https://wa.me/27734059419" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +27 734 059 419"><i className="fa-brands fa-whatsapp" /></a>
               </div>
             </div>
+
+            {/* Accommodation */}
             <div>
               <div className="footer-col-title">Accommodation</div>
-              <Link to="/booking" className="footer-link">Book a house</Link>
               <Link to="/booking" className="footer-link">Willow Cottage (2 bed)</Link>
               <Link to="/booking" className="footer-link">Studio Flier (1 bed)</Link>
               <Link to="/booking" className="footer-link">The Blue House</Link>
               <Link to="/booking" className="footer-link">Farm Retreat</Link>
             </div>
+
+            {/* Events */}
             <div>
               <div className="footer-col-title">Events</div>
               <Link to="/event-enquiry?type=wedding" className="footer-link">Weddings</Link>
@@ -1277,21 +1320,38 @@ export default function LandingPage() {
               <Link to="/event-enquiry?type=celebration" className="footer-link">Celebrations</Link>
               <Link to="/event-enquiry?type=retreat" className="footer-link">Farm Retreats</Link>
             </div>
+
+            {/* Contact */}
             <div>
-              <div className="footer-col-title">Guest Services</div>
-              <Link to="/booking" className="footer-link">Make a Booking</Link>
-              <Link to="/booking-track" className="footer-link">Track Reservation</Link>
-              <a href="#contact" className="footer-link">Contact Us</a>
-              <div style={{ marginTop: 20 }}>
-                <div className="footer-col-title">Contact</div>
-                <div className="footer-link">📞 +27 11 234 5678</div>
-                <div className="footer-link">✉️ stay@valleycroft.com</div>
-                <div className="footer-link">📍 Midrand, Gauteng, SA</div>
+              <div className="footer-col-title">Get in Touch</div>
+              <a href="tel:+263774295840" className="footer-contact-row">
+                <span className="footer-contact-icon"><i className="fas fa-phone" /></span>
+                <span>+263 774 295 840</span>
+              </a>
+              <a href="tel:+27734059419" className="footer-contact-row">
+                <span className="footer-contact-icon"><i className="fas fa-phone" /></span>
+                <span>+27 734 059 419</span>
+              </a>
+              <a href="mailto:valleycroftfarm@gmail.com" className="footer-contact-row">
+                <span className="footer-contact-icon"><i className="fas fa-envelope" /></span>
+                <span>valleycroftfarm@gmail.com</span>
+              </a>
+              <a href="https://www.valleycroftfarm.com" target="_blank" rel="noopener noreferrer" className="footer-contact-row">
+                <span className="footer-contact-icon"><i className="fas fa-globe" /></span>
+                <span>valleycroftfarm.com</span>
+              </a>
+              <div className="footer-contact-row">
+                <span className="footer-contact-icon"><i className="fas fa-map-marker-alt" /></span>
+                <span>Midrand, Gauteng, SA</span>
               </div>
+              <div className="footer-col-title" style={{ marginTop: 20 }}>Guest Services</div>
+              <Link to="/booking-track" className="footer-link">Track Reservation</Link>
             </div>
           </div>
+
           <div className="footer-bottom">
-            <div className="footer-copy">© 2026 ValleyCroft Agro-Tourism. All rights reserved. · Developed by Chynae Digital Solutions</div>
+            <div className="footer-copy">© 2026 ValleyCroft Farm. All rights reserved.</div>
+            <div className="footer-copy">Developed by Chynae Digital Solutions</div>
           </div>
         </div>
       </footer>

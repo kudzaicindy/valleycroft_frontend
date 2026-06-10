@@ -111,10 +111,12 @@ export default function LoginPage() {
         <div className="login-card grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-[#d8e3cf] bg-white shadow-[0_16px_50px_rgba(28,53,16,0.16)] lg:grid-cols-2">
           <section className="login-hero hidden bg-gradient-to-br from-[#244015] to-[#385f21] p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div>
-              <p className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90">
-                ValleyCroft
-              </p>
-              <h1 className="mt-6 text-3xl font-semibold leading-tight">
+              <img
+                src="/Valley_Croft_Farm-removebg-preview.png"
+                alt="ValleyCroft Farm"
+                style={{ height: 72, width: 'auto', filter: 'brightness(0) invert(1)', display: 'block', marginBottom: 8 }}
+              />
+              <h1 className="mt-4 text-3xl font-semibold leading-tight">
                 Farm Management Portal
               </h1>
               <p className="mt-3 max-w-sm text-sm text-white/80">

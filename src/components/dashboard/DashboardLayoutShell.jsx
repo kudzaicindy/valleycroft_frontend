@@ -45,7 +45,11 @@ export default function DashboardLayoutShell({ mobileTitle, sidebar, children })
         >
           {navOpen ? <FaTimes /> : <FaBars />}
         </button>
-        <span className="dashboard__mobile-title">{mobileTitle}</span>
+        <img
+          src="/Valley_Croft_Farm-removebg-preview.png"
+          alt="ValleyCroft Farm"
+          className="dashboard__mobile-logo"
+        />
       </header>
       <div
         className="dashboard__nav-backdrop"

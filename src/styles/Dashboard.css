@@ -115,6 +115,14 @@
   gap: 10px;
 }
 
+.dashboard .portal-sidebar__logo-img {
+  height: 36px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+}
+
 .dashboard .portal-sidebar__logo {
   align-items: center;
   background: linear-gradient(135deg, var(--sidebar-accent), var(--sidebar-accent-strong));
@@ -437,6 +445,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .dashboard__mobile-logo {
+    height: 44px;
+    width: auto;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    flex-shrink: 0;
   }
 
   .dashboard__nav-backdrop {

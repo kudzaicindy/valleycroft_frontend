@@ -3,12 +3,13 @@
 export const VALLEYCROFT_BNB_POLICY_POINTS = [
   'Respect farm safety, signage, and quiet hours so all guests and animals stay comfortable.',
   'Smoking is not permitted indoors; designated outdoor areas only where signed.',
-  'Breakfast times, check-in/out, and house care instructions apply as confirmed on arrival.',
+  'Breakfast is not included but is available upon request at an additional cost. Please let us know at the time of booking.',
+  'Check-in/out times and house care instructions apply as confirmed on arrival.',
 ];
 
 /** One paragraph for checkboxes / summaries */
 export const VALLEYCROFT_CANCELLATION_SHORT =
-  'You may cancel free of charge if you cancel at least 48 hours before your check-in time. If you cancel later than that, only 50% of what you paid is refunded.';
+  'Full refund for cancellations made at least 30 days before check-in. Partial refund for cancellations made 7–30 days before check-in. No refund for cancellations less than 7 days before check-in.';
 
 export const VALLEYCROFT_POLICIES_HASH = '#policies';
 

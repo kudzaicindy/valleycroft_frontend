@@ -73,6 +73,14 @@
   gap: 10px;
 }
 
+.booking-header-logo {
+  height: 52px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  display: block;
+}
+
 .header-icon {
   width: 34px;
   height: 34px;

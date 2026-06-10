@@ -47,7 +47,7 @@ function formatNum(n) {
 }
 
 const REQ_CHIPS = [
-  '🍽️ Early Breakfast',
+  '🍽️ Breakfast (add-on)',
   '🎵 Anniversary Setup',
   '💑 Honeymoon Package',
   '🌍 Late Check-out',
@@ -465,20 +465,18 @@ export default function BookingPage() {
     <div className="booking-page">
       <header className="booking-header">
         <Link to="/" className="header-brand">
-          <div className="header-icon">
-            <i className="fas fa-leaf" />
-          </div>
-          <div>
-            <div className="header-name">ValleyCroft</div>
-            <div className="header-sub">Agro-Tourism</div>
-          </div>
+          <img
+            src="/Valley_Croft_Farm-removebg-preview.png"
+            alt="ValleyCroft Farm"
+            className="booking-header-logo"
+          />
         </Link>
         <div className="booking-header-actions">
           <div className="booking-header-trust">
             <i className="fas fa-lock" style={{ color: 'var(--gold-l)' }} /> Secure Booking
           </div>
           <div className="booking-header-phone">
-            <i className="fas fa-phone" style={{ color: 'var(--gold-l)' }} /> +27 11 234 5678
+            <i className="fas fa-phone" style={{ color: 'var(--gold-l)' }} /> +263 774 295 840
           </div>
           <Link to="/" className="booking-header-back">
             ← Back to Site
@@ -1215,7 +1213,7 @@ export default function BookingPage() {
             </div>
             <div className="summary-note">
               <i className="fas fa-info-circle" />
-              <span>Free cancellation up to 48 hours before check-in. Farm breakfast included daily.</span>
+              <span>Full refund if cancelled 30+ days before check-in. Partial refund 7–30 days before. Breakfast available on request at extra cost.</span>
             </div>
           </div>
           <div style={{ background: 'rgba(45,80,22,.06)', border: '1px solid rgba(45,80,22,.15)', borderRadius: 12, padding: 16, marginTop: 14 }}>
@@ -1223,15 +1221,15 @@ export default function BookingPage() {
               <i className="fas fa-shield-alt" style={{ color: 'var(--forest)' }} /> Your Booking is Safe
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              ✓ Instant confirmation<br />✓ Free cancellation 48h policy<br />✓ 24/7 guest support
+              ✓ Instant confirmation<br />✓ Full refund if cancelled 30+ days before check-in<br />✓ 24/7 guest support
             </div>
           </div>
           <div style={{ background: 'var(--linen)', borderRadius: 12, padding: 16, marginTop: 14, textAlign: 'center' }}>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Need help with your booking?</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--forest)' }}>
-              <i className="fas fa-phone" /> +27 11 234 5678
+              <i className="fas fa-phone" /> +263 774 295 840
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>stay@valleycroft.com</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>valleycroftfarm@gmail.com</div>
           </div>
         </div>
       </div>

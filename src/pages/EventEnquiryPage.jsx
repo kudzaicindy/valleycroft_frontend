@@ -18,7 +18,7 @@ const EVENT_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-const MAIL = 'stay@valleycroft.com';
+const MAIL = 'valleycroftfarm@gmail.com';
 
 function skipRoomsApiInEmbed() {
   if (typeof document === 'undefined') return false;
@@ -334,20 +334,18 @@ export default function EventEnquiryPage() {
     <div className="booking-page event-enquiry-page">
       <header className="booking-header">
         <Link to="/" className="header-brand">
-          <div className="header-icon">
-            <i className="fas fa-leaf" />
-          </div>
-          <div>
-            <div className="header-name">ValleyCroft</div>
-            <div className="header-sub">Agro-Tourism</div>
-          </div>
+          <img
+            src="/Valley_Croft_Farm-removebg-preview.png"
+            alt="ValleyCroft Farm"
+            className="booking-header-logo"
+          />
         </Link>
         <div className="booking-header-actions">
           <div className="booking-header-trust">
             <i className="fas fa-envelope-open-text" style={{ color: 'var(--gold-l)' }} /> Event enquiry
           </div>
           <div className="booking-header-phone">
-            <i className="fas fa-phone" /> +27 11 234 5678
+            <i className="fas fa-phone" /> +263 774 295 840
           </div>
           <Link to="/booking" className="booking-header-back">
             BnB booking
@@ -622,7 +620,7 @@ export default function EventEnquiryPage() {
           <div className="event-enquiry-help-card">
             <div className="event-enquiry-help-label">Need help?</div>
             <div className="event-enquiry-help-phone">
-              <i className="fas fa-phone" /> +27 11 234 5678
+              <i className="fas fa-phone" /> +263 774 295 840
             </div>
             <div className="event-enquiry-help-email">{MAIL}</div>
           </div>
