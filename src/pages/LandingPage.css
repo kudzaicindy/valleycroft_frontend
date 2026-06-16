@@ -374,8 +374,8 @@ body.landing-nav-open {
 .hero-bg {
   position: absolute;
   inset: 0;
-  background: url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1920&q=90') center/cover no-repeat;
-  opacity: 0.55;
+  background: url('/WhatsApp Image 2026-06-16 at 10.45.03.jpeg') center/cover no-repeat;
+  opacity: 0.62;
   transform: scale(1.03);
 }
 

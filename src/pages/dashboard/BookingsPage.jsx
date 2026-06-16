@@ -1169,7 +1169,7 @@ export default function BookingsPage() {
                                 ))}
                               </select>
                             </td>
-                            <td onClick={(e) => e.stopPropagation()}>
+                            <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                               {statusStr(b.status).toLowerCase() === 'pending' && (
                                 <button
                                   type="button"
@@ -1190,15 +1190,35 @@ export default function BookingsPage() {
                                 </button>
                               )}
                               {statusStr(b.status).toLowerCase() === 'confirmed' && (
-                                <button
-                                  type="button"
-                                  className="btn btn-outline btn-sm"
-                                  style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
-                                  onClick={() => handleGuestStatusChange(b._id, 'cancelled', null)}
-                                  disabled={guestUpdateMutation.isPending}
-                                >
-                                  Cancel
-                                </button>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  {b.trackingCode && b.guestEmail && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm"
+                                      style={{ background: 'var(--forest)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 5 }}
+                                      title="Copy Pay Now link to share with guest"
+                                      onClick={() => {
+                                        const link = `https://valleycroftfarm.com/pay?ref=${encodeURIComponent(b.trackingCode)}&email=${encodeURIComponent(b.guestEmail)}`;
+                                        navigator.clipboard.writeText(link).then(() => {
+                                          alert(`Pay link copied!\n\n${link}`);
+                                        }).catch(() => {
+                                          prompt('Copy this Pay Now link:', link);
+                                        });
+                                      }}
+                                    >
+                                      <i className="fas fa-link" /> Pay link
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                                    onClick={() => handleGuestStatusChange(b._id, 'cancelled', null)}
+                                    disabled={guestUpdateMutation.isPending}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>

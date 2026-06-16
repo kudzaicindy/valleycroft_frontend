@@ -100,9 +100,27 @@ const HOUSE1_IMAGE_PATHS = FARM_STAYS[0].images;
 const HOUSE2_IMAGE_PATHS = FARM_STAYS[1].images;
 const HOUSE3_IMAGE_PATHS = FARM_STAYS[2].images;
 
-/** Chandelier-lit rustic walkway entrance (grounds / arrival). */
+/** June 2026 professional shoot */
+const IMG_FARM_EXTERIOR   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.03.jpeg');
+const IMG_BARN_GROOM      = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.05.jpeg');
+const IMG_BARN_TABLE_SIDE = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.06.jpeg');
+const IMG_BARN_TABLE_END  = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07.jpeg');
+const IMG_WEDDING_POOL    = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07 (1).jpeg');
+const IMG_PICNIC_COUPLE   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07 (2).jpeg');
+const IMG_GRAZING_BOARD   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.08.jpeg');
+const IMG_POOL_PARTY      = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.08 (1).jpeg');
+const IMG_GARDEN_TABLE    = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.09.jpeg');
+const IMG_GAZEBO          = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.09 (1).jpeg');
+const IMG_WEDDING_ARCH    = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.10.jpeg');
+const IMG_TABLE_CLOSEUP   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.10 (1).jpeg');
+const IMG_FRIENDS_TOAST   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.10 (2).jpeg');
+const IMG_PICNIC_WIDE     = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.11 (1).jpeg');
+const IMG_PICNIC_BALLOONS = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.11 (2).jpeg');
+const IMG_POOL_AERIAL     = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.12.jpeg');
+
+/** Legacy walkway — kept for gallery */
 const VALLEYCROFT_ENTRANCE_WALKWAY = encodeURI('/WhatsApp Image 2026-04-15 at 09.24.26.jpeg');
-const VALLEYCROFT_POOL_BRAAI_IMAGE = encodeURI('/WhatsApp Image 2026-04-15 at 09.24.26 (1).jpeg');
+const VALLEYCROFT_POOL_BRAAI_IMAGE = IMG_POOL_PARTY;
 
 /**
  * April 2026 — outdoors only: lawns, pool, patios, pavilion, house exteriors (not barn interior).
@@ -131,15 +149,16 @@ const FARM_SURROUNDINGS_PHOTOS = [
 
 /** Rustic barn interior — communal dining / event space (long table, hay panels). */
 const FARM_BARN_INTERIOR_PHOTOS = [
+  encodeURI('/WhatsApp Image 2026-06-16 at 10.45.06.jpeg'),
+  encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07.jpeg'),
+  encodeURI('/WhatsApp Image 2026-06-16 at 10.45.05.jpeg'),
   '/PHOTO-2026-04-10-10-38-44.jpg',
   '/PHOTO-2026-04-10-10-38-45.jpg',
   '/PHOTO-2026-04-10-10-38-45_1.jpg',
-  '/PHOTO-2026-04-10-10-38-45_2.jpg',
-  '/PHOTO-2026-04-10-10-38-46.jpg',
 ];
 
-const FARM_PREVIEW_GROUNDS = VALLEYCROFT_ENTRANCE_WALKWAY;
-const FARM_PREVIEW_BARN = '/PHOTO-2026-04-10-10-38-44.jpg';
+const FARM_PREVIEW_GROUNDS = IMG_FARM_EXTERIOR;
+const FARM_PREVIEW_BARN = IMG_BARN_TABLE_SIDE;
 
 function vcRemotionEmbed() {
   return typeof document !== 'undefined' && document.documentElement.classList.contains('vc-remotion-ad');
@@ -559,10 +578,10 @@ export default function LandingPage() {
   }, [catalogApiRooms.length]);
 
   const aboutStrip = [
-    { title: 'Farm Stays', desc: 'Comfortable farm accommodation', img: resolveRoomImageUrl(HOUSE1_IMAGE_PATHS[0]) },
-    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: '/barns.jpeg' },
-    { title: 'Farm Experiences', desc: 'Picnics, walks & countryside living', img: '/PHOTO-2026-04-10-10-38-30_2.jpg' },
-    { title: 'South Africa', desc: 'In the heart of the countryside', img: '/PHOTO-2026-04-10-10-38-33_1.jpg' },
+    { title: 'Farm Stays', desc: 'Comfortable farm accommodation', img: IMG_FARM_EXTERIOR },
+    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: IMG_BARN_GROOM },
+    { title: 'Farm Experiences', desc: 'Picnics, walks & countryside living', img: IMG_FRIENDS_TOAST },
+    { title: 'Hekpoort, Gauteng', desc: 'In the heart of the countryside', img: IMG_GARDEN_TABLE },
   ];
 
   const experienceItems = [
@@ -570,37 +589,37 @@ export default function LandingPage() {
       title: 'The Barn',
       tag: 'Indoor venue',
       desc: 'Spacious indoor barn with long wooden tables seating 100+ guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
-      img: '/barns.jpeg',
+      img: IMG_BARN_TABLE_SIDE,
     },
     {
       title: 'Wedding & Events Venue',
       tag: 'Venue hire',
       desc: 'Garden terrace, open lawn & barn. Up to 300+ guests. Perfect for weddings, corporate days and celebrations.',
-      img: '/wedding.jpeg',
+      img: IMG_WEDDING_POOL,
     },
     {
       title: 'Pool, Braai & Fireside',
       tag: 'Seasonal · Evenings',
       desc: 'Cool off in the farm pool by day and gather around the fire pit for a traditional braai under the stars.',
-      img: VALLEYCROFT_POOL_BRAAI_IMAGE,
+      img: IMG_POOL_PARTY,
     },
     {
       title: 'Gardens, Walks & Outdoor Spaces',
       tag: 'Daily',
       desc: 'Open lawns, lush gardens & sunrise farm trails. Unwind, explore, or simply breathe in the countryside.',
-      img: '/PHOTO-2026-04-10-10-38-31_2.jpg',
+      img: IMG_GAZEBO,
     },
     {
       title: 'Food on Request',
       tag: 'Add-on',
       desc: 'Farm-prepared meals, breakfast spreads & catering available on request at an additional cost.',
-      img: '/food.jpeg',
+      img: IMG_GRAZING_BOARD,
     },
     {
       title: 'Outdoor Picnic Setups',
       tag: 'Add-on',
       desc: 'Curated picnic on the farm lawns with blankets, food spread and décor. Available on request at extra cost.',
-      img: '/food2.jpeg',
+      img: IMG_PICNIC_WIDE,
     },
   ];
 
@@ -1076,10 +1095,10 @@ export default function LandingPage() {
         </div>
         <div className="food-addons-grid" data-animate>
           {[
-            { src: '/food.jpeg',  caption: 'Farm-style breakfast spread' },
-            { src: '/food2.jpeg', caption: 'Picnic setup on the lawns' },
-            { src: '/food3.jpeg', caption: 'Outdoor dining &amp; catering' },
-            { src: '/food4.jpeg', caption: 'Custom picnic arrangements' },
+            { src: IMG_GRAZING_BOARD,   caption: 'Farm grazing board & catering' },
+            { src: IMG_PICNIC_WIDE,     caption: 'Picnic setup on the lawns' },
+            { src: IMG_PICNIC_COUPLE,   caption: 'Romantic outdoor dining' },
+            { src: IMG_POOL_AERIAL,     caption: 'Poolside picnic celebration' },
           ].map((item) => (
             <div key={item.src} className="food-addon-card">
               <div className="food-addon-img" style={{ backgroundImage: `url("${item.src}")` }} />
