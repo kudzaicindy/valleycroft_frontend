@@ -545,13 +545,12 @@ export default function BookingPage() {
                   </div>
                 </div>
                 <div className="booking-dates-row">
-                  <div className={`date-box ${step === 1 ? 'active' : ''}`}>
-                    <div className="date-box-label">Check-in Date</div>
-                    <div className="date-box-val">{fmtDate(checkin)}</div>
-                    <div className="date-box-day">{DAYS[checkin.getDay()]}</div>
+                  <div className="date-field-wrap">
+                    <label className="date-field-label" htmlFor="checkin-input">Check-in Date</label>
                     <input
                       type="date"
                       id="checkin-input"
+                      className="date-field-input"
                       min={toLocalDateStr(today)}
                       value={toLocalDateStr(checkin)}
                       onChange={(e) => {
@@ -560,14 +559,14 @@ export default function BookingPage() {
                       }}
                       aria-label="Check-in date"
                     />
+                    {checkin && <div className="date-field-day">{DAYS[checkin.getDay()]}</div>}
                   </div>
-                  <div className="date-box">
-                    <div className="date-box-label">Check-out Date</div>
-                    <div className="date-box-val">{fmtDate(checkout)}</div>
-                    <div className="date-box-day">{DAYS[checkout.getDay()]}</div>
+                  <div className="date-field-wrap">
+                    <label className="date-field-label" htmlFor="checkout-input">Check-out Date</label>
                     <input
                       type="date"
                       id="checkout-input"
+                      className="date-field-input"
                       min={toLocalDateStr(checkin)}
                       value={toLocalDateStr(checkout)}
                       onChange={(e) => {
@@ -576,6 +575,7 @@ export default function BookingPage() {
                       }}
                       aria-label="Check-out date"
                     />
+                    {checkout && <div className="date-field-day">{DAYS[checkout.getDay()]}</div>}
                   </div>
                 </div>
                 <div className="nights-tag">

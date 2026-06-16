@@ -374,7 +374,7 @@ body.landing-nav-open {
 .hero-bg {
   position: absolute;
   inset: 0;
-  background: url('/WhatsApp Image 2026-06-16 at 10.45.03.jpeg') center/cover no-repeat;
+  background: url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1920&q=90') center/cover no-repeat;
   opacity: 0.62;
   transform: scale(1.03);
 }
@@ -382,12 +382,16 @@ body.landing-nav-open {
 .hero-overlay {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background: linear-gradient(
     160deg,
     rgba(20, 40, 10, 0.82) 0%,
     rgba(30, 54, 16, 0.65) 45%,
     rgba(60, 90, 30, 0.25) 100%
   );
+}
+.hero-bg {
+  pointer-events: none;
 }
 
 .hero-content {
@@ -557,6 +561,11 @@ body.landing-nav-open {
   background: var(--cream);
   outline: none;
   transition: border-color 0.2s;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.qb-input[type='date'] {
+  cursor: pointer;
 }
 
 .qb-input:focus {
@@ -3838,8 +3847,6 @@ html.vc-remotion-ad .btn-hero-secondary {
     font-size: 10.5px;
   }
   .qb-input[type='date'] {
-    -webkit-appearance: none;
-    appearance: none;
     min-width: 0;
     width: 100%;
     max-width: 100%;

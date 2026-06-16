@@ -373,12 +373,58 @@
 .booking-dates-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 10px;
   margin-bottom: 12px;
   width: 100%;
   box-sizing: border-box;
 }
 
+/* New reliable date field — no invisible overlay tricks */
+.date-field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.date-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.date-field-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--cream);
+  border: 1.5px solid var(--linen-d);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: "Cormorant Garamond", serif;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.18s;
+  outline: none;
+  /* Prevent iOS zoom on focus */
+  font-size: 16px;
+}
+
+.date-field-input:focus {
+  border-color: var(--forest);
+  background: rgba(45, 80, 22, 0.04);
+}
+
+.date-field-day {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding-left: 2px;
+}
+
+/* Legacy date-box kept for any other uses */
 .date-box {
   min-width: 0;
   background: var(--cream);
@@ -390,15 +436,11 @@
   position: relative;
 }
 
-.date-box:hover {
-  border-color: var(--sage);
-}
-
+.date-box:hover { border-color: var(--sage); }
 .date-box.active {
   border-color: var(--forest);
   background: rgba(45, 80, 22, 0.05);
 }
-
 .date-box-label {
   font-size: 8px;
   font-weight: 700;
@@ -407,7 +449,6 @@
   color: var(--text-muted);
   margin-bottom: 2px;
 }
-
 .date-box-val {
   font-family: "Cormorant Garamond", serif;
   font-size: clamp(15px, 2.8vw, 18px);
@@ -415,27 +456,10 @@
   color: var(--text);
   line-height: 1.15;
 }
-
 .date-box-day {
   font-size: 9px;
   color: var(--text-muted);
   line-height: 1.2;
-}
-
-.date-box input[type="date"] {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-  z-index: 2;
-  font-size: 16px; /* prevents zoom on focus on iOS */
-}
-.date-box-label,
-.date-box-val,
-.date-box-day {
-  pointer-events: none; /* let clicks go to the overlay input */
 }
 
 .nights-tag {

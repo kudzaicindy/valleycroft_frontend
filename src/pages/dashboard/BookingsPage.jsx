@@ -1191,24 +1191,7 @@ export default function BookingsPage() {
                               )}
                               {statusStr(b.status).toLowerCase() === 'confirmed' && (
                                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                  {b.trackingCode && b.guestEmail && (
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      style={{ background: 'var(--forest)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 5 }}
-                                      title="Copy Pay Now link to share with guest"
-                                      onClick={() => {
-                                        const link = `https://valleycroftfarm.com/pay?ref=${encodeURIComponent(b.trackingCode)}&email=${encodeURIComponent(b.guestEmail)}`;
-                                        navigator.clipboard.writeText(link).then(() => {
-                                          alert(`Pay link copied!\n\n${link}`);
-                                        }).catch(() => {
-                                          prompt('Copy this Pay Now link:', link);
-                                        });
-                                      }}
-                                    >
-                                      <i className="fas fa-link" /> Pay link
-                                    </button>
-                                  )}
+                                  {/* Pay link button hidden — re-enable when PayFast is live */}
                                   <button
                                     type="button"
                                     className="btn btn-outline btn-sm"

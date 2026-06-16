@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { getPaymentOptions, startPayfastCheckout } from '@/api/guestBookings';
+import { getPaymentOptions, startPayfastCheckout, trackGuestBooking } from '@/api/guestBookings';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import './BookingPage.css';
 import './PayPage.css';
@@ -21,6 +21,7 @@ export default function PayPage() {
   const refParam = searchParams.get('ref') || '';
 
   const [options, setOptions] = useState(null);
+  const [bookingDetail, setBookingDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [paymentType, setPaymentType] = useState('full');
@@ -33,14 +34,22 @@ export default function PayPage() {
     if (!emailParam || !refParam) return;
     setLoading(true);
     setError('');
-    getPaymentOptions(emailParam, refParam)
-      .then((res) => {
-        const d = res?.data ?? res;
+
+    Promise.all([
+      getPaymentOptions(emailParam, refParam),
+      trackGuestBooking({ email: emailParam, trackingCode: refParam }),
+    ])
+      .then(([optRes, trackRes]) => {
+        const d = optRes?.data ?? optRes;
         setOptions(d);
         // Default to best available option
         if (d?.balanceDue > 0 && d?.depositDue > 0) setPaymentType('deposit');
         else if (d?.balanceDue > 0) setPaymentType('balance');
         else setPaymentType('full');
+
+        // Extract booking detail from track response
+        const t = trackRes?.data ?? trackRes;
+        setBookingDetail(t?.data ?? t);
       })
       .catch((err) => {
         setError(err?.response?.data?.message || 'Could not load booking details. Please check your email and tracking code.');
@@ -80,7 +89,7 @@ export default function PayPage() {
     }
   }
 
-  const booking = options?.booking;
+  const booking = bookingDetail ?? options?.booking;
   const availableTypes = PAYMENT_TYPES.filter((t) => {
     if (t.id === 'deposit') return options?.depositDue > 0;
     if (t.id === 'balance') return options?.balanceDue > 0;
@@ -191,11 +200,15 @@ export default function PayPage() {
                 <div className="pay-summary-body">
                   <div className="pay-summary-row">
                     <span>Guest</span>
-                    <span>{booking?.guestName || '—'}</span>
+                    <strong>{booking?.guestName || '—'}</strong>
+                  </div>
+                  <div className="pay-summary-row">
+                    <span>Email</span>
+                    <span>{booking?.guestEmail || emailParam || '—'}</span>
                   </div>
                   <div className="pay-summary-row">
                     <span>Room</span>
-                    <span>{booking?.roomName || booking?.roomId?.name || '—'}</span>
+                    <strong>{booking?.roomName || booking?.roomId?.name || '—'}</strong>
                   </div>
                   <div className="pay-summary-row">
                     <span>Check-in</span>
@@ -204,6 +217,23 @@ export default function PayPage() {
                   <div className="pay-summary-row">
                     <span>Check-out</span>
                     <span>{booking?.checkOut ? formatDateDayMonthYear(new Date(booking.checkOut)) : '—'}</span>
+                  </div>
+                  {booking?.checkIn && booking?.checkOut && (() => {
+                    const nights = Math.round(
+                      (new Date(booking.checkOut) - new Date(booking.checkIn)) / (1000 * 60 * 60 * 24)
+                    );
+                    return nights > 0 ? (
+                      <div className="pay-summary-row">
+                        <span>Duration</span>
+                        <span>{nights} night{nights !== 1 ? 's' : ''}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div className="pay-summary-row">
+                    <span>Status</span>
+                    <span className={`pay-summary-status pay-summary-status--${booking?.status || 'unknown'}`}>
+                      {booking?.status ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1) : '—'}
+                    </span>
                   </div>
                   <div className="pay-summary-divider" />
                   <div className="pay-summary-row">
