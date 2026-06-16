@@ -588,7 +588,7 @@ export default function LandingPage() {
     {
       title: 'The Barn',
       tag: 'Indoor venue',
-      desc: 'Spacious indoor barn with long wooden tables seating 100+ guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
+      desc: 'Spacious indoor barn with long wooden tables seating up to 40 guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
       img: IMG_BARN_TABLE_SIDE,
     },
     {
@@ -712,7 +712,7 @@ export default function LandingPage() {
 
   const events = [
     { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or barn venue. Capacity for up to 300+ guests with stunning farm backdrops throughout.', features: ['Up to 300+ guests', 'Full day venue hire', 'Decor & events management available', 'Scenic photo backdrops'], price: 'From R 30,000', sub: 'Per day venue hire', link: '/event-enquiry?type=wedding' },
-    { icon: '🎊', name: 'Celebrations & Conferences', desc: 'Birthdays, anniversaries, team retreats and strategy days. Productive and memorable events in a tranquil farm setting.', features: ['20–120 guests / delegates', 'Indoor barn & outdoor spaces', 'Self-catering setup', 'Decor & events management available'], price: 'From R 8,000', sub: 'Per day venue hire', link: '/event-enquiry?type=celebration' },
+    { icon: '🎊', name: 'Celebrations & Conferences', desc: 'Birthdays, anniversaries, team retreats and strategy days. Productive and memorable events in a tranquil farm setting.', features: ['Up to 40 guests (barn)', 'Indoor barn & outdoor spaces', 'Self-catering setup', 'Decor & events management available'], price: 'From R 8,000', sub: 'Per day venue hire', link: '/event-enquiry?type=celebration' },
     { icon: '🧺', name: 'Picnics', desc: 'Curated outdoor picnic experiences on the farm lawns. Available on special request with full setup and optional private chef.', features: ['On special request', 'Picnic setup included', 'Private chef hire available', 'Blankets, décor & food spread'], price: 'On request', sub: 'Special request add-on', link: '/event-enquiry?type=picnic' },
     { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
   ];
