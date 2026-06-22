@@ -9,7 +9,7 @@ This doc matches the API behaviour when transactions post to the general ledger.
 - **Required:** `type` (`income` | `expense`), `category`, `description`, `amount` (positive number).
 - **Optional:** `date`, `reference`, `booking` (e.g. linked booking id).
 - **Do not send** `journalEntryId` on write. The server sets or ignores it. Treat it as **read-only** from GET responses.
-- **POST dedup:** send header **`Idempotency-Key`** (unique per intentional create; reuse the same key only when retrying the *same* submit). Booking-derived revenue uses a stable key: `booking-revenue-<bookingId>`.
+- **POST dedup:** send header **`Idempotency-Key`** (unique per intentional create; reuse the same key only when retrying the *same* submit). Booking-derived revenue uses stable keys: `booking-revenue-<bookingId>` (room) and `booking-food-revenue-<bookingId>` (food add-ons).
 - **GET list:** responses may include **`ledgerStatus`**: `'posted' | 'unposted'` (prefer this over inferring from `journalEntryId`). **`meta.duplicateRowsCollapsed`** counts server-side merged duplicate documents on that page. Opt out of collapse: `?collapseDuplicates=0`.
 
 Implementation:

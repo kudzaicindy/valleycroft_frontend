@@ -9,6 +9,9 @@ import {
   normalizePublicRoomsPayload,
 } from '@/utils/publicRoomCatalog';
 import { resolveRoomImageUrl, resolveRoomImageUrls } from '@/utils/roomImageUrl';
+import { landingPriceLabelFromApi } from '@/utils/roomPricing';
+import { useFoodAddOns } from '@/hooks/useFoodAddOns';
+import { findFoodAddOnOption, foodAddOnRatePhrase, foodAddOnsPricingSummary } from '@/content/foodAddons';
 import './LandingPage.css';
 
 function ymdLocal(d) {
@@ -81,12 +84,6 @@ function landingAmenityTagsFromApi(room) {
   if (room.bathroom) tags.push(String(room.bathroom));
   if (room.view) tags.push(String(room.view));
   return tags.slice(0, 4);
-}
-
-function landingPriceLabelFromApi(room) {
-  const n = Number(room.pricePerNight);
-  if (!Number.isFinite(n) || n <= 0) return 'See booking';
-  return `R ${n.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function landingBedsLabelFromApi(room) {
@@ -294,6 +291,7 @@ export default function LandingPage() {
   const trackEmailRef = useRef(null);
   const roomsSectionRef = useRef(null);
   const [messageModal, setMessageModal] = useState({ open: false, title: '', message: '' });
+  const { options: foodAddOnOptions } = useFoodAddOns();
 
   const todayMin = useMemo(() => ymdLocal(new Date()), []);
 
@@ -584,44 +582,48 @@ export default function LandingPage() {
     { title: 'Hekpoort, Gauteng', desc: 'In the heart of the countryside', img: IMG_GARDEN_TABLE },
   ];
 
-  const experienceItems = [
-    {
-      title: 'The Barn',
-      tag: 'Indoor venue',
-      desc: 'Spacious indoor barn with long wooden tables seating up to 40 guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
-      img: IMG_BARN_TABLE_SIDE,
-    },
-    {
-      title: 'Wedding & Events Venue',
-      tag: 'Venue hire',
-      desc: 'Garden terrace, open lawn & barn. Up to 300+ guests. Perfect for weddings, corporate days and celebrations.',
-      img: IMG_WEDDING_POOL,
-    },
-    {
-      title: 'Pool, Braai & Fireside',
-      tag: 'Seasonal · Evenings',
-      desc: 'Cool off in the farm pool by day and gather around the fire pit for a traditional braai under the stars.',
-      img: IMG_POOL_PARTY,
-    },
-    {
-      title: 'Gardens, Walks & Outdoor Spaces',
-      tag: 'Daily',
-      desc: 'Open lawns, lush gardens & sunrise farm trails. Unwind, explore, or simply breathe in the countryside.',
-      img: IMG_GAZEBO,
-    },
-    {
-      title: 'Food on Request',
-      tag: 'Add-on',
-      desc: 'Farm-prepared meals, breakfast spreads & catering available on request at an additional cost.',
-      img: IMG_GRAZING_BOARD,
-    },
-    {
-      title: 'Outdoor Picnic Setups',
-      tag: 'Add-on',
-      desc: 'Curated picnic on the farm lawns with blankets, food spread and décor. Available on request at extra cost.',
-      img: IMG_PICNIC_WIDE,
-    },
-  ];
+  const experienceItems = useMemo(() => {
+    const breakfast = findFoodAddOnOption(foodAddOnOptions, 'breakfast');
+    const picnic = findFoodAddOnOption(foodAddOnOptions, 'picnic');
+    return [
+      {
+        title: 'The Barn',
+        tag: 'Indoor venue',
+        desc: 'Spacious indoor barn with long wooden tables seating up to 40 guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
+        img: IMG_BARN_TABLE_SIDE,
+      },
+      {
+        title: 'Wedding & Events Venue',
+        tag: 'Venue hire',
+        desc: 'Garden terrace, open lawn & barn. Up to 300+ guests. Perfect for weddings, corporate days and celebrations.',
+        img: IMG_WEDDING_POOL,
+      },
+      {
+        title: 'Pool, Braai & Fireside',
+        tag: 'Seasonal · Evenings',
+        desc: 'Cool off in the farm pool by day and gather around the fire pit for a traditional braai under the stars.',
+        img: IMG_POOL_PARTY,
+      },
+      {
+        title: 'Gardens, Walks & Outdoor Spaces',
+        tag: 'Daily',
+        desc: 'Open lawns, lush gardens & sunrise farm trails. Unwind, explore, or simply breathe in the countryside.',
+        img: IMG_GAZEBO,
+      },
+      {
+        title: 'Food on Request',
+        tag: 'Add-on',
+        desc: `${breakfast?.label || 'Farm breakfast'} at ${foodAddOnRatePhrase(breakfast)} — optional add-on when you book.`,
+        img: IMG_GRAZING_BOARD,
+      },
+      {
+        title: 'Outdoor Picnic Setups',
+        tag: 'Add-on',
+        desc: `Curated picnic on the farm lawns — ${foodAddOnRatePhrase(picnic)} including setup and hamper.`,
+        img: IMG_PICNIC_WIDE,
+      },
+    ];
+  }, [foodAddOnOptions]);
 
   const rooms = useMemo(() => {
     const tags = ['Popular', 'Cosy', 'Premium'];
@@ -710,12 +712,22 @@ export default function LandingPage() {
     });
   }, [catalogApiRooms, landingApiRooms, landingAvailByRoomId, bnbDatesValid, isSuccess]);
 
-  const events = [
-    { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or barn venue. Capacity for up to 300+ guests with stunning farm backdrops throughout.', features: ['Up to 300+ guests', 'Full day venue hire', 'Decor & events management available', 'Scenic photo backdrops'], price: 'From R 30,000', sub: 'Per day venue hire', link: '/event-enquiry?type=wedding' },
-    { icon: '🎊', name: 'Celebrations & Conferences', desc: 'Birthdays, anniversaries, team retreats and strategy days. Productive and memorable events in a tranquil farm setting.', features: ['Up to 40 guests (barn)', 'Indoor barn & outdoor spaces', 'Self-catering setup', 'Decor & events management available'], price: 'From R 8,000', sub: 'Per day venue hire', link: '/event-enquiry?type=celebration' },
-    { icon: '🧺', name: 'Picnics', desc: 'Curated outdoor picnic experiences on the farm lawns. Available on special request with full setup and optional private chef.', features: ['On special request', 'Picnic setup included', 'Private chef hire available', 'Blankets, décor & food spread'], price: 'On request', sub: 'Special request add-on', link: '/event-enquiry?type=picnic' },
-    { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
-  ];
+  const events = useMemo(() => {
+    const picnic = findFoodAddOnOption(foodAddOnOptions, 'picnic');
+    const picnicPrice =
+      picnic?.rate > 0 ? `R ${picnic.rate.toLocaleString('en-ZA')}` : 'On request';
+    return [
+      { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or barn venue. Capacity for up to 300+ guests with stunning farm backdrops throughout.', features: ['Up to 300+ guests', 'Full day venue hire', 'Decor & events management available', 'Scenic photo backdrops'], price: 'From R 30,000', sub: 'Per day venue hire', link: '/event-enquiry?type=wedding' },
+      { icon: '🎊', name: 'Celebrations & Conferences', desc: 'Birthdays, anniversaries, team retreats and strategy days. Productive and memorable events in a tranquil farm setting.', features: ['Up to 40 guests (barn)', 'Indoor barn & outdoor spaces', 'Self-catering setup', 'Decor & events management available'], price: 'From R 8,000', sub: 'Per day venue hire', link: '/event-enquiry?type=celebration' },
+      { icon: '🧺', name: 'Picnics', desc: 'Curated outdoor picnic experiences on the farm lawns. Available on special request with full setup and optional private chef.', features: ['On special request', 'Picnic setup included', 'Private chef hire available', 'Blankets, décor & food spread'], price: picnicPrice, sub: 'Per person (setup + hamper)', link: '/event-enquiry?type=picnic' },
+      { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
+    ];
+  }, [foodAddOnOptions]);
+
+  const foodPricingCopy = useMemo(
+    () => foodAddOnsPricingSummary(foodAddOnOptions),
+    [foodAddOnOptions]
+  );
 
   const testimonials = [
     { stars: '★★★★★', text: '"An absolutely magical experience. Willow Cottage was breathtaking. We woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Willow Cottage', avatarBg: 'var(--forest)' },
@@ -1090,7 +1102,8 @@ export default function LandingPage() {
           <div className="eyebrow">Available at extra cost</div>
           <h2 className="section-heading">Food &amp; Picnic Setups</h2>
           <p className="section-desc">
-            Enjoy a curated picnic spread or farm-prepared meals during your stay. Breakfast, picnic setups, catering, and private chef hire are available on special request at an additional cost. Simply let us know when booking.
+            Enjoy a curated picnic spread or farm-prepared meals during your stay.
+            {foodPricingCopy ? ` ${foodPricingCopy.charAt(0).toUpperCase()}${foodPricingCopy.slice(1)}.` : ''} Select add-ons when you book or enquire.
           </p>
         </div>
         <div className="food-addons-grid" data-animate>
@@ -1111,7 +1124,11 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="food-addons-cta" data-animate>
-          <p>To arrange a picnic setup, private chef hire, or catering, mention it in your special requests when booking.</p>
+          <p>
+            {foodPricingCopy
+              ? `To arrange food add-ons (${foodPricingCopy}), select them on the booking or event enquiry form.`
+              : 'To arrange breakfast or a picnic setup, select the add-ons on the booking or event enquiry form.'}
+          </p>
         </div>
       </section>
 

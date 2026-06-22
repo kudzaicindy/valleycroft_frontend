@@ -63,19 +63,23 @@ export function mergeLandingCatalogRows(mediaRows, detailRows) {
     const primaryDesc =
       String(d.description || d.spaceDescription || '').trim() ||
       String(row.description || row.spaceDescription || '').trim();
+    const pricePerNight =
+      d?.pricePerNight != null && d.pricePerNight !== ''
+        ? d.pricePerNight
+        : row.pricePerNight;
     return {
-      ...d,
       ...row,
+      ...d,
       images,
       amenities,
       description: primaryDesc || d.description || row.description,
       spaceDescription: d.spaceDescription || row.spaceDescription,
-      pricePerNight: d.pricePerNight != null ? d.pricePerNight : row.pricePerNight,
-      capacity: d.capacity ?? row.capacity,
+      pricePerNight,
       bedConfig: d.bedConfig ?? d.beds ?? row.bedConfig,
       beds: d.beds ?? row.beds,
       bathroom: d.bathroom ?? row.bathroom,
       view: d.view ?? row.view,
+      capacity: d.capacity ?? row.capacity,
     };
   });
 }

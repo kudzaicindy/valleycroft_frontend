@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { createGuestBooking } from '@/api/guestBookings';
 import { getRooms, getRoomsPublicMedia } from '@/api/rooms';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
-import { formatGuestBookingError, pickRoomNightlyRate } from '@/utils/guestBookingErrors';
+import { formatGuestBookingError } from '@/utils/guestBookingErrors';
+import { roomPricePerNight, roomStaySubtotal } from '@/utils/roomPricing';
 import { FARM_STAYS, apiRowMatchesStay } from '@/content/farmStays';
 import { mergeLandingCatalogRows, normalizePublicRoomsPayload } from '@/utils/publicRoomCatalog';
 import { resolveRoomImageUrls } from '@/utils/roomImageUrl';
@@ -14,6 +15,15 @@ import {
   BOOKING_POLICY_CHANGED_EVENT,
   BOOKING_POLICY_STORAGE_KEY,
 } from '@/utils/bookingPolicySettings';
+import {
+  describeFoodAddonSelections,
+  findFoodAddOnOption,
+  foodAddonsTotal,
+  foodAddonLineTotal,
+  foodAddOnsPricingSummary,
+} from '@/content/foodAddons';
+import FoodAddonPicker from '@/components/booking/FoodAddonPicker';
+import { useFoodAddOns } from '@/hooks/useFoodAddOns';
 import './BookingPage.css';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -47,11 +57,9 @@ function formatNum(n) {
 }
 
 const REQ_CHIPS = [
-  '🍽️ Breakfast (add-on)',
   '🎵 Anniversary Setup',
   '💑 Honeymoon Package',
   '🌍 Late Check-out',
-  '🧺 Picnic Setup',
   '👨‍🍳 Private Chef Hire',
   '🚕 Airport Transfer',
   '👶 Baby Crib',
@@ -96,7 +104,6 @@ export default function BookingPage() {
   const [children, setChildren] = useState(0);
   const [room, setRoom] = useState(null);
   const [roomName, setRoomName] = useState(null);
-  const [roomPrice, setRoomPrice] = useState(0);
   const [guestFname, setGuestFname] = useState('');
   const [guestLname, setGuestLname] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
@@ -104,6 +111,7 @@ export default function BookingPage() {
   const [guestId, setGuestId] = useState('');
   const [guestCountry, setGuestCountry] = useState('ZA');
   const [requests, setRequests] = useState([]);
+  const [foodAddons, setFoodAddons] = useState([]);
   const [notes, setNotes] = useState('');
   const [arrival, setArrival] = useState('14:00 – 16:00');
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -126,13 +134,15 @@ export default function BookingPage() {
   const applyRoomSelection = useCallback((r) => {
     setRoom(r.id);
     setRoomName(r.name);
-    setRoomPrice(r.price);
   }, []);
 
   const checkInStr = toLocalDateStr(checkin);
   const checkOutStr = toLocalDateStr(checkout);
   const skipRoomsApi = skipRoomsApiInEmbed();
   const datesReady = Boolean(checkInStr && checkOutStr);
+  const { options: foodAddOnOptions, isPending: foodAddOnsLoading } = useFoodAddOns({
+    enabled: !skipRoomsApiInEmbed(),
+  });
 
   const { data: roomsMediaRaw } = useQuery({
     queryKey: ['booking-rooms-catalog-media'],
@@ -159,7 +169,7 @@ export default function BookingPage() {
       id: stay.slug,
       slug: stay.slug,
       name: stay.name,
-      price: stay.price,
+      pricePerNight: 0,
       desc: stay.desc,
       tags: stay.tags,
       images: imgs(stay.images?.length ? stay.images : defaultImages),
@@ -173,10 +183,10 @@ export default function BookingPage() {
     return mergedBnBRooms.map((api) => {
       const stay = FARM_STAYS.find((s) => apiRowMatchesStay(api, s));
       const staticMatch = stay
-        ? { name: stay.name, desc: stay.desc, tags: stay.tags, price: stay.price, slug: stay.slug }
-        : { name: api.name || 'Room', desc: '', tags: [], price: 0, slug: String(api.slug || '') };
+        ? { name: stay.name, desc: stay.desc, tags: stay.tags, slug: stay.slug }
+        : { name: api.name || 'Room', desc: '', tags: [], slug: String(api.slug || '') };
       const id = api._id ?? api.id ?? staticMatch.slug;
-      const price = pickRoomNightlyRate(api, staticMatch);
+      const pricePerNight = roomPricePerNight(api);
       const tagsFromAmenities =
         Array.isArray(api.amenities) && api.amenities.length
           ? api.amenities
@@ -194,7 +204,7 @@ export default function BookingPage() {
         id,
         slug: api.slug || staticMatch.slug || String(id),
         name: api.name || staticMatch.name,
-        price,
+        pricePerNight,
         desc,
         tags: tagsFromAmenities.length ? tagsFromAmenities : stay?.tags || ['Farm stay'],
         images: imgs(
@@ -205,7 +215,7 @@ export default function BookingPage() {
         onlyOneLeft: Boolean(api.onlyOneLeft),
       };
     });
-  }, [mergedBnBRooms]);
+  }, [mergedBnBRooms, checkin, checkout]);
 
   useEffect(() => {
     const onMsg = (e) => {
@@ -224,10 +234,9 @@ export default function BookingPage() {
         setTermsAccepted(true);
       }
       if (d.room && typeof d.room === 'object') {
-        const { id, name, price } = d.room;
+        const { id, name } = d.room;
         if (id != null && id !== '') setRoom(id);
         if (name) setRoomName(name);
-        setRoomPrice(Number(price) || 0);
       }
       if (typeof d.step === 'number' && d.step >= 1 && d.step <= 5) {
         setStep(d.step);
@@ -300,10 +309,19 @@ export default function BookingPage() {
     }
   }, [displayRooms, pendingPreferredId, applyRoomSelection]);
 
+  const selectedDisplayRoom = useMemo(
+    () => displayRooms.find((r) => String(r.id) === String(room)),
+    [displayRooms, room]
+  );
+
   const nights = Math.max(1, Math.round((checkout - checkin) / (1000 * 60 * 60 * 24)));
-  const subtotal = room ? roomPrice * nights : 0;
+  const guestCount = adults + children;
+  const nightlyRate = selectedDisplayRoom ? roomPricePerNight(selectedDisplayRoom) : 0;
+  const roomSubtotal = room && selectedDisplayRoom ? roomStaySubtotal(selectedDisplayRoom, nights) : 0;
+  const foodSubtotal = foodAddonsTotal(foodAddons, guestCount, nights, foodAddOnOptions);
+  const subtotal = roomSubtotal;
   /** Room totals exclude VAT (rates are treated as VAT-inclusive or not charged separately on site). */
-  const total = subtotal;
+  const total = roomSubtotal + foodSubtotal;
   const bookingPolicy = useMemo(() => loadBookingPolicySettings(), [policyRev]);
   const policyDeposit = depositAmountFromTotal(total, bookingPolicy);
 
@@ -380,6 +398,12 @@ export default function BookingPage() {
     );
   }
 
+  function toggleFoodAddon(id) {
+    setFoodAddons((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
   const [submitting, setSubmitting] = useState(false);
 
   async function confirmBooking() {
@@ -396,8 +420,16 @@ export default function BookingPage() {
       showErrorModal('Terms & conditions', 'Please accept the Terms & Conditions to confirm your booking.');
       return;
     }
+    const liveRoom = displayRooms.find((r) => String(r.id) === String(room));
+    if (!liveRoom || roomPricePerNight(liveRoom) <= 0) {
+      showErrorModal('Room rate unavailable', 'We could not load the nightly rate for this room. Please refresh and try again, or contact us to book.');
+      return;
+    }
     setSubmitting(true);
     const guestName = `${guestFname.trim()} ${guestLname.trim()}`.trim();
+    const submitRoomSubtotal = roomStaySubtotal(liveRoom, nights);
+    const submitFoodSubtotal = foodAddonsTotal(foodAddons, guestCount, nights, foodAddOnOptions);
+    const submitTotal = submitRoomSubtotal + submitFoodSubtotal;
     const payload = {
       guestName: guestName || 'Guest',
       guestEmail: guestEmail.trim(),
@@ -406,10 +438,22 @@ export default function BookingPage() {
       ...(room && roomName ? { roomName: String(roomName).trim() } : {}),
       checkIn: toLocalDateStr(checkin),
       checkOut: toLocalDateStr(checkout),
-      totalAmount: total,
-      deposit: policyDeposit,
+      totalAmount: submitTotal,
+      roomAmount: submitRoomSubtotal,
+      foodAmount: submitFoodSubtotal,
+      ...(foodAddons.length ? { foodAddons } : {}),
+      deposit: depositAmountFromTotal(submitTotal, bookingPolicy),
       source: 'website',
-      notes: [notes.trim(), requests.length ? requests.join('; ') : ''].filter(Boolean).join(' ') || undefined,
+      notes:
+        [
+          notes.trim(),
+          foodAddons.length
+            ? `Food add-ons: ${describeFoodAddonSelections(foodAddons, guestCount, nights, foodAddOnOptions).join('; ')}`
+            : '',
+          requests.length ? requests.join('; ') : '',
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined,
     };
     try {
       const res = await createGuestBooking(payload);
@@ -727,9 +771,13 @@ export default function BookingPage() {
                       </div>
                       <div className="room-price-col">
                         <div>
-                          <div className="rpc-price">R {formatNum(r.price)}</div>
+                          <div className="rpc-price">
+                            {r.pricePerNight > 0 ? `R ${formatNum(r.pricePerNight)}` : 'Price on request'}
+                          </div>
                           <div className="rpc-sub">per night</div>
-                          <div className="rpc-total">R {formatNum(r.price * nights)} total</div>
+                          <div className="rpc-total">
+                            {r.pricePerNight > 0 ? `R ${formatNum(r.pricePerNight * nights)} total` : '—'}
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -892,6 +940,18 @@ export default function BookingPage() {
                 </div>
                 <hr className="divider" style={{ margin: '20px 0', borderColor: 'var(--linen-d)' }} />
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
+                  Food add-ons <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span>
+                </div>
+                <FoodAddonPicker
+                  options={foodAddOnOptions}
+                  loading={foodAddOnsLoading}
+                  selected={foodAddons}
+                  onToggle={toggleFoodAddon}
+                  guestCount={guestCount}
+                  nights={nights}
+                />
+                <hr className="divider" style={{ margin: '20px 0', borderColor: 'var(--linen-d)' }} />
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
                   Special Requests <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span>
                 </div>
                 <div className="req-chips">
@@ -1020,6 +1080,12 @@ export default function BookingPage() {
                     <div className="rv-label">Arrival Time</div>
                     <div className="rv-val">{arrival}</div>
                   </div>
+                  {foodAddons.length > 0 ? (
+                    <div className="review-row">
+                      <div className="rv-label">Food add-ons</div>
+                      <div className="rv-val">{describeFoodAddonSelections(foodAddons, guestCount, nights, foodAddOnOptions).join(', ')}</div>
+                    </div>
+                  ) : null}
                   <div className="review-row">
                     <div className="rv-label">Special Requests</div>
                     <div className="rv-val">{requests.length > 0 ? requests.join(', ') : 'None'}</div>
@@ -1029,16 +1095,29 @@ export default function BookingPage() {
                   <div className="review-block-header">Pricing</div>
                   <div className="review-row">
                     <div className="rv-label">Room Rate</div>
-                    <div className="rv-val">R {formatNum(roomPrice)}</div>
+                    <div className="rv-val">
+                      {nightlyRate > 0 ? `R ${formatNum(nightlyRate)}` : 'Price on request'}
+                    </div>
                   </div>
                   <div className="review-row">
                     <div className="rv-label">Nights</div>
                     <div className="rv-val">{nights} night{nights > 1 ? 's' : ''}</div>
                   </div>
                   <div className="review-row">
-                    <div className="rv-label">Subtotal</div>
+                    <div className="rv-label">Room subtotal</div>
                     <div className="rv-val">R {formatNum(subtotal)}</div>
                   </div>
+                  {foodAddons.map((id) => {
+                    const opt = findFoodAddOnOption(foodAddOnOptions, id);
+                    if (!opt) return null;
+                    const line = foodAddonLineTotal(opt, guestCount, nights);
+                    return (
+                      <div key={id} className="review-row">
+                        <div className="rv-label">{opt.label}</div>
+                        <div className="rv-val">R {formatNum(line)}</div>
+                      </div>
+                    );
+                  })}
                   {policyDeposit > 0 && (
                     <div className="review-row">
                       <div className="rv-label">Deposit (due with this request)</div>
@@ -1200,12 +1279,24 @@ export default function BookingPage() {
               </div>
               <div className="sum-row">
                 <div className="sum-label">Room Rate</div>
-                <div className="sum-val">{room ? `R ${formatNum(roomPrice)} / night` : '—'}</div>
+                <div className="sum-val">
+                  {room
+                    ? nightlyRate > 0
+                      ? `R ${formatNum(nightlyRate)} / night`
+                      : 'Price on request'
+                    : '—'}
+                </div>
               </div>
               <div className="sum-row">
-                <div className="sum-label">Subtotal</div>
+                <div className="sum-label">Room subtotal</div>
                 <div className="sum-val">{room ? `R ${formatNum(subtotal)}` : '—'}</div>
               </div>
+              {foodSubtotal > 0 ? (
+                <div className="sum-row">
+                  <div className="sum-label">Food add-ons</div>
+                  <div className="sum-val">R {formatNum(foodSubtotal)}</div>
+                </div>
+              ) : null}
             </div>
             <div className="summary-total">
               <div className="sum-total-label">Total</div>
@@ -1213,7 +1304,12 @@ export default function BookingPage() {
             </div>
             <div className="summary-note">
               <i className="fas fa-info-circle" />
-              <span>Full refund if cancelled 30+ days before check-in. Partial refund 7–30 days before. Breakfast available on request at extra cost.</span>
+              <span>
+                Full refund if cancelled 30+ days before check-in. Partial refund 7–30 days before.
+                {foodAddOnsPricingSummary(foodAddOnOptions)
+                  ? ` Food add-ons: ${foodAddOnsPricingSummary(foodAddOnOptions)}.`
+                  : ''}
+              </span>
             </div>
           </div>
           <div style={{ background: 'rgba(45,80,22,.06)', border: '1px solid rgba(45,80,22,.15)', borderRadius: 12, padding: 16, marginTop: 14 }}>

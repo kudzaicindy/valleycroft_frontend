@@ -2,7 +2,8 @@ import { axiosInstance } from './axiosInstance';
 
 /**
  * Guest bookings (public website) — base path /api/guest-bookings
- * Model: GuestBooking — guestName, guestEmail, guestPhone, roomId, checkIn, checkOut, totalAmount, deposit, status, trackingCode, source, notes
+ * Model: GuestBooking — guestName, guestEmail, guestPhone, roomId, checkIn, checkOut,
+ * totalAmount, roomAmount, foodAmount, deposit, status, trackingCode, source, notes
  * Public: POST (submit), GET track (by email + trackingCode). Admin/CEO: list; Admin: update status/notes.
  */
 

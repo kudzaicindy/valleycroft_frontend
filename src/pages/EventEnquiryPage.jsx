@@ -7,6 +7,12 @@ import { FARM_STAYS } from '@/content/farmStays';
 import { pickRoomNightlyRate } from '@/utils/guestBookingErrors';
 import { mergeLandingCatalogRows, normalizePublicEventVenuesPayload } from '@/utils/publicRoomCatalog';
 import { resolveRoomImageUrls } from '@/utils/roomImageUrl';
+import {
+  describeFoodAddonSelections,
+  foodAddonsTotal,
+} from '@/content/foodAddons';
+import FoodAddonPicker from '@/components/booking/FoodAddonPicker';
+import { useFoodAddOns } from '@/hooks/useFoodAddOns';
 import './BookingPage.css';
 import './EventEnquiryPage.css';
 
@@ -15,6 +21,7 @@ const EVENT_TYPES = [
   { value: 'corporate', label: 'Corporate / team day' },
   { value: 'celebration', label: 'Private celebration' },
   { value: 'retreat', label: 'Retreat / buyout' },
+  { value: 'picnic', label: 'Picnic' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -191,6 +198,7 @@ export default function EventEnquiryPage() {
   const [eventDate, setEventDate] = useState('');
   const [guestCount, setGuestCount] = useState('');
   const [message, setMessage] = useState('');
+  const [foodAddons, setFoodAddons] = useState([]);
   const [createdId, setCreatedId] = useState('');
   const [venueGallery, setVenueGallery] = useState(null);
 
@@ -243,7 +251,10 @@ export default function EventEnquiryPage() {
 
   useEffect(() => {
     const t = (searchParams.get('type') || '').toLowerCase();
-    if (EVENT_TYPES.some((o) => o.value === t)) setEventType(t);
+    if (EVENT_TYPES.some((o) => o.value === t)) {
+      setEventType(t);
+      if (t === 'picnic') setFoodAddons(['picnic']);
+    }
   }, [searchParams]);
 
   const typeLabel = useMemo(
@@ -251,7 +262,26 @@ export default function EventEnquiryPage() {
     [eventType]
   );
 
+  const parsedGuestCount = useMemo(() => {
+    const n = Number(guestCount);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }, [guestCount]);
+
+  const foodEstimate = useMemo(
+    () => foodAddonsTotal(foodAddons, parsedGuestCount, 1, foodAddOnOptions),
+    [foodAddons, parsedGuestCount, foodAddOnOptions]
+  );
+
+  function toggleFoodAddon(id) {
+    setFoodAddons((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
   const skipRoomsApi = skipRoomsApiInEmbed();
+  const { options: foodAddOnOptions, isPending: foodAddOnsLoading } = useFoodAddOns({
+    enabled: !skipRoomsApi,
+  });
   const today = useMemo(() => new Date(), []);
   const checkInStr = useMemo(() => toLocalDateStr(today), [today]);
   const checkOutStr = useMemo(() => {
@@ -309,7 +339,17 @@ export default function EventEnquiryPage() {
       eventType: typeLabel,
       eventDate: eventDate.trim() || undefined,
       guestCount: guestCount.trim() ? Number(guestCount) : undefined,
-      message: message.trim() || undefined,
+      message:
+        [
+          message.trim(),
+          foodAddons.length && parsedGuestCount
+            ? `Food add-ons (estimate): ${describeFoodAddonSelections(foodAddons, parsedGuestCount, 1, foodAddOnOptions).join('; ')}`
+            : foodAddons.length
+              ? `Food add-ons requested: ${foodAddons.join(', ')} (guest count needed for estimate)`
+              : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n') || undefined,
     });
   }
 
@@ -318,6 +358,9 @@ export default function EventEnquiryPage() {
       `Event type: ${typeLabel}`,
       eventDate ? `Preferred date(s): ${eventDate}` : null,
       guestCount ? `Approx. guests: ${guestCount}` : null,
+      foodAddons.length
+        ? `Food add-ons: ${parsedGuestCount ? describeFoodAddonSelections(foodAddons, parsedGuestCount, 1, foodAddOnOptions).join('; ') : foodAddons.join(', ')}`
+        : null,
       '',
       message.trim() || '(No additional message)',
     ]
@@ -328,7 +371,7 @@ export default function EventEnquiryPage() {
       `Name: ${name.trim()}\nEmail: ${email.trim()}\nPhone: ${phone.trim() || '—'}\n\n${lines}`
     );
     return `mailto:${MAIL}?subject=${subject}&body=${body}`;
-  }, [typeLabel, eventDate, guestCount, message, name, email, phone]);
+  }, [typeLabel, eventDate, guestCount, message, name, email, phone, foodAddons, parsedGuestCount, foodAddOnOptions]);
 
   return (
     <div className="booking-page event-enquiry-page">
@@ -518,6 +561,17 @@ export default function EventEnquiryPage() {
                       />
                     </div>
                   </div>
+                  <div className="event-enquiry-food-section">
+                    <h3 className="event-enquiry-food-heading">Food add-ons</h3>
+                    <FoodAddonPicker
+                      options={foodAddOnOptions}
+                      loading={foodAddOnsLoading}
+                      selected={foodAddons}
+                      onToggle={toggleFoodAddon}
+                      guestCount={parsedGuestCount}
+                      nights={1}
+                    />
+                  </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="ev-msg">
                       Details &amp; questions
@@ -594,6 +648,22 @@ export default function EventEnquiryPage() {
                 <div className="sum-label">Guests</div>
                 <div className="sum-val">{guestCount.trim() || '—'}</div>
               </div>
+              {foodAddons.length > 0 ? (
+                <div className="sum-row">
+                  <div className="sum-label">Food add-ons</div>
+                  <div className="sum-val">
+                    {parsedGuestCount
+                      ? describeFoodAddonSelections(foodAddons, parsedGuestCount, 1, foodAddOnOptions).join(', ')
+                      : 'Selected — add guest count for estimate'}
+                  </div>
+                </div>
+              ) : null}
+              {foodEstimate > 0 ? (
+                <div className="sum-row">
+                  <div className="sum-label">Food estimate</div>
+                  <div className="sum-val">R {foodEstimate.toLocaleString('en-ZA')}</div>
+                </div>
+              ) : null}
               <div className="sum-row">
                 <div className="sum-label">Contact</div>
                 <div className="sum-val">{name.trim() || email.trim() ? `${name.trim()}${email.trim() ? ` · ${email.trim()}` : ''}` : '—'}</div>

@@ -3,7 +3,7 @@
 export const VALLEYCROFT_BNB_POLICY_POINTS = [
   'Respect farm safety, signage, and quiet hours so all guests and animals stay comfortable.',
   'Smoking is not permitted indoors; designated outdoor areas only where signed.',
-  'Breakfast is not included but is available upon request at an additional cost. Please let us know at the time of booking.',
+  'Breakfast is not included but is available upon request at the rates shown when booking. Picnic setup pricing is also listed on the booking form.',
   'Check-in/out times and house care instructions apply as confirmed on arrival.',
 ];
 

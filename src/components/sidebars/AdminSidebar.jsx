@@ -9,6 +9,7 @@ import {
   FaMoneyBillWave,
   FaReceipt,
   FaShieldAlt,
+  FaUtensils,
   FaWrench,
 } from 'react-icons/fa';
 import PortalSidebar from '@/components/sidebars/PortalSidebar';
@@ -23,6 +24,7 @@ const sections = [
       { id: 'dashboard', label: 'Dashboard', path: '/admin/dashboard', icon: <FaChartBar className="w-4 h-4" /> },
       { id: 'bookings', label: 'Bookings & reservations', path: '/admin/bookings', icon: <FaCalendarAlt className="w-4 h-4" /> },
       { id: 'rooms', label: 'Rooms', path: '/admin/rooms', icon: <FaHome className="w-4 h-4" /> },
+      { id: 'food-add-ons', label: 'Food add-ons', path: '/admin/food-add-ons', icon: <FaUtensils className="w-4 h-4" /> },
       { id: 'payments', label: 'Payments', path: '/admin/payments', icon: <FaCreditCard className="w-4 h-4" /> },
       { id: 'quotations', label: 'Quotations', path: '/admin/quotations', icon: <FaFileSignature className="w-4 h-4" /> },
       { id: 'enquiries', label: 'Enquiries', path: '/admin/enquiries', icon: <FaEnvelopeOpenText className="w-4 h-4" /> },

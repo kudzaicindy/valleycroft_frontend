@@ -3,6 +3,8 @@
  * @param {Error & { response?: { data?: unknown } }} err
  * @returns {string}
  */
+import { roomPricePerNight } from '@/utils/roomPricing';
+
 export function formatGuestBookingError(err) {
   const data = err?.response?.data;
   if (data && typeof data === 'object') {
@@ -35,23 +37,11 @@ export function formatGuestBookingError(err) {
 }
 
 /**
- * Nightly rate from API room object (field names vary by backend).
+ * Nightly rate from API room object — uses catalog {@link roomPricePerNight} only.
  * @param {Record<string, unknown>} r
- * @param {{ price?: number } | undefined} staticMatch
+ * @param {{ price?: number } | undefined} [_staticMatch]
+ * @param {number} [_nights]
  */
-export function pickRoomNightlyRate(r, staticMatch) {
-  const candidates = [
-    r.pricePerNight,
-    r.nightlyRate,
-    r.ratePerNight,
-    r.rate,
-    r.price,
-    r.baseRate,
-    staticMatch?.price,
-  ];
-  for (const c of candidates) {
-    const n = Number(c);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
+export function pickRoomNightlyRate(r, _staticMatch, _nights = 1) {
+  return roomPricePerNight(r);
 }

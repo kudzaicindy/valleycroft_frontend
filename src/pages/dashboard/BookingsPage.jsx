@@ -18,6 +18,11 @@ import RoomBookingCalendarModal from '@/components/dashboard/RoomBookingCalendar
 import DashboardListFilters from '@/components/dashboard/DashboardListFilters';
 import ConfirmModal from '@/components/ConfirmModal';
 import { fmtRand } from '@/utils/formatMoney';
+import { roomPricePerNight } from '@/utils/roomPricing';
+import {
+  ensureRevenueTransactionsForBooking,
+  getBookingRevenueSplit,
+} from '@/utils/bookingRevenueSplit';
 
 const LIMIT = 100;
 const STATUS_OPTIONS = ['pending', 'confirmed', 'checked-in', 'checked-out', 'cancelled'];
@@ -93,11 +98,22 @@ function guestStatusBadgeClass(status) {
 }
 
 function referenceDisplay(b) {
+  if (b.trackingCode != null && String(b.trackingCode).trim()) return String(b.trackingCode).trim();
   if (b.reference != null) return String(b.reference);
   if (b.bookingReference != null) return String(b.bookingReference);
-  const id = b._id;
+  const id = b._id ?? b.id;
   if (id != null) return typeof id === 'string' ? id.slice(-8) : String(id).slice(-8);
   return '—';
+}
+
+function guestBookingNeedsRevenuePost(booking) {
+  if (!booking) return false;
+  const status = statusStr(booking.status).toLowerCase();
+  if (status !== 'confirmed' && status !== 'checked-in' && status !== 'checked-out') return false;
+  const split = getBookingRevenueSplit(booking);
+  const needsRoom = split.roomAmount > 0 && !booking.revenueTransactionId;
+  const needsFood = split.foodAmount > 0 && !booking.foodRevenueTransactionId;
+  return needsRoom || needsFood;
 }
 
 /** Rooms API may return an array or { data | rooms | results }. */
@@ -174,9 +190,7 @@ function countStayNights(checkInStr, checkOutStr) {
 }
 
 function roomNightlyRate(room) {
-  if (!room) return 0;
-  const n = Number(room.pricePerNight ?? room.rate ?? room.price ?? 0);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  return roomPricePerNight(room);
 }
 
 function formatBookingMutationMessage(err, fallback) {
@@ -261,6 +275,8 @@ export default function BookingsPage() {
   const [guestSelectedSnapshot, setGuestSelectedSnapshot] = useState(null);
   const [guestAvailResult, setGuestAvailResult] = useState(null);
   const [guestCheckingAvail, setGuestCheckingAvail] = useState(false);
+  const [guestRevenuePosting, setGuestRevenuePosting] = useState(false);
+  const [guestRevenuePostError, setGuestRevenuePostError] = useState('');
   const [showAddInternalModal, setShowAddInternalModal] = useState(false);
   const [addInternalForm, setAddInternalForm] = useState(emptyInternalBookingForm);
   const [addInternalAmountManual, setAddInternalAmountManual] = useState(false);
@@ -536,32 +552,46 @@ export default function BookingsPage() {
     },
   });
 
-  async function ensureRevenueTransactionForBooking(bookingLike) {
-    const bookingEntity = normalizeBookingEntity(bookingLike);
-    if (!bookingEntity || bookingEntity.revenueTransactionId) return;
+  async function postRevenueTransactionsForBooking(bookingLike) {
+    const bookingEntity = normalizeBookingEntity(bookingLike) || bookingLike;
+    if (!bookingEntity) return null;
+    setGuestRevenuePostError('');
+    const posted = await ensureRevenueTransactionsForBooking(bookingEntity, createTransaction, {
+      referenceDisplay,
+    });
+    if (posted?.errors?.length) {
+      const msg = posted.errors.join('\n');
+      setGuestRevenuePostError(msg);
+      throw new Error(msg);
+    }
     const bookingId = bookingEntity._id ?? bookingEntity.id;
-    const amount = Number(bookingEntity.amount ?? bookingEntity.totalAmount ?? 0);
-    if (!bookingId || !Number.isFinite(amount) || amount <= 0) return;
-    const dateRaw = bookingEntity.checkIn || bookingEntity.eventDate || bookingEntity.createdAt || new Date().toISOString();
-    const date = new Date(dateRaw).toISOString().slice(0, 10);
-    const ref = referenceDisplay(bookingEntity);
-    await createTransaction(
-      {
-        type: 'income',
-        category: 'booking',
-        description: `Booking confirmed: ${ref}`,
-        amount,
-        date,
-        reference: `BOOK-${String(ref).replace(/\s+/g, '').slice(0, 16)}`,
-        booking: String(bookingId),
-        // As requested: Dr revenue, Cr accounts receivable.
-        debitAccount: '4000',
-        creditAccount: '1010',
-      },
-      { idempotencyKey: `booking-revenue-${String(bookingId)}` }
-    );
+    if (bookingId && (posted?.revenueTransactionId || posted?.foodRevenueTransactionId)) {
+      setGuestSelectedSnapshot((prev) => {
+        const base =
+          prev && String(prev._id) === String(bookingId) ? prev : { ...bookingEntity };
+        return {
+          ...base,
+          revenueTransactionId: posted.revenueTransactionId || base.revenueTransactionId,
+          foodRevenueTransactionId: posted.foodRevenueTransactionId || base.foodRevenueTransactionId,
+        };
+      });
+    }
     queryClient.invalidateQueries({ queryKey: ['transactions'] });
     queryClient.invalidateQueries({ queryKey: ['accounting'] });
+    queryClient.invalidateQueries({ queryKey: ['guest-bookings'] });
+    queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    return posted;
+  }
+
+  async function ensureRevenueTransactionForBooking(bookingLike) {
+    try {
+      return await postRevenueTransactionsForBooking(bookingLike);
+    } catch (err) {
+      if (!guestRevenuePostError) {
+        setGuestRevenuePostError(formatBookingMutationMessage(err, 'Could not post revenue transactions.'));
+      }
+      throw err;
+    }
   }
 
   function handleConfirm(id) {
@@ -573,7 +603,11 @@ export default function BookingsPage() {
         onSuccess: async (resp) => {
           const updated = normalizeBookingEntity(resp) || fallbackBooking;
           const latest = await getBooking(id).catch(() => updated);
-          await ensureRevenueTransactionForBooking(latest || updated).catch(() => {});
+          try {
+            await ensureRevenueTransactionForBooking(latest || updated);
+          } catch (err) {
+            window.alert(formatBookingMutationMessage(err, 'Booking confirmed, but revenue transactions could not be posted.'));
+          }
         },
       }
     );
@@ -642,10 +676,30 @@ export default function BookingsPage() {
       { id: guestSelected._id, body: { status: 'confirmed' } },
       {
         onSuccess: async () => {
-          await ensureRevenueTransactionForBooking(snapshot).catch(() => {});
+          setGuestRevenuePosting(true);
+          try {
+            await postRevenueTransactionsForBooking({ ...snapshot, status: 'confirmed' });
+          } catch (err) {
+            window.alert(formatBookingMutationMessage(err, 'Booking confirmed, but revenue transactions could not be posted.'));
+          } finally {
+            setGuestRevenuePosting(false);
+          }
         },
       }
     );
+  }
+
+  async function handleGuestPostRevenue() {
+    if (!guestSelected || readOnly) return;
+    setGuestRevenuePosting(true);
+    setGuestRevenuePostError('');
+    try {
+      await postRevenueTransactionsForBooking(guestSelected);
+    } catch (err) {
+      window.alert(formatBookingMutationMessage(err, 'Could not post revenue transactions.'));
+    } finally {
+      setGuestRevenuePosting(false);
+    }
   }
   function handleGuestReject() {
     if (!guestSelected) return;
@@ -1023,9 +1077,21 @@ export default function BookingsPage() {
                   <div className="review-row"><div className="rv-label">Nights</div><div className="rv-val">{booking.nights ?? (booking.checkIn && booking.checkOut ? Math.max(0, Math.ceil((new Date(booking.checkOut) - new Date(booking.checkIn)) / 86400000)) : '—')}</div></div>
                   <div className="review-row"><div className="rv-label">Rate</div><div className="rv-val">R {fmtNum(booking.rate ?? booking.amount)}</div></div>
                   <div className="review-row"><div className="rv-label">Deposit</div><div className="rv-val">R {fmtNum(booking.deposit)}</div></div>
-                  <div className="review-row"><div className="rv-label">Total</div><div className="rv-val">R {fmtNum(booking.amount ?? booking.totalAmount)}</div></div>
+                  {(() => {
+                    const split = getBookingRevenueSplit(booking);
+                    return split.foodAmount > 0 ? (
+                      <>
+                        <div className="review-row"><div className="rv-label">Room total</div><div className="rv-val">R {fmtNum(split.roomAmount)}</div></div>
+                        <div className="review-row"><div className="rv-label">Food add-ons</div><div className="rv-val">R {fmtNum(split.foodAmount)}</div></div>
+                      </>
+                    ) : null;
+                  })()}
+                  <div className="review-row"><div className="rv-label">Total</div><div className="rv-val">R {fmtNum(getBookingRevenueSplit(booking).totalAmount)}</div></div>
                   <div className="review-row"><div className="rv-label">Debtor</div><div className="rv-val">{booking.debtorId || '—'}</div></div>
-                  <div className="review-row"><div className="rv-label">Revenue txn</div><div className="rv-val">{booking.revenueTransactionId || '—'}</div></div>
+                  <div className="review-row"><div className="rv-label">Room revenue txn</div><div className="rv-val">{booking.revenueTransactionId || '—'}</div></div>
+                  {getBookingRevenueSplit(booking).foodAmount > 0 ? (
+                    <div className="review-row"><div className="rv-label">Food revenue txn</div><div className="rv-val">{booking.foodRevenueTransactionId || '—'}</div></div>
+                  ) : null}
                 </div>
                 <div className="review-block">
                   <div className="review-block-header">Guest contact</div>
@@ -1145,6 +1211,7 @@ export default function BookingsPage() {
                               setGuestSelectedId(b._id);
                               setGuestSelectedSnapshot(b);
                               setGuestAvailResult(null);
+                              setGuestRevenuePostError('');
                             }}
                           >
                             <td><strong>{b.trackingCode || '—'}</strong></td>
@@ -1155,7 +1222,7 @@ export default function BookingsPage() {
                             <td>{fmtRoomGuest(b.room || b.roomId)}</td>
                             <td>{fmtDate(b.checkIn)}</td>
                             <td>{fmtDate(b.checkOut)}</td>
-                            <td className="statement-table-num">R {Number(b.totalAmount || 0).toLocaleString('en-ZA')}</td>
+                            <td className="statement-table-num">R {Number(getBookingRevenueSplit(b).totalAmount).toLocaleString('en-ZA')}</td>
                             <td className="guest-booking-status-cell">
                               <select
                                 className={`guest-booking-status-select ${guestStatusBadgeClass(b.status)}`}
@@ -1179,7 +1246,16 @@ export default function BookingsPage() {
                                       { id: b._id, body: { status: 'confirmed' } },
                                       {
                                         onSuccess: async () => {
-                                          await ensureRevenueTransactionForBooking(b).catch(() => {});
+                                          try {
+                                            await postRevenueTransactionsForBooking({ ...b, status: 'confirmed' });
+                                          } catch (err) {
+                                            window.alert(
+                                              formatBookingMutationMessage(
+                                                err,
+                                                'Booking confirmed, but revenue transactions could not be posted.'
+                                              )
+                                            );
+                                          }
                                         },
                                       }
                                     )
@@ -1252,13 +1328,39 @@ export default function BookingsPage() {
                   <div className="review-row"><div className="rv-label">Check-in</div><div className="rv-val">{fmtDate(guestSelected.checkIn)}</div></div>
                   <div className="review-row"><div className="rv-label">Check-out</div><div className="rv-val">{fmtDate(guestSelected.checkOut)}</div></div>
                   <div className="review-row"><div className="rv-label">Room</div><div className="rv-val">{fmtRoomGuest(guestSelected.room || guestSelected.roomId)}</div></div>
-                  <div className="review-row"><div className="rv-label">Total</div><div className="rv-val">R {Number(guestSelected.totalAmount || 0).toLocaleString('en-ZA')}</div></div>
+                  {(() => {
+                    const split = getBookingRevenueSplit(guestSelected);
+                    return split.foodAmount > 0 ? (
+                      <>
+                        <div className="review-row"><div className="rv-label">Room total</div><div className="rv-val">R {Number(split.roomAmount).toLocaleString('en-ZA')}</div></div>
+                        <div className="review-row"><div className="rv-label">Food add-ons</div><div className="rv-val">R {Number(split.foodAmount).toLocaleString('en-ZA')}</div></div>
+                      </>
+                    ) : null;
+                  })()}
+                  <div className="review-row"><div className="rv-label">Total</div><div className="rv-val">R {Number(getBookingRevenueSplit(guestSelected).totalAmount).toLocaleString('en-ZA')}</div></div>
                   <div className="review-row"><div className="rv-label">Debtor</div><div className="rv-val">{guestSelected.debtorId || '—'}</div></div>
-                  <div className="review-row"><div className="rv-label">Revenue txn</div><div className="rv-val">{guestSelected.revenueTransactionId || '—'}</div></div>
+                  <div className="review-row"><div className="rv-label">Room revenue txn</div><div className="rv-val">{guestSelected.revenueTransactionId || '—'}</div></div>
+                  {getBookingRevenueSplit(guestSelected).foodAmount > 0 ? (
+                    <div className="review-row"><div className="rv-label">Food revenue txn</div><div className="rv-val">{guestSelected.foodRevenueTransactionId || '—'}</div></div>
+                  ) : null}
                   {guestSelected.notes && (
                     <div className="review-row"><div className="rv-label">Notes</div><div className="rv-val">{guestSelected.notes}</div></div>
                   )}
                 </div>
+
+                {guestRevenuePostError ? (
+                  <div className="guest-booking-revenue-error" role="alert">
+                    <i className="fas fa-exclamation-circle" aria-hidden />
+                    <span>{guestRevenuePostError}</span>
+                  </div>
+                ) : null}
+
+                {guestBookingNeedsRevenuePost(guestSelected) ? (
+                  <p className="guest-booking-revenue-hint">
+                    Revenue transactions are not linked yet. Confirm posts them automatically; use the button below if
+                    they are still missing.
+                  </p>
+                ) : null}
 
                 <div className="guest-booking-availability">
                   <button type="button" className="btn btn-outline btn-sm" onClick={handleGuestCheckAvailability} disabled={guestCheckingAvail}>
@@ -1293,6 +1395,24 @@ export default function BookingsPage() {
                 </div>
 
                 <div className="bookings-detail-actions">
+                  {guestBookingNeedsRevenuePost(guestSelected) && !readOnly ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={handleGuestPostRevenue}
+                      disabled={guestRevenuePosting || guestUpdateMutation.isPending}
+                    >
+                      {guestRevenuePosting ? (
+                        <>
+                          <i className="fas fa-spinner fa-spin" /> Posting revenue…
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-file-invoice-dollar" /> Post room &amp; food revenue
+                        </>
+                      )}
+                    </button>
+                  ) : null}
                   {statusStr(guestSelected.status).toLowerCase() === 'confirmed' ? (
                     <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleGuestReject} disabled={guestUpdateMutation.isPending}>Cancel booking</button>
                   ) : statusStr(guestSelected.status).toLowerCase() !== 'cancelled' && (

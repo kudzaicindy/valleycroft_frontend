@@ -42,6 +42,7 @@ const IncomeStatement = lazy(() => import('@/pages/dashboard/IncomeStatement'));
 const BalanceSheet = lazy(() => import('@/pages/dashboard/BalanceSheet'));
 const LedgerPage = lazy(() => import('@/pages/dashboard/LedgerPage'));
 const RoomsPage = lazy(() => import('@/pages/dashboard/RoomsPage'));
+const FoodAddOnsPage = lazy(() => import('@/pages/dashboard/FoodAddOnsPage'));
 const AuditPage = lazy(() => import('@/pages/dashboard/AuditPage'));
 const TransactionsPage = lazy(() => import('@/pages/dashboard/TransactionsPage'));
 const BookingPaymentsPage = lazy(() => import('@/pages/dashboard/BookingPaymentsPage'));
@@ -99,6 +100,7 @@ function App() {
                 <Route path="expenses" element={<TransactionsPage forcedType="expense" />} />
                 <Route path="guest-bookings" element={<Navigate to="bookings?tab=guest" replace />} />
                 <Route path="rooms" element={<RoomsPage />} />
+                <Route path="food-add-ons" element={<FoodAddOnsPage />} />
                 <Route path="staff" element={<StaffPage />} />
                 <Route path="work-logs" element={<StaffPage />} />
                 <Route path="salary" element={<Navigate to="../work-logs" replace />} />

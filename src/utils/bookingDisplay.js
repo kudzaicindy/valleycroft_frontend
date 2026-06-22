@@ -1,3 +1,7 @@
+import { getBookingRevenueSplit } from '@/utils/bookingRevenueSplit';
+
+export { getBookingRevenueSplit } from '@/utils/bookingRevenueSplit';
+
 /** Guest-facing / staff reference for a booking row (list or detail). */
 export function bookingReferenceDisplay(b) {
   if (!b || typeof b !== 'object') return '—';
@@ -17,8 +21,8 @@ export function normalizeBookingRecord(data) {
 }
 
 export function bookingTotalAmount(b) {
-  const n = Number(b?.amount ?? b?.totalAmount ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  const { totalAmount } = getBookingRevenueSplit(b);
+  return totalAmount;
 }
 
 export function bookingGuestLabel(b) {

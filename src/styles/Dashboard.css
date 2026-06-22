@@ -2629,6 +2629,26 @@
   color: var(--red);
 }
 
+.guest-booking-revenue-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--red-light);
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.guest-booking-revenue-hint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* Guest Bookings — status column */
 .guest-booking-status-cell {
   vertical-align: middle;

@@ -831,6 +831,96 @@ a.type-card--link:hover {
   color: var(--forest);
 }
 
+.food-addon-picker-lead {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+
+.food-addon-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.food-addon-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1.5px solid var(--linen-d);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.food-addon-option:hover:not(.on) {
+  border-color: var(--sage-l);
+}
+
+.food-addon-option.on {
+  border-color: var(--forest);
+  background: rgba(45, 80, 22, 0.06);
+}
+
+.food-addon-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.food-addon-option-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--forest-d);
+}
+
+.food-addon-option-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.food-addon-option-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.food-addon-option-rate {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.food-addon-option-line {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--forest);
+  white-space: nowrap;
+}
+
+.event-enquiry-food-section {
+  margin: 20px 0 8px;
+}
+
+.event-enquiry-food-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--forest-d);
+  margin: 0 0 10px;
+}
+
 /* REVIEW */
 .review-block {
   border: 1px solid var(--linen-d);

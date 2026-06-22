@@ -8,6 +8,7 @@
  */
 export const TRANSACTION_CATEGORY_OPTIONS = [
   { value: 'booking', label: 'Booking revenue' },
+  { value: 'catering', label: 'Food & catering' },
   { value: 'event', label: 'Event revenue' },
   { value: 'refund', label: 'Refund' },
   /** Cash in, equity up — Dr bank / Cr owner’s capital (API default 1001 / 3001). */
