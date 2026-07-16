@@ -1,1414 +1,288 @@
-import { useState, useRef, useEffect, useMemo, memo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getRooms, getRoomsPublicMedia } from '@/api/rooms';
-import { FARM_STAYS, apiRowMatchesStay, quickBookNameBySlug } from '@/content/farmStays';
+import { useRef, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import PublicSiteShell, { useFarmGallery } from '@/components/public/PublicSiteShell';
+import useScrollReveal from '@/hooks/useScrollReveal';
 import {
-  isLandingStayCatalogRoom,
-  mergeLandingCatalogRows,
-  normalizePublicRoomsPayload,
-} from '@/utils/publicRoomCatalog';
-import { resolveRoomImageUrl, resolveRoomImageUrls } from '@/utils/roomImageUrl';
-import { landingPriceLabelFromApi } from '@/utils/roomPricing';
-import { useFoodAddOns } from '@/hooks/useFoodAddOns';
-import { findFoodAddOnOption, foodAddOnRatePhrase, foodAddOnsPricingSummary } from '@/content/foodAddons';
-import './LandingPage.css';
+  IMG_ACCOMMODATION,
+  IMG_BARN_VENUE,
+  IMG_ENTRANCE_WALKWAY,
+  IMG_FARM_EXTERIOR,
+  IMG_FARM_GROUNDS,
+  IMG_GAZEBO,
+  IMG_PICNIC_COUPLE,
+  LANDING_VIDEO,
+} from '@/content/farmLifeMedia';
+import '@/pages/LandingPage.css';
 
-function ymdLocal(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function findApiRoomForQuickBookHouse(apiList, houseVal) {
-  if (!apiList?.length || houseVal === 'any') return null;
-  let r = apiList.find((x) => String(x._id ?? x.id) === houseVal);
-  if (r) return r;
-  const name = quickBookNameBySlug(houseVal);
-  if (name) {
-    r = apiList.find((x) => (x.name || '').trim() === name);
-    if (r) return r;
-    const stay = FARM_STAYS.find((s) => s.slug === houseVal);
-    if (stay?.legacyNames?.length) {
-      return apiList.find((x) => stay.legacyNames.some((ln) => (x.name || '').trim() === ln));
-    }
-  }
-  return null;
-}
-
-/** Card body: admin space description when set, else composed meta line. */
-function landingRoomCardDescription(room) {
-  const prose = String(room.description || room.spaceDescription || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (prose) {
-    return prose.length > 380 ? `${prose.slice(0, 377)}…` : prose;
-  }
-  return buildLandingRoomDescFromApi(room);
-}
-
-/** One-line detail blurb from the same fields admin uses on Rooms (or public/media extras). */
-function buildLandingRoomDescFromApi(room) {
-  const type = String(room.type || '').replace(/-/g, ' ');
-  const cap = room.capacity != null && room.capacity !== '' ? `Sleeps up to ${Number(room.capacity)}` : '';
-  const bed = String(room.bedConfig || room.beds || '').trim();
-  const parts = [];
-  const rt = String(room.roomType || '').trim();
-  const sc = String(room.spaceCategory || '').trim();
-  if (rt) parts.push(rt.replace(/\b\w/g, (c) => c.toUpperCase()));
-  if (sc && sc.toLowerCase() !== rt.toLowerCase()) parts.push(sc.replace(/\b\w/g, (c) => c.toUpperCase()));
-  if (type) parts.push(type.replace(/\b\w/g, (c) => c.toUpperCase()));
-  if (cap) parts.push(cap);
-  if (bed) parts.push(bed);
-  if (room.bathroom) parts.push(String(room.bathroom));
-  if (room.view) parts.push(String(room.view));
-  if (room.floor != null && room.floor !== '') parts.push(`Floor ${room.floor}`);
-  return parts.length ? parts.join(' · ') : 'Self-catering farm stay at Valley Croft.';
-}
-
-function landingAmenityTagsFromApi(room) {
-  const a = room.amenities;
-  if (Array.isArray(a) && a.length) {
-    return a
-      .slice(0, 12)
-      .map((x) => (typeof x === 'string' ? x : x?.name || x?.label || String(x)))
-      .map((s) => String(s).trim())
-      .filter(Boolean)
-      .slice(0, 6);
-  }
-  const tags = [];
-  const bed = room.bedConfig || room.beds;
-  if (bed) tags.push(String(bed));
-  if (room.capacity) tags.push(`${room.capacity} guests`);
-  if (room.bathroom) tags.push(String(room.bathroom));
-  if (room.view) tags.push(String(room.view));
-  return tags.slice(0, 4);
-}
-
-function landingBedsLabelFromApi(room) {
-  const bed = String(room.bedConfig || room.beds || '').trim();
-  if (bed) return bed;
-  if (room.capacity != null && room.capacity !== '') return `${room.capacity} guests`;
-  return '';
-}
-
-const HOUSE1_IMAGE_PATHS = FARM_STAYS[0].images;
-const HOUSE2_IMAGE_PATHS = FARM_STAYS[1].images;
-const HOUSE3_IMAGE_PATHS = FARM_STAYS[2].images;
-
-/** June 2026 professional shoot */
-const IMG_FARM_EXTERIOR   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.03.jpeg');
-const IMG_BARN_GROOM      = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.05.jpeg');
-const IMG_BARN_TABLE_SIDE = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.06.jpeg');
-const IMG_BARN_TABLE_END  = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07.jpeg');
-const IMG_WEDDING_POOL    = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07 (1).jpeg');
-const IMG_PICNIC_COUPLE   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07 (2).jpeg');
-const IMG_GRAZING_BOARD   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.08.jpeg');
-const IMG_POOL_PARTY      = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.08 (1).jpeg');
-const IMG_GARDEN_TABLE    = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.09.jpeg');
-const IMG_GAZEBO          = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.09 (1).jpeg');
-const IMG_WEDDING_ARCH    = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.10.jpeg');
-const IMG_TABLE_CLOSEUP   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.10 (1).jpeg');
-const IMG_FRIENDS_TOAST   = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.10 (2).jpeg');
-const IMG_PICNIC_WIDE     = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.11 (1).jpeg');
-const IMG_PICNIC_BALLOONS = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.11 (2).jpeg');
-const IMG_POOL_AERIAL     = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.12.jpeg');
-
-/** Legacy walkway — kept for gallery */
-const VALLEYCROFT_ENTRANCE_WALKWAY = encodeURI('/WhatsApp Image 2026-04-15 at 09.24.26.jpeg');
-const VALLEYCROFT_POOL_BRAAI_IMAGE = IMG_POOL_PARTY;
-
-/**
- * April 2026 — outdoors only: lawns, pool, patios, pavilion, house exteriors (not barn interior).
- */
-const FARM_SURROUNDINGS_PHOTOS = [
-  VALLEYCROFT_ENTRANCE_WALKWAY,
-  '/PHOTO-2026-04-10-10-38-28.jpg',
-  '/PHOTO-2026-04-10-10-38-30.jpg',
-  '/PHOTO-2026-04-10-10-38-30_1.jpg',
-  '/PHOTO-2026-04-10-10-38-30_2.jpg',
-  '/PHOTO-2026-04-10-10-38-30_3.jpg',
-  '/PHOTO-2026-04-10-10-38-31.jpg',
-  '/PHOTO-2026-04-10-10-38-31_1.jpg',
-  '/PHOTO-2026-04-10-10-38-31_2.jpg',
-  '/PHOTO-2026-04-10-10-38-31_3.jpg',
-  '/PHOTO-2026-04-10-10-38-32.jpg',
-  '/PHOTO-2026-04-10-10-38-32_1.jpg',
-  '/PHOTO-2026-04-10-10-38-32_2.jpg',
-  '/PHOTO-2026-04-10-10-38-32_3.jpg',
-  '/PHOTO-2026-04-10-10-38-33.jpg',
-  '/PHOTO-2026-04-10-10-38-33_1.jpg',
-  '/PHOTO-2026-04-10-10-38-33_2.jpg',
-  '/PHOTO-2026-04-10-10-38-33_3.jpg',
-  '/PHOTO-2026-04-10-10-38-33_4.jpg',
+const storySections = [
+  {
+    id: 'about',
+    eyebrow: 'Hekpoort · Gauteng',
+    title: 'A farm made for slowing down',
+    paragraphs: [
+      'Valley Croft is where mornings feel unhurried and evenings gather around the fire. Stay with us, host your celebration, or simply breathe in the countryside.',
+      'About forty-five minutes from Johannesburg — open skies, pool and braai, and the kind of welcome that feels genuinely personal.',
+    ],
+    cta: { label: 'Discover the farm', href: '#stays' },
+    img: IMG_FARM_GROUNDS,
+    reverse: false,
+    tone: 'cream',
+  },
+  {
+    id: 'stays',
+    eyebrow: 'Farm stays',
+    title: 'Wake up on the land',
+    paragraphs: [
+      'Self-catering farm houses with WiFi, pool access, and mornings that belong to you. This is our accommodation — one glimpse of where you might stay.',
+      'Every house and booking detail lives on our stays page — including breakfast and picnic add-ons.',
+    ],
+    cta: { label: 'View stays & book', to: '/stays' },
+    img: IMG_ACCOMMODATION,
+    reverse: true,
+    tone: 'white',
+  },
+  {
+    id: 'events',
+    eyebrow: 'Celebrations',
+    title: 'Your day, under open skies',
+    paragraphs: [
+      'Weddings, retreats, and private gatherings in the garden, barn, and across the lawns — with room for intimate groups or three hundred guests.',
+      'Tell us your date and vision. We will help you shape a celebration that feels unmistakably Valleycroft.',
+    ],
+    cta: { label: 'Explore events', to: '/events' },
+    img: IMG_GAZEBO,
+    reverse: false,
+    tone: 'cream',
+  },
+  {
+    id: 'barn',
+    eyebrow: 'The barn',
+    title: 'Gather in our rustic barn',
+    paragraphs: [
+      'Our barn is where long tables, candlelight, and celebration come together — a characterful indoor space for dinners, receptions, and events whatever the weather.',
+      'Dressed for a wedding or set for a party, the barn brings everyone under one roof.',
+    ],
+    cta: { label: 'Host in the barn', to: '/events' },
+    img: IMG_BARN_VENUE,
+    reverse: true,
+    tone: 'cream',
+  },
+  {
+    id: 'lifestyle',
+    eyebrow: 'Everyday magic',
+    title: 'Picnics by the pool',
+    paragraphs: [
+      'Curated picnics beside the water, garden walks, and starlit braais — this is the rhythm we love, and the one we hope you take home with you.',
+      'Set for two or a whole group, our poolside picnics turn an afternoon into a memory.',
+    ],
+    cta: { label: 'Open photo gallery', action: 'gallery' },
+    img: IMG_PICNIC_COUPLE,
+    reverse: false,
+    tone: 'white',
+  },
 ];
 
-/** Rustic barn interior — communal dining / event space (long table, hay panels). */
-const FARM_BARN_INTERIOR_PHOTOS = [
-  encodeURI('/WhatsApp Image 2026-06-16 at 10.45.06.jpeg'),
-  encodeURI('/WhatsApp Image 2026-06-16 at 10.45.07.jpeg'),
-  encodeURI('/WhatsApp Image 2026-06-16 at 10.45.05.jpeg'),
-  '/PHOTO-2026-04-10-10-38-44.jpg',
-  '/PHOTO-2026-04-10-10-38-45.jpg',
-  '/PHOTO-2026-04-10-10-38-45_1.jpg',
-];
-
-const FARM_PREVIEW_GROUNDS = IMG_FARM_EXTERIOR;
-const FARM_PREVIEW_BARN = IMG_BARN_TABLE_SIDE;
-
-function vcRemotionEmbed() {
-  return typeof document !== 'undefined' && document.documentElement.classList.contains('vc-remotion-ad');
-}
-
-/** Horizontal “scroll” for farm cards: transform vs scrollLeft (embed uses transform only). */
-function applyRoomRowProgress(grid, progress) {
-  const p = Math.min(1, Math.max(0, progress));
-  const adTrack = grid.querySelector('.rooms-grid-wide-adtrack');
-  if (adTrack && grid.classList.contains('rooms-grid-wide--embed-ad')) {
-    const max = Math.max(0, adTrack.scrollWidth - grid.clientWidth);
-    const x = Math.round(max * p);
-    const t = `translate3d(-${x}px,0,0)`;
-    if (adTrack.style.transform !== t) adTrack.style.transform = t;
-  } else {
-    const max = Math.max(0, grid.scrollWidth - grid.clientWidth);
-    const next = Math.round(max * p);
-    if (grid.scrollLeft !== next) grid.scrollLeft = next;
-  }
-}
-
-/**
- * Remotion: parent sets .room-img-track scrollLeft via postMessage every frame.
- * No useState/useEffect here — avoids scroll listeners, dot updates, and memo-defeating churn from `overlay` identity.
- */
-function RoomCardImageCarouselEmbed({ images, roomName, overlay }) {
-  const slides = images?.length ? images : [];
-  return (
-    <div className="room-img room-img--carousel">
-      <div className="room-img-track">
-        {slides.map((src, i) => (
-          <div
-            key={src}
-            className="room-img-slide"
-            style={{ backgroundImage: `url("${src}")` }}
-            role="img"
-            aria-label={`${roomName} — photo ${i + 1} of ${slides.length}`}
-          />
-        ))}
-      </div>
-      <div className="room-img-floating">{overlay}</div>
-    </div>
-  );
-}
-
-const RoomCardImageCarouselEmbedMemo = memo(
-  RoomCardImageCarouselEmbed,
-  (a, b) => a.roomName === b.roomName && a.images === b.images
-);
-
-function RoomCardImageCarouselInteractive({ images, roomName, overlay }) {
-  const trackRef = useRef(null);
-  const [active, setActive] = useState(0);
-  const slides = images?.length ? images : [];
+function HeroWelcomeText() {
+  const [phase, setPhase] = useState(0);
 
   useEffect(() => {
-    const el = trackRef.current;
-    if (!el || slides.length <= 1) return;
-    const onScroll = () => {
-      const w = el.clientWidth;
-      if (w <= 0) return;
-      const i = Math.round(el.scrollLeft / w);
-      setActive(Math.min(Math.max(i, 0), slides.length - 1));
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [slides.length]);
-
-  const goTo = (i) => {
-    const el = trackRef.current;
-    if (!el) return;
-    const w = el.clientWidth;
-    el.scrollTo({ left: i * w, behavior: 'smooth' });
-  };
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mq.matches) {
+      setPhase(3);
+      return undefined;
+    }
+    const timers = [
+      setTimeout(() => setPhase(1), 700),
+      setTimeout(() => setPhase(2), 2600),
+      setTimeout(() => setPhase(3), 4400),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   return (
-    <div className="room-img room-img--carousel">
-      <div className="room-img-track" ref={trackRef}>
-        {slides.map((src, i) => (
-          <div
-            key={src}
-            className="room-img-slide"
-            style={{ backgroundImage: `url("${src}")` }}
-            role="img"
-            aria-label={`${roomName} — photo ${i + 1} of ${slides.length}`}
-          />
-        ))}
+    <div className="hero-welcome-wrap">
+      <h1 className="hero-welcome hero-welcome--vc" aria-live="polite">
+        <span className={`hero-welcome-line${phase >= 1 ? ' is-visible' : ''}`}>Welcome to our farm</span>
+        <span className={`hero-welcome-brand${phase >= 2 ? ' is-visible' : ''}`}>Valleycroft</span>
+      </h1>
+      <p className={`hero-welcome-tagline${phase >= 3 ? ' is-visible' : ''}`}>
+        Hekpoort · pool · braai · mornings that feel unhurried
+      </p>
+      <div className={`hero-welcome-actions${phase >= 3 ? ' is-visible' : ''}`}>
+        <Link to="/stays" className="hero-welcome-btn hero-welcome-btn--primary">Plan your visit</Link>
+        <a href="#about" className="hero-welcome-btn hero-welcome-btn--ghost">Explore the farm</a>
       </div>
-      <div className="room-img-floating">
-        {overlay}
-      </div>
-      {slides.length > 1 ? (
-        <div className="room-carousel-dots" role="tablist" aria-label={`${roomName} photos`}>
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              role="tab"
-              aria-selected={i === active}
-              className={`room-carousel-dot ${i === active ? 'is-active' : ''}`}
-              onClick={() => goTo(i)}
-              aria-label={`Photo ${i + 1} of ${slides.length}`}
-            />
-          ))}
-        </div>
-      ) : null}
+      <a
+        href="#about"
+        className={`hero-scroll-cue${phase >= 3 ? ' is-visible' : ''}`}
+        aria-label="Scroll to discover the farm"
+      >
+        <span>Discover</span>
+        <i className="fas fa-chevron-down" aria-hidden="true" />
+      </a>
     </div>
   );
 }
 
-function RoomCardImageCarousel(props) {
-  return vcRemotionEmbed() ? <RoomCardImageCarouselEmbedMemo {...props} /> : <RoomCardImageCarouselInteractive {...props} />;
+function StoryCta({ cta, onGallery }) {
+  if (cta.action === 'gallery') {
+    return (
+      <button type="button" className="vc-story-cta" onClick={onGallery}>
+        {cta.label} <i className="fas fa-arrow-right" aria-hidden="true" />
+      </button>
+    );
+  }
+  if (cta.to) {
+    return (
+      <Link to={cta.to} className="vc-story-cta">
+        {cta.label} <i className="fas fa-arrow-right" aria-hidden="true" />
+      </Link>
+    );
+  }
+  return (
+    <a href={cta.href} className="vc-story-cta">
+      {cta.label} <i className="fas fa-arrow-right" aria-hidden="true" />
+    </a>
+  );
+}
+
+function LandingContent() {
+  const heroVideoRef = useRef(null);
+  const { openFarmGallery } = useFarmGallery();
+  useScrollReveal();
+
+  useEffect(() => {
+    const video = heroVideoRef.current;
+    if (!video) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => {
+      if (mq.matches) {
+        video.pause();
+        video.removeAttribute('autoplay');
+      } else {
+        video.setAttribute('autoplay', '');
+        video.play().catch(() => {});
+      }
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  return (
+    <main className="landing-main landing-main--home">
+      <section className="hero hero--clear-video vc-hero">
+        <div className="hero-bg hero-bg--video">
+          <video
+            ref={heroVideoRef}
+            className="hero-video"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            aria-hidden="true"
+          >
+            <source src={LANDING_VIDEO} type="video/mp4" />
+          </video>
+        </div>
+        <div className="hero-content hero-content--welcome hero-content--plain">
+          <HeroWelcomeText />
+        </div>
+      </section>
+
+      {storySections.map((section) => (
+        <section
+          key={section.id}
+          id={section.id}
+          className={`vc-story-row vc-story-row--${section.tone}${section.reverse ? ' vc-story-row--reverse' : ''} vc-reveal`}
+        >
+          <div
+            className={`vc-story-media-wrap vc-photo-reveal${section.reverse ? ' vc-photo-reveal--from-left' : ' vc-photo-reveal--from-right'}`}
+          >
+            <img
+              className="vc-story-media"
+              src={section.img}
+              alt={section.title}
+              loading="lazy"
+            />
+          </div>
+          <div className="vc-story-copy">
+            <p className="vc-story-eyebrow">{section.eyebrow}</p>
+            <h2 className="vc-story-title">{section.title}</h2>
+            {section.paragraphs.map((text) => (
+              <p key={text.slice(0, 28)} className="vc-story-body">
+                {text}
+              </p>
+            ))}
+            <StoryCta cta={section.cta} onGallery={openFarmGallery} />
+          </div>
+        </section>
+      ))}
+
+      <section className="vc-paths vc-reveal" id="glimpses">
+        <p className="vc-paths-lead">Two ways to experience the farm</p>
+        <div className="vc-paths-grid">
+          <Link
+            to="/stays"
+            className="vc-path-card"
+            style={{ backgroundImage: `url("${IMG_FARM_EXTERIOR}")` }}
+          >
+            <div className="vc-path-card-inner">
+              <span className="vc-path-tag">Stay</span>
+              <h3>Farm houses</h3>
+              <p>Book dates, choose your house, add breakfast or a picnic.</p>
+            </div>
+          </Link>
+          <Link
+            to="/events"
+            className="vc-path-card"
+            style={{ backgroundImage: `url("${IMG_GAZEBO}")` }}
+          >
+            <div className="vc-path-card-inner">
+              <span className="vc-path-tag">Celebrate</span>
+              <h3>Events &amp; weddings</h3>
+              <p>Garden, barn and lawns for gatherings large and small.</p>
+            </div>
+          </Link>
+        </div>
+      </section>
+
+      <section className="vc-guest-note vc-reveal" id="stories">
+        <div className="vc-guest-note-inner">
+          <div className="vc-guest-note-mark" aria-hidden="true">
+            <img src="/Valley_Croft_Farm-removebg-preview.png" alt="" className="vc-guest-note-logo" />
+          </div>
+          <blockquote className="vc-guest-note-text">
+            It felt like the world slowed down — birdsong, open skies, and evenings we still talk about.
+          </blockquote>
+          <p className="vc-guest-note-attr">A guest at Valley Croft</p>
+        </div>
+      </section>
+
+      <section className="vc-home-close vc-reveal">
+        <div
+          className="vc-home-close-bg"
+          style={{ backgroundImage: `url("${IMG_ENTRANCE_WALKWAY}")` }}
+          aria-hidden="true"
+        />
+        <div className="vc-home-close-inner">
+          <h2>We would love to welcome you</h2>
+          <p>Stays, celebrations, and quiet escapes — about forty-five minutes from Johannesburg.</p>
+          <div className="vc-home-close-actions">
+            <Link to="/stays" className="vc-home-close-btn vc-home-close-btn--primary">Farm stays</Link>
+            <Link to="/events" className="vc-home-close-btn">Events &amp; venues</Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 export default function LandingPage() {
-  const navigate = useNavigate();
-  const [navOpen, setNavOpen] = useState(false);
-  const [navScrolled, setNavScrolled] = useState(false);
-  const [bookingType, setBookingType] = useState('bnb');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [farmGalleryOpen, setFarmGalleryOpen] = useState(false);
-  const [bookingContext, setBookingContext] = useState({ name: '', type: 'room', preferredRoomId: '' });
-  const [qbCheckIn, setQbCheckIn] = useState(() => ymdLocal(new Date()));
-  const [qbCheckOut, setQbCheckOut] = useState(() => {
-    const t = new Date();
-    t.setDate(t.getDate() + 1);
-    return ymdLocal(t);
-  });
-  const [qbHouse, setQbHouse] = useState('any');
-  const guestsRef = useRef(null);
-  const trackRefRef = useRef(null);
-  const trackEmailRef = useRef(null);
-  const roomsSectionRef = useRef(null);
-  const [messageModal, setMessageModal] = useState({ open: false, title: '', message: '' });
-  const { options: foodAddOnOptions } = useFoodAddOns();
-
-  const todayMin = useMemo(() => ymdLocal(new Date()), []);
-
-  const { data: catalogMediaRaw } = useQuery({
-    queryKey: ['landing-room-catalog-media'],
-    queryFn: () => getRoomsPublicMedia(),
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-
-  const { data: catalogDetailRaw } = useQuery({
-    queryKey: ['landing-room-catalog-detail'],
-    queryFn: () => getRooms(),
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-
-  const catalogApiRooms = useMemo(() => {
-    const mediaList = normalizePublicRoomsPayload(catalogMediaRaw);
-    const detailList = normalizePublicRoomsPayload(catalogDetailRaw);
-    const merged = mergeLandingCatalogRows(mediaList, detailList).filter(isLandingStayCatalogRoom);
-    return [...merged].sort((a, b) => {
-      const oa = Number(a.order);
-      const ob = Number(b.order);
-      const na = Number.isFinite(oa) ? oa : 999;
-      const nb = Number.isFinite(ob) ? ob : 999;
-      if (na !== nb) return na - nb;
-      return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
-    });
-  }, [catalogMediaRaw, catalogDetailRaw]);
-
-  const bnbDatesValid =
-    bookingType === 'bnb' && qbCheckIn && qbCheckOut && qbCheckOut > qbCheckIn;
-
-  const { data: roomsRaw, isSuccess, isError, isFetching } = useQuery({
-    queryKey: ['landing-rooms-avail', qbCheckIn, qbCheckOut],
-    queryFn: () => getRooms({ checkIn: qbCheckIn, checkOut: qbCheckOut }),
-    enabled: bnbDatesValid,
-    retry: 1,
-  });
-
-  const landingApiRooms = useMemo(() => normalizePublicRoomsPayload(roomsRaw), [roomsRaw]);
-
-  const landingAvailByRoomId = useMemo(() => {
-    const m = new Map();
-    for (const r of landingApiRooms) {
-      const id = String(r._id ?? r.id ?? '');
-      if (id) m.set(id, r.availableForDates !== false);
-    }
-    return m;
-  }, [landingApiRooms]);
-
-  const landingAvail = useMemo(() => {
-    if (!bnbDatesValid || !isSuccess || isError || landingApiRooms.length === 0) {
-      return { known: false, blocked: false, message: '' };
-    }
-    if (qbHouse === 'any') {
-      const someOpen = landingApiRooms.some((r) => r.availableForDates !== false);
-      if (!someOpen) {
-        return {
-          known: true,
-          blocked: true,
-          message:
-            'These dates are not available for a BnB stay. Please choose different check-in and check-out dates.',
-        };
-      }
-      return { known: true, blocked: false, message: '' };
-    }
-    const target = findApiRoomForQuickBookHouse(landingApiRooms, qbHouse);
-    if (target && target.availableForDates === false) {
-      return {
-        known: true,
-        blocked: true,
-        message:
-          'The house you selected is not available for these dates. Please change the dates or choose another property.',
-      };
-    }
-    return { known: true, blocked: false, message: '' };
-  }, [bnbDatesValid, isSuccess, isError, landingApiRooms, qbHouse]);
-
-  const onQbCheckInChange = (e) => {
-    const v = e.target.value;
-    setQbCheckIn(v);
-    setQbCheckOut((co) => {
-      if (!v || !co) return co;
-      if (co <= v) {
-        const [y, mo, d] = v.split('-').map(Number);
-        const n = new Date(y, mo - 1, d + 1);
-        return ymdLocal(n);
-      }
-      return co;
-    });
-  };
-
-  const selectType = (type) => setBookingType(type);
-
-  const scrollToHash = (hash) => {
-    const el = hash && document.querySelector(hash);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  function buildBookingNavState(partial = {}) {
-    const guestsVal = guestsRef.current?.value ?? '2';
-    let adults = 2;
-    let children = 0;
-    const g = String(guestsVal);
-    if (g === '1') adults = 1;
-    else if (g === '2') adults = 2;
-    else if (g === '3') adults = 3;
-    else if (g === '4') adults = 4;
-    else if (g === '5+') adults = 6;
-    const checkIn = qbCheckIn.trim();
-    const checkOut = qbCheckOut.trim();
-    return {
-      checkIn: checkIn || undefined,
-      checkOut: checkOut || undefined,
-      bookingType: partial.bookingType ?? 'bnb',
-      adults,
-      children,
-      ...(partial.preferredRoomId ? { preferredRoomId: partial.preferredRoomId } : {}),
-    };
-  }
-
-  const goToBooking = () => {
-    if (bookingType === 'event') {
-      navigate('/event-enquiry');
-      return;
-    }
-    if (bookingType === 'bnb' && landingAvail.known && landingAvail.blocked) {
-      setMessageModal({
-        open: true,
-        title: 'Dates not available',
-        message: landingAvail.message,
-      });
-      return;
-    }
-    const houseVal = qbHouse;
-    const preferredRoomId = houseVal && houseVal !== 'any' ? houseVal : undefined;
-    navigate('/booking', {
-      state: buildBookingNavState({
-        bookingType: 'bnb',
-        preferredRoomId,
-      }),
-    });
-  };
-
-  const openBookingModal = (name, type = 'room', preferredRoomId = '') => {
-    if (type === 'event') {
-      navigate('/event-enquiry');
-      return;
-    }
-    setBookingContext({ name, type, preferredRoomId: preferredRoomId || '' });
-    setModalOpen(true);
-  };
-
-  const closeModal = () => setModalOpen(false);
-
-  const openFarmGallery = () => setFarmGalleryOpen(true);
-  const closeFarmGallery = () => setFarmGalleryOpen(false);
-
-  const closeNav = () => setNavOpen(false);
-
-  const scrollToRooms = () => {
-    roomsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const trackBooking = () => {
-    const ref = trackRefRef.current?.value?.trim();
-    const email = trackEmailRef.current?.value?.trim();
-    if (!ref || !email) {
-      setMessageModal({
-        open: true,
-        title: 'Missing details',
-        message: 'Please enter both your booking reference and email address.',
-      });
-      return;
-    }
-    navigate(`/booking-track?ref=${encodeURIComponent(ref)}&email=${encodeURIComponent(email)}`);
-  };
-
-  useEffect(() => {
-    const onScroll = () => setNavScrolled(window.scrollY > 60);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    document.body.classList.toggle('landing-nav-open', navOpen);
-    return () => document.body.classList.remove('landing-nav-open');
-  }, [navOpen]);
-
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setNavOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navOpen]);
-
-  useEffect(() => {
-    if (!farmGalleryOpen) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setFarmGalleryOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [farmGalleryOpen]);
-
-  useEffect(() => {
-    if (!farmGalleryOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [farmGalleryOpen]);
-
-  /**
-   * Remotion ad: parent drives (1) horizontal scroll on `.rooms-grid-wide` and
-   * (2) each house card’s `.room-img-track` gallery — not the whole page.
-   */
-  useEffect(() => {
-    const onMsg = (e) => {
-      if (window.parent === window) return;
-      if (e.source !== window.parent) return;
-      const d = e.data;
-      if (!d || typeof d !== 'object') return;
-
-      const grid = document.querySelector('#accommodation .rooms-grid-wide');
-      if (!grid) return;
-
-      if (d.type === 'VC_ROOM_SCROLL' && typeof d.progress === 'number') {
-        document.documentElement.classList.add('vc-remotion-ad');
-        applyRoomRowProgress(grid, d.progress);
-        return;
-      }
-
-      if (d.type === 'VC_ROOM_AD') {
-        document.documentElement.classList.add('vc-remotion-ad');
-        if (typeof d.rowProgress === 'number') {
-          applyRoomRowProgress(grid, d.rowProgress);
-        }
-        if (typeof d.activeCard === 'number' && d.activeCard >= 0 && typeof d.gallerySlide === 'number') {
-          const cards = grid.querySelectorAll('.room-card-pub');
-          const card = cards[d.activeCard];
-          const track = card?.querySelector('.room-img-track');
-          if (track && track.clientWidth > 0) {
-            const w = track.clientWidth;
-            const slideCount = Math.max(1, Math.round(track.scrollWidth / w));
-            const maxIdx = slideCount - 1;
-            const idx = Math.min(maxIdx, Math.max(0, Math.round(d.gallerySlide)));
-            const next = Math.round(idx * w);
-            if (track.scrollLeft !== next) track.scrollLeft = next;
-          }
-        }
-      }
-    };
-    window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
-  }, []);
-
-  useEffect(() => {
-    if (document.documentElement.classList.contains('vc-remotion-ad')) {
-      return;
-    }
-    const obs = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add('visible');
-            obs.unobserve(e.target);
-          }
-        });
-      },
-      { threshold: 0.1 }
-    );
-    /* Room cards swap from FARM_STAYS → API when the catalog loads; new nodes must be observed
-       or they stay at opacity:0 forever (initial effect only ran once). */
-    document.querySelectorAll('[data-animate]').forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-  }, [catalogApiRooms.length]);
-
-  const aboutStrip = [
-    { title: 'Farm Stays', desc: 'Comfortable farm accommodation', img: IMG_FARM_EXTERIOR },
-    { title: 'Event Venue Hire', desc: 'Weddings, functions & retreats', img: IMG_BARN_GROOM },
-    { title: 'Farm Experiences', desc: 'Picnics, walks & countryside living', img: IMG_FRIENDS_TOAST },
-    { title: 'Hekpoort, Gauteng', desc: 'In the heart of the countryside', img: IMG_GARDEN_TABLE },
-  ];
-
-  const experienceItems = useMemo(() => {
-    const breakfast = findFoodAddOnOption(foodAddOnOptions, 'breakfast');
-    const picnic = findFoodAddOnOption(foodAddOnOptions, 'picnic');
-    return [
-      {
-        title: 'The Barn',
-        tag: 'Indoor venue',
-        desc: 'Spacious indoor barn with long wooden tables seating up to 40 guests. Perfect for wedding receptions, meetings, conferences and private celebrations.',
-        img: IMG_BARN_TABLE_SIDE,
-      },
-      {
-        title: 'Wedding & Events Venue',
-        tag: 'Venue hire',
-        desc: 'Garden terrace, open lawn & barn. Up to 300+ guests. Perfect for weddings, corporate days and celebrations.',
-        img: IMG_WEDDING_POOL,
-      },
-      {
-        title: 'Pool, Braai & Fireside',
-        tag: 'Seasonal · Evenings',
-        desc: 'Cool off in the farm pool by day and gather around the fire pit for a traditional braai under the stars.',
-        img: IMG_POOL_PARTY,
-      },
-      {
-        title: 'Gardens, Walks & Outdoor Spaces',
-        tag: 'Daily',
-        desc: 'Open lawns, lush gardens & sunrise farm trails. Unwind, explore, or simply breathe in the countryside.',
-        img: IMG_GAZEBO,
-      },
-      {
-        title: 'Food on Request',
-        tag: 'Add-on',
-        desc: `${breakfast?.label || 'Farm breakfast'} at ${foodAddOnRatePhrase(breakfast)} — optional add-on when you book.`,
-        img: IMG_GRAZING_BOARD,
-      },
-      {
-        title: 'Outdoor Picnic Setups',
-        tag: 'Add-on',
-        desc: `Curated picnic on the farm lawns — ${foodAddOnRatePhrase(picnic)} including setup and hamper.`,
-        img: IMG_PICNIC_WIDE,
-      },
-    ];
-  }, [foodAddOnOptions]);
-
-  const rooms = useMemo(() => {
-    const tags = ['Popular', 'Cosy', 'Premium'];
-    const ratings = [4.92, 4.89, 4.95];
-
-    if (catalogApiRooms.length > 0) {
-      return catalogApiRooms.map((apiRow, idx) => {
-        const id = String(apiRow._id ?? apiRow.id ?? idx);
-        const stay = FARM_STAYS.find((s) => apiRowMatchesStay(apiRow, s));
-        const stayIdx = stay ? FARM_STAYS.indexOf(stay) : -1;
-        const fallbackImgs =
-          stayIdx === 0 ? HOUSE1_IMAGE_PATHS : stayIdx === 1 ? HOUSE2_IMAGE_PATHS : stayIdx === 2 ? HOUSE3_IMAGE_PATHS : [];
-        const apiGallery = resolveRoomImageUrls(apiRow.images || []);
-        const fallbackGallery = resolveRoomImageUrls(fallbackImgs);
-        const gallery = apiGallery.length ? apiGallery : fallbackGallery;
-
-        let avail = 'yes';
-        let availText = '';
-        const hasDateAvail =
-          bnbDatesValid && isSuccess && landingApiRooms.length && landingAvailByRoomId.has(id);
-        if (hasDateAvail) {
-          if (landingAvailByRoomId.get(id) === false) {
-            avail = 'no';
-            availText = 'Unavailable';
-          }
-        } else if (apiRow.isAvailable === false) {
-          avail = 'no';
-          availText = 'Not listed for booking';
-        }
-
-        return {
-          roomId: id,
-          tag: tags[idx % tags.length],
-          avail,
-          availText,
-          name: String(apiRow.name || 'Room').trim() || 'Room',
-          bedsLabel: landingBedsLabelFromApi(apiRow),
-          desc: landingRoomCardDescription(apiRow),
-          amenities: landingAmenityTagsFromApi(apiRow),
-          price: landingPriceLabelFromApi(apiRow),
-          sub: 'per night',
-          rating: ratings[idx % ratings.length],
-          img: gallery[0] || '',
-          gallery,
-          isEvent: false,
-        };
-      });
-    }
-
-    return FARM_STAYS.map((stay, idx) => {
-      const imgs = [HOUSE1_IMAGE_PATHS, HOUSE2_IMAGE_PATHS, HOUSE3_IMAGE_PATHS][idx];
-      const apiRoom = landingApiRooms.find((row) => apiRowMatchesStay(row, stay));
-      const apiGallery = resolveRoomImageUrls(apiRoom?.images || []);
-      const fallbackGallery = resolveRoomImageUrls(imgs);
-      const gallery = apiGallery.length ? apiGallery : fallbackGallery;
-      const id = apiRoom ? String(apiRoom._id ?? apiRoom.id ?? '') : stay.slug;
-      let avail = 'yes';
-      let availText = '';
-      const hasDateAvailFb =
-        bnbDatesValid && isSuccess && landingApiRooms.length && id && landingAvailByRoomId.has(id);
-      if (hasDateAvailFb) {
-        if (landingAvailByRoomId.get(id) === false) {
-          avail = 'no';
-          availText = 'Unavailable';
-        }
-      } else if (apiRoom?.isAvailable === false) {
-        avail = 'no';
-        availText = 'Not listed for booking';
-      }
-      return {
-        roomId: id,
-        tag: tags[idx],
-        avail,
-        availText,
-        name: stay.name,
-        bedsLabel: stay.bedsShort,
-        desc: stay.desc,
-        amenities: stay.tags.slice(0, 4),
-        price: `R ${stay.price.toLocaleString('en-ZA')}`,
-        sub: 'per night',
-        rating: ratings[idx],
-        img: gallery[0] || '',
-        gallery,
-        isEvent: false,
-      };
-    });
-  }, [catalogApiRooms, landingApiRooms, landingAvailByRoomId, bnbDatesValid, isSuccess]);
-
-  const events = useMemo(() => {
-    const picnic = findFoodAddOnOption(foodAddOnOptions, 'picnic');
-    const picnicPrice =
-      picnic?.rate > 0 ? `R ${picnic.rate.toLocaleString('en-ZA')}` : 'On request';
-    return [
-      { icon: '💍', name: 'Weddings', desc: 'Exchange vows in our enchanting garden or barn venue. Capacity for up to 300+ guests with stunning farm backdrops throughout.', features: ['Up to 300+ guests', 'Full day venue hire', 'Decor & events management available', 'Scenic photo backdrops'], price: 'From R 30,000', sub: 'Per day venue hire', link: '/event-enquiry?type=wedding' },
-      { icon: '🎊', name: 'Celebrations & Conferences', desc: 'Birthdays, anniversaries, team retreats and strategy days. Productive and memorable events in a tranquil farm setting.', features: ['Up to 40 guests (barn)', 'Indoor barn & outdoor spaces', 'Self-catering setup', 'Decor & events management available'], price: 'From R 8,000', sub: 'Per day venue hire', link: '/event-enquiry?type=celebration' },
-      { icon: '🧺', name: 'Picnics', desc: 'Curated outdoor picnic experiences on the farm lawns. Available on special request with full setup and optional private chef.', features: ['On special request', 'Picnic setup included', 'Private chef hire available', 'Blankets, décor & food spread'], price: picnicPrice, sub: 'Per person (setup + hamper)', link: '/event-enquiry?type=picnic' },
-      { icon: '🌿', name: 'Farm Retreats', desc: 'Full-farm buyout for extended groups. Combine accommodation, activities and venue hire for an immersive farm experience.', features: ['Full-farm exclusive access', 'Farm activities included', 'All 3 farm houses', 'Dedicated host'], price: 'From R 18,000', sub: 'Per night, full farm', link: '/event-enquiry?type=retreat' },
-    ];
-  }, [foodAddOnOptions]);
-
-  const foodPricingCopy = useMemo(
-    () => foodAddOnsPricingSummary(foodAddOnOptions),
-    [foodAddOnOptions]
-  );
-
-  const testimonials = [
-    { stars: '★★★★★', text: '"An absolutely magical experience. Willow Cottage was breathtaking. We woke up to birds singing and the most incredible farm views. Breakfast was unforgettable."', author: 'SN', name: 'Sipho Nkosi', date: '3 February 2026 · Willow Cottage', avatarBg: 'var(--forest)' },
-    { stars: '★★★★★', text: '"We hosted our company strategy day here and it was perfect. The team was relaxed, focused, and inspired by the environment. We\'ll be back every quarter."', author: 'LV', name: 'Lerato van Wyk', date: '18 January 2026 · Corporate Event', avatarBg: 'var(--gold)' },
-    { stars: '★★★★★', text: '"Our wedding was beyond anything we could have dreamed of. The staff were incredible and every detail was handled perfectly. Our guests still talk about it."', author: 'TM', name: 'Thabo & Mercy', date: '12 December 2025 · Wedding', avatarBg: 'var(--sage)' },
-  ];
-
-  const accommodationRoomCards = rooms.map((room) => (
-    <div key={room.roomId || room.name} className="room-card-pub" data-animate>
-      <RoomCardImageCarousel
-        images={room.gallery?.length ? room.gallery : [room.img]}
-        roomName={room.name}
-        overlay={
-          <>
-            {room.tag === 'Popular' ? (
-              <div className="room-guest-badge">Guest favourite</div>
-            ) : null}
-            <div className={`room-tag room-tag--${room.tag.toLowerCase()}`}>{room.tag}</div>
-            <div className={`room-avail ${room.avail}`}>
-              {room.avail === 'yes' ? 'Available' : room.availText || 'Unavailable'}
-            </div>
-            <button
-              type="button"
-              className="room-wishlist"
-              aria-label="Save listing"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <i className="far fa-heart" aria-hidden />
-            </button>
-          </>
-        }
-      />
-      <div className="room-info">
-        <div className="room-name">{room.name}</div>
-        {room.bedsLabel ? <div className="room-beds">{room.bedsLabel}</div> : null}
-        <div className="room-meta-line">
-          <span className="room-meta-price">{room.price}</span>
-          <span className="room-meta-sep" aria-hidden>·</span>
-          <span className="room-meta-rating"><i className="fas fa-star" aria-hidden /> {room.rating != null ? Number(room.rating).toFixed(2) : '4.9'}</span>
-        </div>
-        <p className="room-desc">{room.desc}</p>
-        <div className="room-amenities">
-          {room.amenities.map((a) => (
-            <span key={a} className="amenity-tag">{a}</span>
-          ))}
-        </div>
-        <div className="room-footer">
-          <div>
-            <div className="room-price">{room.price}</div>
-            <div className="room-price-sub">{room.sub}</div>
-          </div>
-          <button
-            type="button"
-            className="btn-book-room"
-            onClick={() => openBookingModal(room.name, room.isEvent ? 'event' : 'room', room.roomId || '')}
-          >
-            {room.isEvent ? 'Enquire' : 'Book'}
-          </button>
-        </div>
-      </div>
-    </div>
-  ));
-
   return (
-    <div className="landing-page">
-      <nav className={['landing-nav', navOpen ? 'nav-is-open' : '', navScrolled ? 'nav-scrolled' : ''].filter(Boolean).join(' ')} aria-label="Primary">
-        <a href="#" className="nav-brand" onClick={closeNav}>
-          <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="nav-logo-img" />
-        </a>
-        <div className="nav-links">
-          <a href="#accommodation" className="nav-link">Accommodation</a>
-          <a href="#events" className="nav-link">Events & Venues</a>
-          <a href="#about" className="nav-link">About the Farm</a>
-          <a href="#experience" className="nav-link">Experience</a>
-          <a href="#contact" className="nav-link">Contact</a>
-        </div>
-        <div className="nav-actions">
-          <Link to="/booking-track" className="btn-nav btn-outline-nav"><i className="fas fa-search" style={{ fontSize: '11px' }} /> Track Booking</Link>
-          <Link to="/booking" className="btn-nav btn-gold-nav"><i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book Now</Link>
-        </div>
-        <button
-          type="button"
-          className="nav-menu-toggle"
-          aria-expanded={navOpen}
-          aria-controls="landing-nav-drawer"
-          aria-label={navOpen ? 'Close menu' : 'Open menu'}
-          onClick={() => setNavOpen((o) => !o)}
-        >
-          <i className={navOpen ? 'fas fa-times' : 'fas fa-bars'} aria-hidden />
-        </button>
-      </nav>
-      <div
-        className={`nav-drawer-backdrop ${navOpen ? 'open' : ''}`}
-        onClick={closeNav}
-        role="presentation"
-      />
-      <div
-        id="landing-nav-drawer"
-        className={`nav-drawer ${navOpen ? 'open' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Site menu"
-      >
-        <a href="#accommodation" className="nav-drawer-link" onClick={closeNav}>
-          Accommodation
-        </a>
-        <a href="#events" className="nav-drawer-link" onClick={closeNav}>
-          Events &amp; Venues
-        </a>
-        <a href="#about" className="nav-drawer-link" onClick={closeNav}>
-          About the Farm
-        </a>
-        <a href="#experience" className="nav-drawer-link" onClick={closeNav}>
-          Experience
-        </a>
-        <a href="#contact" className="nav-drawer-link" onClick={closeNav}>
-          Contact
-        </a>
-        <a href="#track" className="nav-drawer-link" onClick={closeNav}>
-          Track booking
-        </a>
-        <div className="nav-drawer-actions">
-          <Link to="/booking-track" className="btn-nav btn-outline-nav nav-drawer-btn" onClick={closeNav}>
-            <i className="fas fa-search" style={{ fontSize: '11px' }} /> Track booking
-          </Link>
-          <Link to="/booking" className="btn-nav btn-gold-nav nav-drawer-btn" onClick={closeNav}>
-            <i className="fas fa-calendar-check" style={{ fontSize: '11px' }} /> Book now
-          </Link>
-        </div>
-      </div>
-
-      <main className="landing-main">
-      <section className="hero">
-        <div className="hero-bg" />
-        <div className="hero-overlay" />
-        <div className="hero-content">
-          <div className="hero-text">
-            <div className="hero-eyebrow">South Africa · Farm & BnB</div>
-            <h1 className="hero-headline">Where the <em>Land</em><br />Comes to Life</h1>
-            <p className="hero-desc">Experience authentic farm living at ValleyCroft Farm. Luxurious BnB rooms, unforgettable event venues, and the warmth of South African countryside hospitality.</p>
-            <div className="hero-trust">
-              <div className="hero-trust-item"><i className="fas fa-star" /> 4.9 / 5 Rating</div>
-              <div className="hero-trust-item"><i className="fas fa-check-circle" /> Instant Confirmation</div>
-              <div className="hero-trust-item"><i className="fas fa-shield-alt" /> Secure Booking</div>
-            </div>
-          </div>
-          <div className="quick-book" data-animate>
-            <div className="qb-title">Check Availability</div>
-            <div className="qb-sub">Find your perfect stay at ValleyCroft</div>
-            <div className="qb-group">
-              <div className="qb-label">Booking Type</div>
-              <div className="qb-type-grid">
-                <button type="button" className={`qb-type-btn ${bookingType === 'bnb' ? 'active' : ''}`} onClick={() => selectType('bnb')}><i className="fas fa-bed" />BnB</button>
-                <button type="button" className={`qb-type-btn ${bookingType === 'event' ? 'active' : ''}`} onClick={() => selectType('event')}><i className="fas fa-glass-cheers" />Event Hire</button>
-              </div>
-            </div>
-            <div className="qb-row">
-              <div className="qb-group">
-                <div className="qb-label">Check-in Date</div>
-                <input
-                  type="date"
-                  className="qb-input"
-                  id="qbCheckin"
-                  min={todayMin}
-                  value={qbCheckIn}
-                  onChange={onQbCheckInChange}
-                />
-              </div>
-              <div className="qb-group">
-                <div className="qb-label">Check-out Date</div>
-                <input
-                  type="date"
-                  className="qb-input"
-                  id="qbCheckout"
-                  min={qbCheckIn || todayMin}
-                  value={qbCheckOut}
-                  onChange={(e) => setQbCheckOut(e.target.value)}
-                />
-              </div>
-            </div>
-            {bookingType === 'bnb' && bnbDatesValid && isFetching ? (
-              <div className="qb-availability qb-availability--checking" aria-live="polite">
-                <i className="fas fa-spinner fa-spin" aria-hidden /> Checking availability for these dates…
-              </div>
-            ) : null}
-            {bookingType === 'bnb' && landingAvail.blocked ? (
-              <div className="qb-availability qb-availability--bad" role="alert">
-                {landingAvail.message}
-              </div>
-            ) : null}
-            <div className="qb-row">
-              <div className="qb-group">
-                <div className="qb-label">Guests</div>
-                <select className="qb-input" ref={guestsRef} defaultValue="2" aria-label="Number of guests">
-                  <option value="1">1 Guest</option>
-                  <option value="2">2 Guests</option>
-                  <option value="3">3 Guests</option>
-                  <option value="4">4 Guests</option>
-                  <option value="5+">5+ Guests</option>
-                </select>
-              </div>
-              <div className="qb-group">
-                <div className="qb-label">House</div>
-                <select
-                  className="qb-input"
-                  value={qbHouse}
-                  onChange={(e) => setQbHouse(e.target.value)}
-                  aria-label="Preferred house"
-                >
-                  <option value="any">Any house</option>
-                  {catalogApiRooms.length
-                    ? catalogApiRooms.map((r) => {
-                        const id = String(r._id ?? r.id);
-                        const bed = landingBedsLabelFromApi(r);
-                        const suffix = bed ? ` (${bed})` : r.capacity ? ` (${r.capacity} guests)` : '';
-                        return (
-                          <option key={id} value={id}>
-                            {(r.name || 'Room').trim()}
-                            {suffix}
-                          </option>
-                        );
-                      })
-                    : FARM_STAYS.map((s) => (
-                        <option key={s.slug} value={s.slug}>
-                          {s.name} ({s.bedsShort})
-                        </option>
-                      ))}
-                </select>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn-book-now"
-              onClick={goToBooking}
-              disabled={bookingType === 'bnb' && landingAvail.blocked}
-            >
-              <i className="fas fa-search" /> Check Availability & Book
-            </button>
-            <div className="qb-track-link">Already booked? <Link to="/booking-track">Track your reservation →</Link></div>
-          </div>
-        </div>
-      </section>
-
-      <div className="features-strip">
-        <div className="feature-item"><i className="fas fa-check-circle" /> Instant Confirmation</div>
-        <div className="feature-item"><i className="fas fa-shield-alt" /> Secure Payment</div>
-        <div className="feature-item"><i className="fas fa-clock" /> 24/7 Guest Support</div>
-        <div className="feature-item"><i className="fas fa-wifi" /> Free WiFi Throughout</div>
-        <div className="feature-item"><i className="fas fa-person-swimming" /> Swimming pool</div>
-        <div className="feature-item"><i className="fas fa-utensils" /> Self-catering stays</div>
-      </div>
-
-      <div className="about-strip" id="about">
-        {aboutStrip.map((item) => (
-          <div key={item.title} className="about-strip-item" data-animate>
-            <div className="about-strip-img" style={{ backgroundImage: `url("${item.img}")` }} />
-            <div className="about-strip-text">
-              <div className="about-strip-title">{item.title}</div>
-              <div className="about-strip-desc">{item.desc}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <section className="quick-actions" id="book">
-        <div className="quick-actions-inner">
-          <div className="section-center" data-animate>
-            <div className="eyebrow">Book & Enquire</div>
-            <h2 className="section-heading">How can we help?</h2>
-          </div>
-          <div className="quick-actions-grid">
-            <button type="button" className="quick-action-card" onClick={scrollToRooms} data-animate>
-              <i className="fas fa-bed" />
-              <h3>Book BnB</h3>
-              <p>Choose a room and reserve your dates</p>
-            </button>
-            <button type="button" className="quick-action-card" onClick={() => navigate('/event-enquiry')} data-animate>
-              <i className="fas fa-glass-cheers" />
-              <h3>Event hire enquiry</h3>
-              <p>Weddings, celebrations, conferences and picnics. Request a quote</p>
-            </button>
-            <a href="mailto:valleycroftfarm@gmail.com" className="quick-action-card" data-animate>
-              <i className="fas fa-envelope" />
-              <h3>Contact Admin</h3>
-              <p>Questions? Get in touch</p>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section className="section" id="accommodation" ref={roomsSectionRef}>
-        <div className="section-center section-center--accom" data-animate>
-          <div className="eyebrow">Where You&apos;ll Stay</div>
-          <h2 className="section-heading">Our farm houses</h2>
-          <p className="section-desc">
-            {catalogApiRooms.length
-              ? `${catalogApiRooms.length} stay${catalogApiRooms.length === 1 ? '' : 's'} listed. Descriptions, amenities, photos and rates from the live catalog you maintain in admin (date availability refines when you pick check-in and check-out).`
-              : 'Three houses on the farm, each with its own character, from cosy Studio Flier to the spacious Blue House.'}
-          </p>
-        </div>
-        <div className="landing-m-accom-head">
-          <h2 className="landing-m-accom-title">Available farm houses</h2>
-          <button
-            type="button"
-            className="landing-m-accom-more"
-            aria-label="Scroll to house listings"
-            onClick={() => {
-              document.querySelector('#accommodation .rooms-grid-wide')?.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start',
-              });
-            }}
-          >
-            <i className="fas fa-chevron-right" aria-hidden />
-          </button>
-        </div>
-        {vcRemotionEmbed() ? (
-          <div className="rooms-grid rooms-grid-wide rooms-grid-wide--embed-ad">
-            <div className="rooms-grid-wide-adtrack">{accommodationRoomCards}</div>
-          </div>
-        ) : (
-          <div className="rooms-grid rooms-grid-wide">{accommodationRoomCards}</div>
-        )}
-        <div style={{ textAlign: 'center', marginTop: 32 }} data-animate>
-          <Link to="/booking" className="btn-view-all-rooms">
-            <i className="fas fa-calendar-alt" /> View All Rooms & Availability
-          </Link>
-        </div>
-      </section>
-
-      <section className="experience-farm-section" id="experience">
-        <div className="exp-section-inner">
-          {/* Header */}
-          <div className="exp-header" data-animate>
-            <div className="eyebrow">On the farm</div>
-            <h2 className="section-heading">Life at Valley Croft</h2>
-          <p className="section-desc">
-            From morning walks and pool days to fireside braais, picnics, and stunning event venues.
-          </p>
-          </div>
-
-          {/* Feature grid */}
-          <div className="exp-feature-grid" data-animate>
-            {experienceItems.map((exp) => (
-              <div key={exp.title} className="exp-feature-card">
-                <div className="exp-feature-photo" style={{ backgroundImage: `url("${exp.img}")` }}>
-                  {exp.tag && <span className="exp-feature-tag">{exp.tag}</span>}
-                </div>
-                <div className="exp-feature-body">
-                  <h3 className="exp-feature-title">{exp.title}</h3>
-                  <p className="exp-feature-desc">{exp.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Gallery CTA */}
-          <div className="exp-gallery-row" data-animate>
-            <div className="exp-gallery-text">
-              <i className="fas fa-images" />
-              <span>Want to see more? Browse the full photo gallery of our grounds, barn, and surroundings.</span>
-            </div>
-            <button type="button" className="btn-view-farm-gallery" onClick={openFarmGallery}>
-              View Gallery <i className="fas fa-arrow-right" aria-hidden />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="food-addons-section" id="food-addons">
-        <div className="section-center" data-animate>
-          <div className="eyebrow">Available at extra cost</div>
-          <h2 className="section-heading">Food &amp; Picnic Setups</h2>
-          <p className="section-desc">
-            Enjoy a curated picnic spread or farm-prepared meals during your stay.
-            {foodPricingCopy ? ` ${foodPricingCopy.charAt(0).toUpperCase()}${foodPricingCopy.slice(1)}.` : ''} Select add-ons when you book or enquire.
-          </p>
-        </div>
-        <div className="food-addons-grid" data-animate>
-          {[
-            { src: IMG_GRAZING_BOARD,   caption: 'Farm grazing board & catering' },
-            { src: IMG_PICNIC_WIDE,     caption: 'Picnic setup on the lawns' },
-            { src: IMG_PICNIC_COUPLE,   caption: 'Romantic outdoor dining' },
-            { src: IMG_POOL_AERIAL,     caption: 'Poolside picnic celebration' },
-          ].map((item) => (
-            <div key={item.src} className="food-addon-card">
-              <div className="food-addon-img" style={{ backgroundImage: `url("${item.src}")` }} />
-              <div className="food-addon-label">
-                <i className="fas fa-utensils" aria-hidden="true" />
-                <span dangerouslySetInnerHTML={{ __html: item.caption }} />
-              </div>
-              <span className="food-addon-badge">Add-on</span>
-            </div>
-          ))}
-        </div>
-        <div className="food-addons-cta" data-animate>
-          <p>
-            {foodPricingCopy
-              ? `To arrange food add-ons (${foodPricingCopy}), select them on the booking or event enquiry form.`
-              : 'To arrange breakfast or a picnic setup, select the add-ons on the booking or event enquiry form.'}
-          </p>
-        </div>
-      </section>
-
-      <section className="events-section" id="events">
-        <div className="events-inner">
-          <div data-animate>
-            <div className="eyebrow" style={{ color: 'var(--gold-l)' }}>Celebrate in Style</div>
-            <h2 className="section-heading" style={{ color: 'var(--white)' }}>Events &amp; Venue Hire</h2>
-            <p style={{ fontSize: 15, color: 'rgba(255,255,255,.65)', maxWidth: 540, lineHeight: 1.7 }}>From intimate garden gatherings to grand celebrations. ValleyCroft&apos;s venues offer unmatched beauty in the heart of South Africa&apos;s countryside.</p>
-          </div>
-          <div className="events-grid">
-            {events.slice(0, 3).map((event) => (
-              <div key={event.name} className="event-card" data-animate>
-                <div className="event-icon">{event.icon}</div>
-                <div className="event-name">{event.name}</div>
-                <p className="event-desc">{event.desc}</p>
-                <div className="event-features">
-                  {event.features.map((f) => (
-                    <div key={f} className="event-feat"><i className="fas fa-check" /> {f}</div>
-                  ))}
-                </div>
-                <div><div className="event-price">{event.price}</div><div className="event-price-sub">{event.sub}</div></div>
-                <Link to={event.link} className="btn-event">Send enquiry</Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="testimonials">
-        <div className="testimonials-inner">
-          <div className="section-center" data-animate>
-            <div className="eyebrow">Guest Reviews</div>
-            <h2 className="section-heading">What Our Guests Say</h2>
-          </div>
-          <div className="testi-grid">
-            {testimonials.map((t) => (
-              <div key={t.name} className="testi-card" data-animate>
-                <div className="testi-stars">{t.stars}</div>
-                <p className="testi-text">{t.text}</p>
-                <div className="testi-author">
-                  <div className="testi-avatar" style={{ background: t.avatarBg }}>{t.author}</div>
-                  <div>
-                    <div className="testi-name">{t.name}</div>
-                    <div className="testi-date">{t.date}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <div className="cta-track-row">
-        {/* Left — CTA */}
-        <div className="cta-banner">
-          <div className="cta-banner-bg" />
-          <div className="cta-banner-overlay" />
-          <div className="cta-inner">
-            <div className="cta-eyebrow"><span className="cta-eyebrow-dot" /><span>ValleyCroft Farm · Hekpoort, Gauteng, SA</span></div>
-            <h2 className="cta-heading">Your next escape<br />starts <em>here</em></h2>
-            <div className="cta-buttons">
-              <Link to="/booking" className="btn-cta btn-cta-primary"><i className="fas fa-calendar-check" /> Book a Stay</Link>
-              <Link to="/event-enquiry" className="btn-cta btn-cta-secondary"><i className="fas fa-glass-cheers" /> Enquire</Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Right — Track */}
-        <div className="track-banner" id="track">
-          <div className="track-inner">
-            <div className="track-left">
-              <p className="track-eyebrow">Already booked?</p>
-              <h3 className="track-title">Track Your Reservation</h3>
-            </div>
-            <div className="track-form">
-              <div className="track-input-wrap">
-                <label className="track-label" htmlFor="trackRef">Reference</label>
-                <input id="trackRef" type="text" className="track-input" ref={trackRefRef} placeholder="e.g. VC-2026-089" />
-              </div>
-              <div className="track-input-wrap">
-                <label className="track-label" htmlFor="trackEmail">Email</label>
-                <input id="trackEmail" type="email" className="track-input" ref={trackEmailRef} placeholder="you@email.com" />
-              </div>
-              <button type="button" className="btn-track" onClick={trackBooking}>
-                <i className="fas fa-search" /> Track
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      </main>
-
-      <div
-        className={`modal-backdrop farm-gallery-modal-backdrop ${farmGalleryOpen ? 'open' : ''}`}
-        onClick={closeFarmGallery}
-        role="presentation"
-      >
-        <div
-          className="farm-gallery-modal-box"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="farm-gallery-modal-title"
-        >
-          <button type="button" className="modal-close" onClick={closeFarmGallery} aria-label="Close gallery">
-            <i className="fas fa-times" />
-          </button>
-          <h3 id="farm-gallery-modal-title" className="farm-gallery-modal-title">
-            ValleyCroft photo gallery
-          </h3>
-          <p className="farm-gallery-modal-lead">
-            Outdoors includes the entrance walkway, pool, lawns, and patios. Barn photos show the interior event space.
-          </p>
-          <div className="farm-gallery-modal-scroll">
-            <h4 className="farm-gallery-modal-subhead">Grounds &amp; outdoors</h4>
-            <div className="farm-gallery-modal-grid">
-              {FARM_SURROUNDINGS_PHOTOS.map((src, i) => (
-                <div
-                  key={src}
-                  className="farm-gallery-modal-cell"
-                  style={{ backgroundImage: `url("${src}")` }}
-                  role="img"
-                  aria-label={`Outdoors, photo ${i + 1}`}
-                />
-              ))}
-            </div>
-            <h4 className="farm-gallery-modal-subhead farm-gallery-modal-subhead--barn">Barn interior</h4>
-            <div className="farm-gallery-modal-grid">
-              {FARM_BARN_INTERIOR_PHOTOS.map((src, i) => (
-                <div
-                  key={src}
-                  className="farm-gallery-modal-cell"
-                  style={{ backgroundImage: `url("${src}")` }}
-                  role="img"
-                  aria-label={`Barn interior, photo ${i + 1}`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={`modal-backdrop ${messageModal.open ? 'open' : ''}`}
-        onClick={() => setMessageModal({ open: false, title: '', message: '' })}
-        role="presentation"
-      >
-        <div className="modal-box" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="landing-msg-title">
-          <button
-            type="button"
-            className="modal-close"
-            onClick={() => setMessageModal({ open: false, title: '', message: '' })}
-            aria-label="Close"
-          >
-            <i className="fas fa-times" />
-          </button>
-          <h3 id="landing-msg-title" className="modal-title">
-            {messageModal.title}
-          </h3>
-          <p className="modal-desc">{messageModal.message}</p>
-          <button
-            type="button"
-            className="btn-modal-primary"
-            onClick={() => setMessageModal({ open: false, title: '', message: '' })}
-          >
-            OK
-          </button>
-        </div>
-      </div>
-
-      <div className={`modal-backdrop ${modalOpen ? 'open' : ''}`} onClick={closeModal} role="presentation">
-        <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-          <button type="button" className="modal-close" onClick={closeModal} aria-label="Close"><i className="fas fa-times" /></button>
-          <h3 className="modal-title">Book {bookingContext.name}</h3>
-          <p className="modal-desc">
-            Continue to the booking flow to choose dates and complete your self-catering farm stay.
-          </p>
-          <Link
-            to="/booking"
-            className="btn-modal-primary"
-            state={buildBookingNavState({
-              bookingType: 'bnb',
-              ...(bookingContext.preferredRoomId ? { preferredRoomId: bookingContext.preferredRoomId } : {}),
-            })}
-            onClick={closeModal}
-          >
-            Continue to booking
-          </Link>
-          <p className="modal-contact">Or contact us: <a href="mailto:valleycroftfarm@gmail.com">valleycroftfarm@gmail.com</a> · <a href="tel:+27718024479">+27 718 024 479</a></p>
-        </div>
-      </div>
-
-      <footer id="contact">
-        <div className="footer-inner">
-          <div className="footer-top">
-            {/* Brand column */}
-            <div className="footer-brand-col">
-              <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="footer-logo-img" />
-              <p className="footer-brand-desc">Authentic BnB accommodation and premier event venue hire in the heart of South Africa&apos;s countryside.</p>
-              <div className="footer-socials">
-                <a href="https://www.facebook.com/valleycroftfarm" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="Facebook"><i className="fa-brands fa-facebook-f" /></a>
-                <a href="https://www.instagram.com/valleycroftfarm" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="Instagram"><i className="fa-brands fa-instagram" /></a>
-                <a href="https://wa.me/27718024479" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +27 718 024 479"><i className="fa-brands fa-whatsapp" /></a>
-                <a href="https://wa.me/27734059419" target="_blank" rel="noopener noreferrer" className="social-btn" aria-label="WhatsApp +27 734 059 419"><i className="fa-brands fa-whatsapp" /></a>
-              </div>
-            </div>
-
-            {/* Accommodation */}
-            <div>
-              <div className="footer-col-title">Accommodation</div>
-              <Link to="/booking" className="footer-link">Willow Cottage (2 bed)</Link>
-              <Link to="/booking" className="footer-link">Studio Flier (1 bed)</Link>
-              <Link to="/booking" className="footer-link">The Blue House</Link>
-              <Link to="/booking" className="footer-link">Farm Retreat</Link>
-            </div>
-
-            {/* Events */}
-            <div>
-              <div className="footer-col-title">Events</div>
-              <Link to="/event-enquiry?type=wedding" className="footer-link">Weddings</Link>
-              <Link to="/event-enquiry?type=celebration" className="footer-link">Celebrations &amp; Conferences</Link>
-              <Link to="/event-enquiry?type=picnic" className="footer-link">Picnics</Link>
-              <Link to="/event-enquiry?type=retreat" className="footer-link">Farm Retreats</Link>
-            </div>
-
-            {/* Contact */}
-            <div>
-              <div className="footer-col-title">Get in Touch</div>
-              <a href="tel:+27718024479" className="footer-contact-row">
-                <span className="footer-contact-icon"><i className="fas fa-phone" /></span>
-                <span>+27 718 024 479</span>
-              </a>
-              <a href="tel:+27734059419" className="footer-contact-row">
-                <span className="footer-contact-icon"><i className="fas fa-phone" /></span>
-                <span>+27 734 059 419</span>
-              </a>
-              <a href="mailto:valleycroftfarm@gmail.com" className="footer-contact-row">
-                <span className="footer-contact-icon"><i className="fas fa-envelope" /></span>
-                <span>valleycroftfarm@gmail.com</span>
-              </a>
-              <a href="https://www.valleycroftfarm.com" target="_blank" rel="noopener noreferrer" className="footer-contact-row">
-                <span className="footer-contact-icon"><i className="fas fa-globe" /></span>
-                <span>valleycroftfarm.com</span>
-              </a>
-              <div className="footer-contact-row">
-                <span className="footer-contact-icon"><i className="fas fa-map-marker-alt" /></span>
-                <span>Hekpoort, Johannesburg, Gauteng, SA</span>
-              </div>
-              <div className="footer-col-title" style={{ marginTop: 20 }}>Guest Services</div>
-              <Link to="/booking-track" className="footer-link">Track Reservation</Link>
-            </div>
-          </div>
-
-          <div className="footer-bottom">
-            <div className="footer-copy">© 2026 ValleyCroft Farm. All rights reserved.</div>
-            <div className="footer-copy">Developed by Chynae Digital Solutions</div>
-          </div>
-        </div>
-      </footer>
-
-      <nav className="landing-m-bottom-nav" aria-label="Mobile quick links">
-        <button type="button" className="landing-m-bottom-item landing-m-bottom-item--active" onClick={() => scrollToHash('#accommodation')}>
-          <i className="fas fa-compass" aria-hidden />
-          <span>Explore</span>
-        </button>
-        <Link to="/booking" className="landing-m-bottom-item">
-          <i className="fas fa-calendar-check" aria-hidden />
-          <span>Book</span>
-        </Link>
-        <button type="button" className="landing-m-bottom-item" onClick={() => scrollToHash('#events')}>
-          <i className="fas fa-glass-cheers" aria-hidden />
-          <span>Events</span>
-        </button>
-        <Link to="/booking-track" className="landing-m-bottom-item">
-          <i className="fas fa-suitcase" aria-hidden />
-          <span>Trips</span>
-        </Link>
-      </nav>
-    </div>
+    <PublicSiteShell animateKey="home">
+      <LandingContent />
+    </PublicSiteShell>
   );
 }

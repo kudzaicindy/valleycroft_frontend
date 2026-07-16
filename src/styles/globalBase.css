@@ -19,6 +19,8 @@
   --text-muted: #7A8B6A;
   --red: #C0392B;
   --shadow: 0 4px 24px rgba(45, 80, 22, 0.12);
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-body: 'Lora', Georgia, 'Times New Roman', serif;
 }
 
 *, *::before, *::after {
@@ -32,7 +34,7 @@ html {
 }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
   background: var(--white);
   color: var(--text);
   margin: 0;
@@ -52,10 +54,10 @@ img {
 
 button {
   cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
 }
 
 input, select, textarea {
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-body);
 }
 

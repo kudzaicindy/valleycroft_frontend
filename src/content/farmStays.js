@@ -8,27 +8,27 @@
  */
 
 const HOUSE1_IMAGES = [
-  '/house 1living room.jpeg',
-  '/house 1living room 2.jpeg',
-  '/house 1bed 1.jpeg',
-  '/house 1 bed 2.jpeg',
-  '/house 1 bathroom.jpeg',
+  encodeURI('/house 1living room.jpeg'),
+  encodeURI('/house 1living room 2.jpeg'),
+  encodeURI('/house 1bed 1.jpeg'),
+  encodeURI('/house 1 bed 2.jpeg'),
+  encodeURI('/house 1 bathroom.jpeg'),
 ];
 
 const HOUSE2_IMAGES = [
-  '/house 2 living.jpeg',
-  '/house 2 living 2.jpeg',
-  '/house 2 living 3.jpeg',
-  '/house 2 bath 1.jpeg',
-  '/house 2 bath 2.jpeg',
+  encodeURI('/house 2 living.jpeg'),
+  encodeURI('/house 2 living 2.jpeg'),
+  encodeURI('/house 2 living 3.jpeg'),
+  encodeURI('/house 2 bath 1.jpeg'),
+  encodeURI('/house 2 bath 2.jpeg'),
 ];
 
 const HOUSE3_IMAGES = [
-  '/house 3 living.jpeg',
-  '/house 3 bed 1.jpeg',
-  '/house 3 bed 2.jpeg',
-  '/house 3 kitchen.jpeg',
-  '/house 3 bath.jpeg',
+  encodeURI('/house 3 living.jpeg'),
+  encodeURI('/house 3 bed 1.jpeg'),
+  encodeURI('/house 3 bed 2.jpeg'),
+  encodeURI('/house 3 kitchen.jpeg'),
+  encodeURI('/house 3 bath.jpeg'),
 ];
 
 export const FARM_STAYS = [

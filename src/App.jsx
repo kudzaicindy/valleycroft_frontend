@@ -18,6 +18,8 @@ const queryClient = new QueryClient({
 });
 
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
+const StaysPage = lazy(() => import('@/pages/StaysPage'));
+const EventsPage = lazy(() => import('@/pages/EventsPage'));
 const BookingPage = lazy(() => import('@/pages/BookingPage'));
 const EventEnquiryPage = lazy(() => import('@/pages/EventEnquiryPage'));
 const BookingTrackPage = lazy(() => import('@/pages/BookingTrackPage'));
@@ -73,6 +75,8 @@ function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/stays" element={<StaysPage />} />
+              <Route path="/events" element={<EventsPage />} />
               <Route path="/booking" element={<BookingPage />} />
               <Route path="/event-enquiry" element={<EventEnquiryPage />} />
               <Route path="/booking-track" element={<BookingTrackPage />} />
