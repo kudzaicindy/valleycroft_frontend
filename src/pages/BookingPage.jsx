@@ -144,6 +144,12 @@ export default function BookingPage() {
     enabled: !skipRoomsApiInEmbed(),
   });
 
+  useEffect(() => {
+    if (foodAddOnsLoading) return;
+    const allowed = new Set(foodAddOnOptions.map((o) => o.id));
+    setFoodAddons((prev) => prev.filter((id) => allowed.has(id)));
+  }, [foodAddOnsLoading, foodAddOnOptions]);
+
   const { data: roomsMediaRaw } = useQuery({
     queryKey: ['booking-rooms-catalog-media'],
     queryFn: () => getRoomsPublicMedia(),
@@ -382,14 +388,6 @@ export default function BookingPage() {
   function selectRoomWithGallery(r) {
     if (!r.avail) return;
     applyRoomSelection(r);
-    if (!r.images?.length) return;
-    setRoomGallery({
-      name: r.name,
-      images: r.images,
-      index: 0,
-      room: r,
-      previewOnly: false,
-    });
   }
 
   function toggleChip(label) {
@@ -938,18 +936,22 @@ export default function BookingPage() {
                     </div>
                   </div>
                 </div>
-                <hr className="divider" style={{ margin: '20px 0', borderColor: 'var(--linen-d)' }} />
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
-                  Food add-ons <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span>
-                </div>
-                <FoodAddonPicker
-                  options={foodAddOnOptions}
-                  loading={foodAddOnsLoading}
-                  selected={foodAddons}
-                  onToggle={toggleFoodAddon}
-                  guestCount={guestCount}
-                  nights={nights}
-                />
+                {foodAddOnsLoading || foodAddOnOptions.length > 0 ? (
+                  <>
+                    <hr className="divider" style={{ margin: '20px 0', borderColor: 'var(--linen-d)' }} />
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
+                      Food add-ons <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span>
+                    </div>
+                    <FoodAddonPicker
+                      options={foodAddOnOptions}
+                      loading={foodAddOnsLoading}
+                      selected={foodAddons}
+                      onToggle={toggleFoodAddon}
+                      guestCount={guestCount}
+                      nights={nights}
+                    />
+                  </>
+                ) : null}
                 <hr className="divider" style={{ margin: '20px 0', borderColor: 'var(--linen-d)' }} />
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--forest-d)', marginBottom: 14 }}>
                   Special Requests <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span>

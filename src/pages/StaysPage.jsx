@@ -135,6 +135,7 @@ export default function StaysPage() {
           ))}
         </div>
 
+        {addOns.length > 0 ? (
         <section className="vc-stay-addons-wrap" id="food-addons">
           <header className="vc-stay-addons-head">
             <div className="vc-stay-addons-head-bg" aria-hidden="true">
@@ -184,6 +185,7 @@ export default function StaysPage() {
             );
           })}
         </section>
+        ) : null}
       </main>
     </PublicSiteShell>
   );

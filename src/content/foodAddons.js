@@ -38,6 +38,27 @@ function resolveUnitLabel(rateLabel, meta) {
   return raw;
 }
 
+const FALSEY_FLAGS = new Set([false, 0, '0', 'false', 'no', 'off', 'inactive', 'hidden']);
+
+/** Admin "Visible on public site" (`isActive`) and related API aliases. */
+export function isFoodAddOnPubliclyVisible(row) {
+  if (!row || typeof row !== 'object') return true;
+  const flags = [
+    row.isActive,
+    row.active,
+    row.visible,
+    row.isVisible,
+    row.visibleOnPublicSite,
+    row.visibleOnSite,
+    row.listed,
+  ];
+  return !flags.some((v) => {
+    if (v == null || v === '') return false;
+    if (typeof v === 'string') return FALSEY_FLAGS.has(v.trim().toLowerCase());
+    return FALSEY_FLAGS.has(v);
+  });
+}
+
 /**
  * Map API catalogue row to UI option shape.
  * @param {Record<string, unknown>} row
@@ -51,7 +72,7 @@ export function normalizeFoodAddOnRow(row) {
   const unitPrice = Number(row.unitPrice ?? row.price ?? defaults?.unitPrice ?? 0);
   const label = String(row.label || defaults?.label || id).trim() || defaults?.label || id;
   const unitLabel = resolveUnitLabel(row.rateLabel, meta);
-  const isActive = row.isActive !== false;
+  const isActive = isFoodAddOnPubliclyVisible(row);
 
   return {
     id,
@@ -75,10 +96,14 @@ export function normalizeFoodAddOnCatalog(apiList, opts = {}) {
   const mapped = rows.map(normalizeFoodAddOnRow).filter(Boolean);
   const byId = new Map(mapped.map((o) => [o.id, o]));
 
-  for (const id of Object.keys(FOOD_ADDON_META)) {
-    if (!byId.has(id)) {
-      const fallback = normalizeFoodAddOnRow({ addOnId: id, ...FOOD_ADDON_DEFAULTS[id] });
-      if (fallback) byId.set(id, fallback);
+  // Admin manage: fill any missing known add-ons so they can be re-enabled.
+  // Public catalogue: trust the API list — omitted items stay hidden.
+  if (!activeOnly) {
+    for (const id of Object.keys(FOOD_ADDON_META)) {
+      if (!byId.has(id)) {
+        const fallback = normalizeFoodAddOnRow({ addOnId: id, ...FOOD_ADDON_DEFAULTS[id] });
+        if (fallback) byId.set(id, fallback);
+      }
     }
   }
 
@@ -87,7 +112,7 @@ export function normalizeFoodAddOnCatalog(apiList, opts = {}) {
     return order.indexOf(a.id) - order.indexOf(b.id);
   });
 
-  if (activeOnly) list = list.filter((o) => o.isActive !== false);
+  if (activeOnly) list = list.filter((o) => o.isActive);
   return list;
 }
 
@@ -110,8 +135,8 @@ export function foodAddonLineTotal(option, guestCount, nights = 1) {
 }
 
 function resolveOptions(options) {
-  const list = options?.length ? options : DEFAULT_FOOD_ADDON_OPTIONS;
-  return list;
+  if (Array.isArray(options)) return options;
+  return DEFAULT_FOOD_ADDON_OPTIONS;
 }
 
 /**

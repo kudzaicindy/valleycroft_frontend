@@ -7499,3 +7499,127 @@
   color: var(--text-muted, #7a8b6a);
   margin-top: 2px;
 }
+
+/* ---- Audit trail ---- */
+.dashboard .audit-details-cell {
+  max-width: 360px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-mid, #3d4f2a);
+  white-space: normal;
+}
+
+.dashboard .audit-expand-placeholder {
+  display: inline-flex;
+  width: 28px;
+  justify-content: center;
+  color: var(--text-muted, #7a8b6a);
+  opacity: 0.45;
+}
+
+.dashboard .audit-action-badge {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.dashboard .audit-action-badge--delete,
+.dashboard .audit-action-badge--remove,
+.dashboard .audit-action-badge--destroy {
+  background: var(--red-light, #fadbd8);
+  color: var(--red, #c0392b);
+}
+
+.dashboard .audit-action-badge--update,
+.dashboard .audit-action-badge--edit,
+.dashboard .audit-action-badge--patch,
+.dashboard .audit-action-badge--modify {
+  background: rgba(184, 137, 42, 0.16);
+  color: var(--gold, #b8892a);
+}
+
+.dashboard .audit-action-badge--create,
+.dashboard .audit-action-badge--insert,
+.dashboard .audit-action-badge--add {
+  background: rgba(143, 168, 90, 0.2);
+  color: var(--forest, #2d5016);
+}
+
+.dashboard .audit-detail-panel {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard .audit-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dashboard .audit-detail-meta-label {
+  color: var(--text-muted, #7a8b6a);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+.dashboard .audit-detail-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-mid, #3d4f2a);
+}
+
+.dashboard .audit-detail-block {
+  border: 1px solid var(--linen-dark, #d8d2c4);
+  border-radius: 8px;
+  background: var(--white, #fdfbf7);
+  overflow: hidden;
+}
+
+.dashboard .audit-detail-block-title {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--forest, #2d5016);
+  background: rgba(143, 168, 90, 0.1);
+  border-bottom: 1px solid var(--linen-dark, #d8d2c4);
+}
+
+.dashboard .audit-diff-table th,
+.dashboard .audit-diff-table td {
+  vertical-align: top;
+  font-size: 12px;
+}
+
+.dashboard .audit-diff-table pre,
+.dashboard .audit-json-block {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.dashboard .audit-json-block {
+  padding: 10px 12px;
+  max-height: 280px;
+  overflow: auto;
+  background: rgba(28, 43, 14, 0.03);
+}
+
+.dashboard .audit-diff-before {
+  color: var(--red, #c0392b);
+  background: rgba(192, 57, 43, 0.04);
+}
+
+.dashboard .audit-diff-after {
+  color: var(--forest, #2d5016);
+  background: rgba(45, 80, 22, 0.05);
+}

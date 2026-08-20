@@ -253,7 +253,6 @@ export default function EventEnquiryPage() {
     const t = (searchParams.get('type') || '').toLowerCase();
     if (EVENT_TYPES.some((o) => o.value === t)) {
       setEventType(t);
-      if (t === 'picnic') setFoodAddons(['picnic']);
     }
   }, [searchParams]);
 
@@ -267,6 +266,11 @@ export default function EventEnquiryPage() {
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
   }, [guestCount]);
 
+  const skipRoomsApi = skipRoomsApiInEmbed();
+  const { options: foodAddOnOptions, isPending: foodAddOnsLoading } = useFoodAddOns({
+    enabled: !skipRoomsApi,
+  });
+
   const foodEstimate = useMemo(
     () => foodAddonsTotal(foodAddons, parsedGuestCount, 1, foodAddOnOptions),
     [foodAddons, parsedGuestCount, foodAddOnOptions]
@@ -278,10 +282,17 @@ export default function EventEnquiryPage() {
     );
   }
 
-  const skipRoomsApi = skipRoomsApiInEmbed();
-  const { options: foodAddOnOptions, isPending: foodAddOnsLoading } = useFoodAddOns({
-    enabled: !skipRoomsApi,
-  });
+  useEffect(() => {
+    if (foodAddOnsLoading) return;
+    const allowed = new Set(foodAddOnOptions.map((o) => o.id));
+    setFoodAddons((prev) => {
+      let next = prev.filter((id) => allowed.has(id));
+      if (eventType === 'picnic' && allowed.has('picnic') && !next.includes('picnic')) {
+        next = [...next, 'picnic'];
+      }
+      return next;
+    });
+  }, [foodAddOnsLoading, foodAddOnOptions, eventType]);
   const today = useMemo(() => new Date(), []);
   const checkInStr = useMemo(() => toLocalDateStr(today), [today]);
   const checkOutStr = useMemo(() => {
@@ -561,17 +572,19 @@ export default function EventEnquiryPage() {
                       />
                     </div>
                   </div>
-                  <div className="event-enquiry-food-section">
-                    <h3 className="event-enquiry-food-heading">Food add-ons</h3>
-                    <FoodAddonPicker
-                      options={foodAddOnOptions}
-                      loading={foodAddOnsLoading}
-                      selected={foodAddons}
-                      onToggle={toggleFoodAddon}
-                      guestCount={parsedGuestCount}
-                      nights={1}
-                    />
-                  </div>
+                  {foodAddOnsLoading || foodAddOnOptions.length > 0 ? (
+                    <div className="event-enquiry-food-section">
+                      <h3 className="event-enquiry-food-heading">Food add-ons</h3>
+                      <FoodAddonPicker
+                        options={foodAddOnOptions}
+                        loading={foodAddOnsLoading}
+                        selected={foodAddons}
+                        onToggle={toggleFoodAddon}
+                        guestCount={parsedGuestCount}
+                        nights={1}
+                      />
+                    </div>
+                  ) : null}
                   <div className="form-group">
                     <label className="form-label" htmlFor="ev-msg">
                       Details &amp; questions
