@@ -4959,6 +4959,26 @@
   margin-top: 10px;
 }
 
+.dashboard .rooms-page .rooms-admin-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.dashboard .rooms-page .rooms-admin-gallery-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  max-width: 96px;
+}
+
+.dashboard .rooms-page .rooms-admin-gallery-remove {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
 .dashboard .rooms-page .rooms-admin-upload-thumb {
   width: 72px;
   height: 72px;

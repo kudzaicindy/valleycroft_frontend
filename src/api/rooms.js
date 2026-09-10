@@ -102,11 +102,11 @@ async function putWithAliasesFetch(paths, body, token) {
   throw lastError || new Error('Request failed');
 }
 
-async function deleteWithAliases(paths) {
+async function deleteWithAliases(paths, config) {
   let lastError;
   for (const path of filterPathsForRole(paths)) {
     try {
-      return await axiosInstance.delete(path);
+      return await axiosInstance.delete(path, config);
     } catch (err) {
       const status = err?.response?.status;
       if (status === 404 || status === 405) {
@@ -120,7 +120,7 @@ async function deleteWithAliases(paths) {
 }
 
 /**
- * Normalize upload API response to URL/path strings for PUT /api/rooms/:id { images }.
+ * Normalize upload API response to URL/path strings.
  * Handles { urls }, { images }, arrays, or a full room object with images.
  */
 export function normalizeRoomImageUploadResult(result) {
@@ -244,6 +244,25 @@ export function updateRoom(id, body, token) {
     [`/api/admin/rooms/${id}`, `/api/rooms/${id}`],
     body,
     token
+  );
+}
+
+/**
+ * DELETE /api/rooms/:id/images — remove gallery items (do not clear via PUT images: []).
+ * Body: { images: string[] } paths/URLs to remove.
+ */
+export function deleteRoomImages(roomId, images) {
+  const list = (Array.isArray(images) ? images : [images])
+    .map((x) => (typeof x === 'string' ? x : x?.url || x?.path || x?.src || ''))
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  if (!roomId || !list.length) {
+    return Promise.reject(new Error('No images to remove'));
+  }
+  const id = encodeURIComponent(roomId);
+  return deleteWithAliases(
+    [`/api/admin/rooms/${id}/images`, `/api/rooms/${id}/images`],
+    { data: { images: list } }
   );
 }
 

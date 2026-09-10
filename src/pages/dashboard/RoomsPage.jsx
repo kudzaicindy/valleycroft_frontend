@@ -9,8 +9,8 @@ import {
   updateRoom,
   createRoom,
   deleteRoom,
+  deleteRoomImages,
   uploadRoomImages,
-  normalizeRoomImageUploadResult,
 } from '@/api/rooms';
 import { getGuestBookings } from '@/api/guestBookings';
 import {
@@ -390,12 +390,9 @@ export default function RoomsPage() {
       const res = await createRoom(body);
       const room = res?.data;
       const newId = room?._id ?? room?.id;
+      // Gallery is owned by POST /images — never follow with PUT images (can wipe if URLs aren't returned).
       if (newId && files?.length) {
-        const uploaded = await uploadRoomImages(newId, files);
-        const newUrls = normalizeRoomImageUploadResult(uploaded);
-        if (newUrls.length) {
-          await updateRoom(newId, { images: [...(body.images || []), ...newUrls] });
-        }
+        await uploadRoomImages(newId, files);
       }
       return { res, newId };
     },
@@ -421,14 +418,27 @@ export default function RoomsPage() {
   });
 
   const adminRoomSaveMutation = useMutation({
-    mutationFn: async ({ id, body, files }) => {
-      let images = [...(body.images || [])];
+    mutationFn: async ({ id, body, files, extraImageUrls }) => {
+      // Add photos via POST only — do not PUT images:[] or merge stale textarea URLs.
       if (files?.length) {
-        const uploaded = await uploadRoomImages(id, files);
-        const newUrls = normalizeRoomImageUploadResult(uploaded);
-        images = [...images, ...newUrls];
+        await uploadRoomImages(id, files);
       }
-      return updateRoom(id, { ...body, images });
+      const saved = await updateRoom(id, body);
+      const extras = Array.isArray(extraImageUrls)
+        ? extraImageUrls.map((u) => String(u || '').trim()).filter(Boolean)
+        : [];
+      if (extras.length) {
+        const fresh = await getRoom(id);
+        const room = fresh?.data ?? fresh ?? {};
+        const current = (Array.isArray(room.images) ? room.images : [])
+          .map((i) => (typeof i === 'string' ? i : i?.url || i?.path || i?.src || ''))
+          .filter(Boolean);
+        const merged = [...new Set([...current, ...extras])];
+        if (merged.length) {
+          await updateRoom(id, { images: merged });
+        }
+      }
+      return saved;
     },
     onMutate: () => {
       if (roomDetailCloseTimerRef.current) {
@@ -442,6 +452,7 @@ export default function RoomsPage() {
       queryClient.invalidateQueries({ queryKey: ['room', id] });
       invalidateLandingRoomQueries();
       setEditImageFiles([]);
+      setEditImagesText('');
       if (editFileInputRef.current) editFileInputRef.current.value = '';
       setSpaceSaveNotice('Space updated.');
       if (roomDetailCloseTimerRef.current) clearTimeout(roomDetailCloseTimerRef.current);
@@ -450,6 +461,15 @@ export default function RoomsPage() {
         setSpaceSaveNotice('');
         roomDetailCloseTimerRef.current = null;
       }, 750);
+    },
+  });
+
+  const deleteRoomImageMutation = useMutation({
+    mutationFn: ({ id, images }) => deleteRoomImages(id, images),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['room', id] });
+      invalidateLandingRoomQueries();
     },
   });
 
@@ -499,13 +519,8 @@ export default function RoomsPage() {
     setEditBathroom(String(selectedRoom.bathroom ?? ''));
     setEditView(String(selectedRoom.view ?? ''));
     setEditPrice(String(selectedRoom.pricePerNight ?? ''));
-    const imgs = Array.isArray(selectedRoom.images) ? selectedRoom.images : [];
-    setEditImagesText(
-      imgs
-        .map((i) => (typeof i === 'string' ? i : i?.url || i?.path || i?.src || ''))
-        .filter(Boolean)
-        .join('\n')
-    );
+    // Do not mirror gallery into the textarea — empty/stale images on PUT wiped uploads.
+    setEditImagesText('');
     setEditDescription(String(selectedRoom.description || selectedRoom.spaceDescription || ''));
     setEditAmenitiesText(amenitiesToMultiline(selectedRoom.amenities));
     setEditImageFiles([]);
@@ -513,7 +528,6 @@ export default function RoomsPage() {
   }, [
     selectedRoom?._id,
     selectedRoom?.id,
-    selectedRoom?.images,
     selectedRoom?.name,
     selectedRoom?.type,
     selectedRoom?.pricePerNight,
@@ -525,6 +539,19 @@ export default function RoomsPage() {
     selectedRoom?.spaceDescription,
     selectedRoom?.amenities,
   ]);
+
+  function roomGalleryUrls(room) {
+    return (Array.isArray(room?.images) ? room.images : [])
+      .map((i) => (typeof i === 'string' ? i : i?.url || i?.path || i?.src || ''))
+      .filter(Boolean);
+  }
+
+  function handleRemoveRoomImage(imageUrl) {
+    if (!selectedRoom || !imageUrl) return;
+    const id = selectedRoom._id ?? selectedRoom.id;
+    if (!id) return;
+    deleteRoomImageMutation.mutate({ id, images: [imageUrl] });
+  }
 
   function setRoomStatus(roomId, status) {
     updateMutation.mutate({
@@ -545,6 +572,7 @@ export default function RoomsPage() {
     const name = newRoomName.trim();
     if (!name) return;
     const price = Number(newRoomPrice);
+    const urlImages = parseImageLines(newRoomImagesText);
     createRoomMutation.mutate({
       body: {
         name,
@@ -555,7 +583,7 @@ export default function RoomsPage() {
         floor: newRoomFloor.trim() || '1',
         capacity: Math.max(1, Number(newRoomCapacity) || 2),
         ...(newRoomBeds.trim() ? { bedConfig: newRoomBeds.trim() } : {}),
-        images: parseImageLines(newRoomImagesText),
+        ...(urlImages.length ? { images: urlImages } : {}),
         ...(newRoomDescription.trim() ? { description: newRoomDescription.trim() } : {}),
         ...(parseImageLines(newRoomAmenitiesText).length
           ? { amenities: parseImageLines(newRoomAmenitiesText) }
@@ -580,7 +608,6 @@ export default function RoomsPage() {
       category: editSpaceCategory,
       isEventSpace: editSpaceCategory === 'event',
       pricePerNight: Number.isFinite(price) && price >= 0 ? price : 0,
-      images: parseImageLines(editImagesText),
       description: editDescription.trim(),
       amenities: parseImageLines(editAmenitiesText),
     };
@@ -588,7 +615,12 @@ export default function RoomsPage() {
     if (editBeds.trim()) body.bedConfig = editBeds.trim();
     if (editBathroom.trim()) body.bathroom = editBathroom.trim();
     if (editView.trim()) body.view = editView.trim();
-    adminRoomSaveMutation.mutate({ id, body, files: editImageFiles });
+    adminRoomSaveMutation.mutate({
+      id,
+      body,
+      files: editImageFiles,
+      extraImageUrls: parseImageLines(editImagesText),
+    });
   }
 
   function handleDeleteSelectedSpace() {
@@ -860,8 +892,8 @@ export default function RoomsPage() {
                     </div>
                   ) : null}
                   <p className="rooms-admin-hint" style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-                    Update details, price, and photos. Uploads use <code>POST /api/rooms/:id/images</code> (multipart field{' '}
-                    <code>images</code>), then <code>PUT /api/rooms/:id</code> merges returned paths with existing gallery.
+                    Update details and price. Photos: <code>POST /api/rooms/:id/images</code> to add,{' '}
+                    <code>DELETE /api/rooms/:id/images</code> to remove. Form save does not clear the gallery.
                   </p>
                   <form className="form-stack" onSubmit={handleAdminRoomSave}>
                     <div className="form-group">
@@ -995,6 +1027,37 @@ export default function RoomsPage() {
                       />
                     </div>
                     <div className="form-group">
+                      <label className="form-label">Current photos</label>
+                      {roomGalleryUrls(selectedRoom).length === 0 ? (
+                        <p className="rooms-admin-hint" style={{ fontSize: 12, margin: 0 }}>No photos yet.</p>
+                      ) : (
+                        <div className="rooms-admin-gallery">
+                          {roomGalleryUrls(selectedRoom).map((url) => (
+                            <div key={url} className="rooms-admin-gallery-item">
+                              <img
+                                src={resolveRoomImageUrl(url) || url}
+                                alt=""
+                                className="rooms-admin-upload-thumb"
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm rooms-admin-gallery-remove"
+                                onClick={() => handleRemoveRoomImage(url)}
+                                disabled={deleteRoomImageMutation.isPending}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {deleteRoomImageMutation.isError ? (
+                        <p className="rooms-events-cal-error" role="alert" style={{ marginTop: 6 }}>
+                          {deleteRoomImageMutation.error?.message || 'Could not remove photo.'}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-upload">
                         Upload photos
                       </label>
@@ -1032,7 +1095,7 @@ export default function RoomsPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-images">
-                        Extra image URLs (optional, one per line)
+                        Append image URLs (optional, one per line)
                       </label>
                       <textarea
                         id="room-edit-images"
@@ -1040,7 +1103,7 @@ export default function RoomsPage() {
                         rows={3}
                         value={editImagesText}
                         onChange={(e) => setEditImagesText(e.target.value)}
-                        placeholder="https://… or /uploads/…"
+                        placeholder="https://… or /uploads/… — only new URLs; leave blank to leave gallery unchanged"
                       />
                     </div>
                     {adminRoomSaveMutation.isError && (
@@ -1435,6 +1498,37 @@ export default function RoomsPage() {
                       <input id="room-edit-price-modal" type="number" min={0} step={1} className="form-control" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
                     </div>
                     <div className="form-group">
+                      <label className="form-label">Current photos</label>
+                      {roomGalleryUrls(selectedRoom).length === 0 ? (
+                        <p className="rooms-admin-hint" style={{ fontSize: 12, margin: 0 }}>No photos yet.</p>
+                      ) : (
+                        <div className="rooms-admin-gallery">
+                          {roomGalleryUrls(selectedRoom).map((url) => (
+                            <div key={url} className="rooms-admin-gallery-item">
+                              <img
+                                src={resolveRoomImageUrl(url) || url}
+                                alt=""
+                                className="rooms-admin-upload-thumb"
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm rooms-admin-gallery-remove"
+                                onClick={() => handleRemoveRoomImage(url)}
+                                disabled={deleteRoomImageMutation.isPending}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {deleteRoomImageMutation.isError ? (
+                        <p className="rooms-events-cal-error" role="alert" style={{ marginTop: 6 }}>
+                          {deleteRoomImageMutation.error?.message || 'Could not remove photo.'}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-upload-modal">Upload photos</label>
                       <input
                         ref={editFileInputRef}
@@ -1469,14 +1563,14 @@ export default function RoomsPage() {
                       ) : null}
                     </div>
                     <div className="form-group">
-                      <label className="form-label" htmlFor="room-edit-images-modal">Extra image URLs (optional, one per line)</label>
+                      <label className="form-label" htmlFor="room-edit-images-modal">Append image URLs (optional, one per line)</label>
                       <textarea
                         id="room-edit-images-modal"
                         className="form-control"
                         rows={3}
                         value={editImagesText}
                         onChange={(e) => setEditImagesText(e.target.value)}
-                        placeholder="https://… or /uploads/…"
+                        placeholder="https://… or /uploads/… — only new URLs; leave blank to leave gallery unchanged"
                       />
                     </div>
                     {adminRoomSaveMutation.isError && (
