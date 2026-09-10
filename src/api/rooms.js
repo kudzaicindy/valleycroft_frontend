@@ -249,7 +249,7 @@ export function updateRoom(id, body, token) {
 
 /**
  * DELETE /api/rooms/:id/images — remove gallery items (do not clear via PUT images: []).
- * Body: { images: string[] } paths/URLs to remove.
+ * Body: { url: string } or { urls: string[] }.
  */
 export function deleteRoomImages(roomId, images) {
   const list = (Array.isArray(images) ? images : [images])
@@ -260,9 +260,10 @@ export function deleteRoomImages(roomId, images) {
     return Promise.reject(new Error('No images to remove'));
   }
   const id = encodeURIComponent(roomId);
+  const data = list.length === 1 ? { url: list[0] } : { urls: list };
   return deleteWithAliases(
     [`/api/admin/rooms/${id}/images`, `/api/rooms/${id}/images`],
-    { data: { images: list } }
+    { data }
   );
 }
 
