@@ -7,7 +7,7 @@ import { getGuestBookings, updateGuestBooking, deleteGuestBooking } from '@/api/
 import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
 import { listFromSuccessEnvelope, metaFromSuccessEnvelope, unwrapApiBody } from '@/utils/apiEnvelope';
-import { getOccupiedRoomDayKeys } from '@/utils/availability';
+import { getOccupiedRoomDayKeys, isDayBlocked, stayOverlapsBlockedDates } from '@/utils/availability';
 import {
   loadBookingPolicySettings,
   saveBookingPolicySettings,
@@ -660,7 +660,17 @@ export default function BookingsPage() {
             : guestSelected.checkOut;
       const res = await getRooms({ checkIn, checkOut });
       const payload = res?.data !== undefined ? res.data : res;
-      setGuestAvailResult(Array.isArray(payload) ? { rooms: payload } : payload);
+      if (Array.isArray(payload)) {
+        setGuestAvailResult({
+          rooms: payload.map((r) => ({
+            ...r,
+            availableForDates:
+              r.availableForDates !== false && !stayOverlapsBlockedDates(r, checkIn, checkOut),
+          })),
+        });
+      } else {
+        setGuestAvailResult(payload);
+      }
     } catch (err) {
       setGuestAvailResult({ error: err?.message || 'Could not check availability' });
     } finally {
@@ -836,7 +846,9 @@ export default function BookingsPage() {
     } else if (availStatusFilter === 'free') {
       r = r.filter((room) => {
         const roomId = room._id ?? room.id;
-        return availDays.every((d) => !bookedKeys.has(`${roomId}-${d.toDateString()}`));
+        return availDays.every(
+          (d) => !bookedKeys.has(`${roomId}-${d.toDateString()}`) && !isDayBlocked(room, d)
+        );
       });
     }
     return r;
@@ -1378,7 +1390,7 @@ export default function BookingsPage() {
                               {r.availableForDates !== false ? (
                                 <span style={{ color: 'var(--teal)', fontWeight: 600 }}>Available</span>
                               ) : (
-                                <span style={{ color: 'var(--red)', fontWeight: 600 }}>Booked</span>
+                                <span style={{ color: 'var(--red)', fontWeight: 600 }}>Unavailable</span>
                               )}
                             </li>
                           ))}
@@ -1484,6 +1496,7 @@ export default function BookingsPage() {
             <div className="availability-legend">
               <span className="availability-legend-item"><span className="availability-dot available" /> Available</span>
               <span className="availability-legend-item"><span className="availability-dot booked" /> Booked</span>
+              <span className="availability-legend-item"><span className="availability-dot blocked" /> Blocked</span>
               <span className="availability-today-badge">Today</span>
             </div>
             <div className="bookings-filters-bar availability-filters-bar">
@@ -1573,18 +1586,21 @@ export default function BookingsPage() {
                         {availDays.map((d) => {
                           const key = `${roomId}-${d.toDateString()}`;
                           const booked = bookedKeys.has(key);
+                          const blocked = !booked && isDayBlocked(room, d);
                           const guests = bookedByKey.get(key) || [];
                           const isToday = d.toDateString() === todayDateString;
                           const guestLabel = (g) => g?.guestName || g?.name || 'Guest';
+                          const statusLabel = booked ? 'Booked' : blocked ? 'Blocked' : 'Available';
                           const tooltip = booked
                             ? `${name} · ${formatDateDayMonthYear(d)} · Booked${guests.length ? ` by ${guests.map(guestLabel).join(', ')}` : ''}`
-                            : `${name} · ${formatDateDayMonthYear(d)} · Available`;
+                            : `${name} · ${formatDateDayMonthYear(d)} · ${statusLabel}`;
+                          const cellState = booked ? 'booked' : blocked ? 'blocked' : 'available';
                           return (
                             <td
                               key={key}
                               role="button"
                               tabIndex={0}
-                              className={`availability-cell ${booked ? 'booked' : 'available'} ${isToday ? 'today' : ''} ${booked ? 'availability-cell--clickable' : ''}`}
+                              className={`availability-cell ${cellState} ${isToday ? 'today' : ''} ${booked ? 'availability-cell--clickable' : ''}`}
                               title={tooltip}
                               onClick={() => {
                                 if (!booked || guests.length === 0) return;
@@ -1612,6 +1628,9 @@ export default function BookingsPage() {
                                     {guests.length > 0 ? guests.map(guestLabel).join(', ') : 'Reserved'}
                                   </span>
                                 )}
+                                {blocked && (
+                                  <span className="availability-cell-blocked">Blocked</span>
+                                )}
                               </span>
                             </td>
                           );
@@ -1622,7 +1641,7 @@ export default function BookingsPage() {
                 </tbody>
               </table>
             </div>
-            <p className="availability-footer">Based on website and internal bookings (excluding cancelled). Dates in local time. Click a booked cell for details; Prev/Next change period; Today resets to current week.</p>
+            <p className="availability-footer">Based on website and internal bookings (excluding cancelled), plus admin-blocked days. Dates in local time. Open a room calendar to block days; click a booked cell for details.</p>
           </div>
         </div>
       )}
@@ -2052,6 +2071,7 @@ export default function BookingsPage() {
           roomTitle={availCalendarRoom.name}
           guestBookingsList={allBookingsForAvail}
           onClose={closeAvailCalendar}
+          canBlockDates={isAdmin && !readOnly}
         />
       )}
       <ConfirmModal

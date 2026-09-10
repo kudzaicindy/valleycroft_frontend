@@ -13,7 +13,12 @@ import {
   normalizeRoomImageUploadResult,
 } from '@/api/rooms';
 import { getGuestBookings } from '@/api/guestBookings';
-import { parseLocalDate } from '@/utils/availability';
+import {
+  parseLocalDate,
+  normalizeBlockedDates,
+  isDayBlocked,
+  toggleBlockedDate,
+} from '@/utils/availability';
 import { formatDateDayMonthYear, formatDateWeekdayDayMonthYear, formatMonthYear } from '@/utils/formatDate';
 import { resolveRoomImageUrl } from '@/utils/roomImageUrl';
 import { fmtRand as fmtNum } from '@/utils/formatMoney';
@@ -337,12 +342,48 @@ export default function RoomsPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, body }) => updateRoom(id, body),
+    onMutate: async ({ id, body }) => {
+      if (!Array.isArray(body?.blockedDates)) return undefined;
+      await queryClient.cancelQueries({ queryKey: ['room', id] });
+      const previous = queryClient.getQueryData(['room', id]);
+      queryClient.setQueryData(['room', id], (old) => {
+        if (old == null) return { data: { _id: id, blockedDates: body.blockedDates } };
+        if (old?.data && typeof old.data === 'object') {
+          return { ...old, data: { ...old.data, blockedDates: body.blockedDates } };
+        }
+        return { ...old, blockedDates: body.blockedDates };
+      });
+      queryClient.setQueryData(['rooms'], (old) => {
+        if (!old) return old;
+        const patchList = (list) =>
+          Array.isArray(list)
+            ? list.map((r) => ((r._id ?? r.id) === id ? { ...r, blockedDates: body.blockedDates } : r))
+            : list;
+        if (Array.isArray(old)) return patchList(old);
+        if (old?.data && Array.isArray(old.data)) return { ...old, data: patchList(old.data) };
+        return old;
+      });
+      return { previous, id };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous != null && ctx.id) {
+        queryClient.setQueryData(['room', ctx.id], ctx.previous);
+      }
+    },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', id] });
       invalidateLandingRoomQueries();
     },
   });
+
+  function handleToggleBlockedDay(date) {
+    if (!isAdmin || !selectedRoom) return;
+    const id = selectedRoom._id ?? selectedRoom.id;
+    if (!id) return;
+    const next = toggleBlockedDate(normalizeBlockedDates(selectedRoom), date);
+    updateMutation.mutate({ id, body: { blockedDates: next } });
+  }
 
   const createRoomMutation = useMutation({
     mutationFn: async ({ body, files }) => {
@@ -1141,7 +1182,11 @@ export default function RoomsPage() {
                 <h2 id="rooms-events-title" className="rooms-events-modal-title">
                   {selectedRoom?.name || 'Room'}
                 </h2>
-                <p className="rooms-events-modal-sub">Guest bookings calendar</p>
+                <p className="rooms-events-modal-sub">
+                  {isAdmin
+                    ? 'Click a free day to block or unblock it from booking'
+                    : 'Guest bookings calendar'}
+                </p>
               </div>
               <button type="button" className="rooms-events-modal-close" onClick={() => setCalendarOpen(false)} aria-label="Close">
                 <i className="fas fa-times" />
@@ -1162,6 +1207,19 @@ export default function RoomsPage() {
                       <i className="fas fa-chevron-right" />
                     </button>
                   </div>
+                  {isAdmin && (
+                    <div className="rooms-events-cal-legend" aria-hidden>
+                      <span className="rooms-events-cal-legend-item">
+                        <span className="rooms-events-cal-legend-swatch available" /> Available
+                      </span>
+                      <span className="rooms-events-cal-legend-item">
+                        <span className="rooms-events-cal-legend-swatch booked" /> Booked
+                      </span>
+                      <span className="rooms-events-cal-legend-item">
+                        <span className="rooms-events-cal-legend-swatch blocked" /> Blocked
+                      </span>
+                    </div>
+                  )}
                   <div className="rooms-events-cal-grid">
                     {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
                       <div key={d} className="rooms-events-cal-dow">{d}</div>
@@ -1172,10 +1230,27 @@ export default function RoomsPage() {
                         .map((b) => b.guestName || 'Guest');
                       const uniqueGuests = [...new Set(guestsOnDay)];
                       const isToday = sameDay(cell.date, todayLocal);
+                      const blocked = isDayBlocked(selectedRoom, cell.date);
+                      const canToggleBlock = isAdmin && cell.inMonth && uniqueGuests.length === 0;
+                      const CellTag = canToggleBlock ? 'button' : 'div';
                       return (
-                        <div
+                        <CellTag
                           key={cell.key}
-                          className={`rooms-events-cal-cell ${cell.inMonth ? 'in-month' : 'out-month'} ${uniqueGuests.length ? 'has-booking' : ''} ${isToday ? 'is-today' : ''}`}
+                          type={canToggleBlock ? 'button' : undefined}
+                          className={`rooms-events-cal-cell ${cell.inMonth ? 'in-month' : 'out-month'} ${uniqueGuests.length ? 'has-booking' : ''} ${blocked ? 'has-block' : ''} ${isToday ? 'is-today' : ''} ${canToggleBlock ? 'is-blockable' : ''}`}
+                          title={
+                            uniqueGuests.length
+                              ? uniqueGuests.join(', ')
+                              : blocked
+                                ? isAdmin
+                                  ? 'Blocked — click to unblock'
+                                  : 'Blocked'
+                                : canToggleBlock
+                                  ? 'Click to block this day'
+                                  : undefined
+                          }
+                          onClick={canToggleBlock ? () => handleToggleBlockedDay(cell.date) : undefined}
+                          disabled={canToggleBlock && updateMutation.isPending ? true : undefined}
                         >
                           <span className="rooms-events-cal-daynum">{cell.date.getDate()}</span>
                           {uniqueGuests.length > 0 && (
@@ -1183,10 +1258,18 @@ export default function RoomsPage() {
                               {uniqueGuests[0]}{uniqueGuests.length > 1 ? ` +${uniqueGuests.length - 1}` : ''}
                             </span>
                           )}
-                        </div>
+                          {blocked && uniqueGuests.length === 0 && (
+                            <span className="rooms-events-cal-blocked-label">Blocked</span>
+                          )}
+                        </CellTag>
                       );
                     })}
                   </div>
+                  {isAdmin && updateMutation.isError ? (
+                    <p className="rooms-events-cal-error" role="alert">
+                      {updateMutation.error?.message || 'Could not save blocked days. Check that the API accepts blockedDates.'}
+                    </p>
+                  ) : null}
                   <div className="rooms-events-bookings">
                     <h3 className="rooms-events-bookings-title">Who booked</h3>
                     {modalBookings.length === 0 ? (

@@ -9,6 +9,7 @@ import { roomPricePerNight, roomStaySubtotal } from '@/utils/roomPricing';
 import { FARM_STAYS, apiRowMatchesStay } from '@/content/farmStays';
 import { mergeLandingCatalogRows, normalizePublicRoomsPayload } from '@/utils/publicRoomCatalog';
 import { resolveRoomImageUrls } from '@/utils/roomImageUrl';
+import { stayOverlapsBlockedDates } from '@/utils/availability';
 import {
   loadBookingPolicySettings,
   depositAmountFromTotal,
@@ -216,7 +217,7 @@ export default function BookingPage() {
         images: imgs(
           api.images?.length ? api.images : stay?.images?.length ? stay.images : defaultImages
         ),
-        avail: api.availableForDates !== false,
+        avail: api.availableForDates !== false && !stayOverlapsBlockedDates(api, checkin, checkout),
         bookedBy: api.bookedBy ?? [],
         onlyOneLeft: Boolean(api.onlyOneLeft),
       };

@@ -139,3 +139,67 @@ export function getOccupiedRoomDayKeys(guestBookings, rangeStart, rangeEnd) {
   }
   return { keys, byKey };
 }
+
+/**
+ * Normalize room blocked/blackout dates to sorted YYYY-MM-DD strings.
+ * Accepts blockedDates, blackoutDates, or unavailableDates (string[] or { date }[]).
+ */
+export function normalizeBlockedDates(roomOrList) {
+  const raw = Array.isArray(roomOrList)
+    ? roomOrList
+    : roomOrList?.blockedDates ?? roomOrList?.blackoutDates ?? roomOrList?.unavailableDates ?? [];
+  const keys = new Set();
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const str =
+      typeof item === 'string'
+        ? item
+        : item?.date ?? item?.day ?? item?.start ?? null;
+    const d = parseLocalDate(str);
+    if (d) keys.add(toLocalDateString(d));
+  }
+  return [...keys].sort();
+}
+
+/** @returns {Set<string>} YYYY-MM-DD */
+export function getBlockedDateSet(roomOrList) {
+  return new Set(normalizeBlockedDates(roomOrList));
+}
+
+export function isDayBlocked(roomOrList, date) {
+  const d = date instanceof Date ? date : parseLocalDate(date);
+  if (!d) return false;
+  return getBlockedDateSet(roomOrList).has(toLocalDateString(d));
+}
+
+/**
+ * Toggle a calendar day in a blocked-dates list. Returns a new sorted YYYY-MM-DD[].
+ */
+export function toggleBlockedDate(blockedDates, dateOrKey) {
+  const key =
+    typeof dateOrKey === 'string' && dateOrKey.length >= 10
+      ? dateOrKey.trim().slice(0, 10)
+      : toLocalDateString(dateOrKey instanceof Date ? dateOrKey : parseLocalDate(dateOrKey));
+  if (!key) return normalizeBlockedDates(blockedDates);
+  const set = getBlockedDateSet(blockedDates);
+  if (set.has(key)) set.delete(key);
+  else set.add(key);
+  return [...set].sort();
+}
+
+/**
+ * True if any stay night [checkIn, checkOut) falls on a blocked date.
+ * Checkout day is exclusive (same as hotel nights).
+ */
+export function stayOverlapsBlockedDates(roomOrList, checkIn, checkOut) {
+  const blocked = getBlockedDateSet(roomOrList);
+  if (!blocked.size) return false;
+  const start = toDate(checkIn);
+  const end = toDate(checkOut);
+  if (!start || !end || end <= start) return false;
+  const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  while (day < end) {
+    if (blocked.has(toLocalDateString(day))) return true;
+    day.setDate(day.getDate() + 1);
+  }
+  return false;
+}

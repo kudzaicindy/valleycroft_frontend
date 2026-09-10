@@ -203,6 +203,7 @@ export function getRoomsPublicMedia() {
 /**
  * GET /api/rooms
  * Optional params: checkIn, checkOut (YYYY-MM-DD) — when provided, each room includes availableForDates: true | false for that range.
+ * Rooms may include blockedDates: string[] (YYYY-MM-DD) — admin blackout days that cannot be booked.
  *
  * Non-admin clients must hit `/api/rooms` first: `/api/admin/rooms` returns 401 and getWithAliases
  * only falls through on 404/405, so the public route would never run if admin were listed first.
