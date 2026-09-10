@@ -143,6 +143,19 @@ function parseImageLines(text) {
     .filter(Boolean);
 }
 
+function imageFileKey(file) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+/** Merge newly picked files into the pending list (keeps prior selections). */
+function mergeImageFiles(prev, nextList) {
+  const map = new Map((Array.isArray(prev) ? prev : []).map((f) => [imageFileKey(f), f]));
+  for (const f of Array.isArray(nextList) ? nextList : []) {
+    if (f instanceof File) map.set(imageFileKey(f), f);
+  }
+  return [...map.values()];
+}
+
 function amenitiesToMultiline(amenities) {
   if (!Array.isArray(amenities) || !amenities.length) return '';
   return amenities
@@ -472,6 +485,50 @@ export default function RoomsPage() {
       invalidateLandingRoomQueries();
     },
   });
+
+  const uploadRoomPhotosMutation = useMutation({
+    mutationFn: ({ id, files }) => uploadRoomImages(id, files),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['room', id] });
+      invalidateLandingRoomQueries();
+      setEditImageFiles([]);
+      if (editFileInputRef.current) editFileInputRef.current.value = '';
+      setSpaceSaveNotice(
+        `Uploaded photo(s).`
+      );
+    },
+  });
+
+  function handleEditImageFilesChange(e) {
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setEditImageFiles((prev) => mergeImageFiles(prev, picked));
+    // Allow picking the same file again / more files in another pass
+    e.target.value = '';
+  }
+
+  function handleNewRoomImageFilesChange(e) {
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setNewRoomImageFiles((prev) => mergeImageFiles(prev, picked));
+    e.target.value = '';
+  }
+
+  function handleUploadSelectedPhotos() {
+    if (!selectedRoom || !editImageFiles.length) return;
+    const id = selectedRoom._id ?? selectedRoom.id;
+    if (!id) return;
+    uploadRoomPhotosMutation.mutate({ id, files: editImageFiles });
+  }
+
+  function removePendingEditFile(index) {
+    setEditImageFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function removePendingNewRoomFile(index) {
+    setNewRoomImageFiles((prev) => prev.filter((_, i) => i !== index));
+  }
 
   const deleteRoomMutation = useMutation({
     mutationFn: (id) => deleteRoom(id),
@@ -1059,7 +1116,7 @@ export default function RoomsPage() {
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="room-edit-upload">
-                        Upload photos
+                        Upload photos (multiple)
                       </label>
                       <input
                         ref={editFileInputRef}
@@ -1068,11 +1125,24 @@ export default function RoomsPage() {
                         accept="image/*"
                         multiple
                         className="form-control"
-                        onChange={(e) => setEditImageFiles(Array.from(e.target.files || []))}
+                        onChange={handleEditImageFilesChange}
                       />
+                      <p className="rooms-admin-hint" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                        Select several files at once, or pick again to add more. Each photo is uploaded separately.
+                      </p>
                       {editImageFiles.length > 0 ? (
                         <div className="rooms-admin-upload-meta">
-                          <span>{editImageFiles.length} file(s) selected</span>
+                          <span>{editImageFiles.length} file(s) ready</span>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={handleUploadSelectedPhotos}
+                            disabled={uploadRoomPhotosMutation.isPending || adminRoomSaveMutation.isPending}
+                          >
+                            {uploadRoomPhotosMutation.isPending
+                              ? `Uploading ${editImageFiles.length}…`
+                              : `Upload ${editImageFiles.length} photo${editImageFiles.length === 1 ? '' : 's'}`}
+                          </button>
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
@@ -1080,15 +1150,31 @@ export default function RoomsPage() {
                               setEditImageFiles([]);
                               if (editFileInputRef.current) editFileInputRef.current.value = '';
                             }}
+                            disabled={uploadRoomPhotosMutation.isPending}
                           >
-                            Clear uploads
+                            Clear
                           </button>
                         </div>
+                      ) : null}
+                      {uploadRoomPhotosMutation.isError ? (
+                        <p className="rooms-events-cal-error" role="alert" style={{ marginTop: 6 }}>
+                          {uploadRoomPhotosMutation.error?.message || 'Could not upload photos.'}
+                        </p>
                       ) : null}
                       {editPreviewUrls.length > 0 ? (
                         <div className="rooms-admin-upload-previews">
                           {editPreviewUrls.map((url, i) => (
-                            <img key={`${url}-${i}`} src={url} alt="" className="rooms-admin-upload-thumb" />
+                            <div key={`${url}-${i}`} className="rooms-admin-gallery-item">
+                              <img src={url} alt="" className="rooms-admin-upload-thumb" />
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm rooms-admin-gallery-remove"
+                                onClick={() => removePendingEditFile(i)}
+                                disabled={uploadRoomPhotosMutation.isPending}
+                              >
+                                Drop
+                              </button>
+                            </div>
                           ))}
                         </div>
                       ) : null}
@@ -1529,7 +1615,7 @@ export default function RoomsPage() {
                       ) : null}
                     </div>
                     <div className="form-group">
-                      <label className="form-label" htmlFor="room-edit-upload-modal">Upload photos</label>
+                      <label className="form-label" htmlFor="room-edit-upload-modal">Upload photos (multiple)</label>
                       <input
                         ref={editFileInputRef}
                         id="room-edit-upload-modal"
@@ -1537,11 +1623,24 @@ export default function RoomsPage() {
                         accept="image/*"
                         multiple
                         className="form-control"
-                        onChange={(e) => setEditImageFiles(Array.from(e.target.files || []))}
+                        onChange={handleEditImageFilesChange}
                       />
+                      <p className="rooms-admin-hint" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                        Select several files at once, or pick again to add more. Each photo is uploaded separately.
+                      </p>
                       {editImageFiles.length > 0 ? (
                         <div className="rooms-admin-upload-meta">
-                          <span>{editImageFiles.length} file(s) selected</span>
+                          <span>{editImageFiles.length} file(s) ready</span>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={handleUploadSelectedPhotos}
+                            disabled={uploadRoomPhotosMutation.isPending || adminRoomSaveMutation.isPending}
+                          >
+                            {uploadRoomPhotosMutation.isPending
+                              ? `Uploading ${editImageFiles.length}…`
+                              : `Upload ${editImageFiles.length} photo${editImageFiles.length === 1 ? '' : 's'}`}
+                          </button>
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
@@ -1549,15 +1648,31 @@ export default function RoomsPage() {
                               setEditImageFiles([]);
                               if (editFileInputRef.current) editFileInputRef.current.value = '';
                             }}
+                            disabled={uploadRoomPhotosMutation.isPending}
                           >
-                            Clear uploads
+                            Clear
                           </button>
                         </div>
+                      ) : null}
+                      {uploadRoomPhotosMutation.isError ? (
+                        <p className="rooms-events-cal-error" role="alert" style={{ marginTop: 6 }}>
+                          {uploadRoomPhotosMutation.error?.message || 'Could not upload photos.'}
+                        </p>
                       ) : null}
                       {editPreviewUrls.length > 0 ? (
                         <div className="rooms-admin-upload-previews">
                           {editPreviewUrls.map((url, i) => (
-                            <img key={`${url}-${i}`} src={url} alt="" className="rooms-admin-upload-thumb" />
+                            <div key={`${url}-${i}`} className="rooms-admin-gallery-item">
+                              <img src={url} alt="" className="rooms-admin-upload-thumb" />
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm rooms-admin-gallery-remove"
+                                onClick={() => removePendingEditFile(i)}
+                                disabled={uploadRoomPhotosMutation.isPending}
+                              >
+                                Drop
+                              </button>
+                            </div>
                           ))}
                         </div>
                       ) : null}
@@ -1851,7 +1966,7 @@ export default function RoomsPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="add-room-upload">
-                    Upload photos
+                    Upload photos (multiple)
                   </label>
                   <input
                     ref={newRoomFileInputRef}
@@ -1860,11 +1975,14 @@ export default function RoomsPage() {
                     accept="image/*"
                     multiple
                     className="form-control"
-                    onChange={(e) => setNewRoomImageFiles(Array.from(e.target.files || []))}
+                    onChange={handleNewRoomImageFilesChange}
                   />
+                  <p className="rooms-admin-hint" style={{ fontSize: 11, margin: '6px 0 0' }}>
+                    Select several files at once, or pick again to add more.
+                  </p>
                   {newRoomImageFiles.length > 0 ? (
                     <div className="rooms-admin-upload-meta">
-                      <span>{newRoomImageFiles.length} file(s) selected</span>
+                      <span>{newRoomImageFiles.length} file(s) ready</span>
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
@@ -1873,14 +1991,23 @@ export default function RoomsPage() {
                           if (newRoomFileInputRef.current) newRoomFileInputRef.current.value = '';
                         }}
                       >
-                        Clear uploads
+                        Clear
                       </button>
                     </div>
                   ) : null}
                   {newRoomPreviewUrls.length > 0 ? (
                     <div className="rooms-admin-upload-previews">
                       {newRoomPreviewUrls.map((url, i) => (
-                        <img key={`${url}-${i}`} src={url} alt="" className="rooms-admin-upload-thumb" />
+                        <div key={`${url}-${i}`} className="rooms-admin-gallery-item">
+                          <img src={url} alt="" className="rooms-admin-upload-thumb" />
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm rooms-admin-gallery-remove"
+                            onClick={() => removePendingNewRoomFile(i)}
+                          >
+                            Drop
+                          </button>
+                        </div>
                       ))}
                     </div>
                   ) : null}

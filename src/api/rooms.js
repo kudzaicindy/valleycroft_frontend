@@ -144,7 +144,8 @@ export function normalizeRoomImageUploadResult(result) {
 
 /**
  * POST multipart images for a room. Tries common paths; backend should implement at least one.
- * Form field name: `images` (repeat for each file) — matches typical multer.array('images').
+ * Sends each file in its own request (field `images` and `image`) so multi-select works even
+ * when the API only accepts one file per call.
  */
 export async function uploadRoomImages(roomId, files) {
   if (!roomId || !files?.length) return null;
@@ -162,26 +163,46 @@ export async function uploadRoomImages(roomId, files) {
   ];
   const paths = filterPathsForRole(allPaths);
 
-  let lastStatus = 0;
-  for (const path of paths) {
+  async function postFiles(path, fileList) {
     const fd = new FormData();
-    list.forEach((f) => fd.append('images', f));
+    fileList.forEach((f) => {
+      fd.append('images', f);
+      fd.append('image', f);
+    });
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: fd,
     });
+    const json = await res.json().catch(() => ({}));
+    return { res, json };
+  }
+
+  let lastStatus = 0;
+  let workingPath = null;
+
+  for (const path of paths) {
+    const { res, json } = await postFiles(path, [list[0]]);
     lastStatus = res.status;
     if (res.status === 404) continue;
 
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    if (!res.ok || (json && json.success === false)) {
       throw new Error(json?.message || `Image upload failed (${res.status})`);
     }
-    if (json && json.success === false) {
-      throw new Error(json.message || 'Image upload failed');
+    workingPath = path;
+    const results = [json?.data !== undefined ? json.data : json];
+
+    for (let i = 1; i < list.length; i += 1) {
+      const next = await postFiles(workingPath, [list[i]]);
+      if (!next.res.ok || (next.json && next.json.success === false)) {
+        throw new Error(
+          next.json?.message ||
+            `Image upload failed on file ${i + 1} of ${list.length} (${next.res.status})`
+        );
+      }
+      results.push(next.json?.data !== undefined ? next.json.data : next.json);
     }
-    return json?.data !== undefined ? json.data : json;
+    return results.length === 1 ? results[0] : results;
   }
 
   throw new Error(
