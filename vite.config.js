@@ -20,6 +20,18 @@ export default defineConfig(({ mode }) => {
       react(),
       babel({ presets: [reactCompilerPreset()] }),
       tailwindcss(),
+      {
+        name: 'farm-film-mime',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            const url = String(req.url || '').split('?')[0].toLowerCase();
+            if (url.endsWith('.mov') || url.endsWith('.mp4.mov')) {
+              res.setHeader('Content-Type', 'video/mp4');
+            }
+            next();
+          });
+        },
+      },
     ],
     resolve: {
       alias: {

@@ -3,6 +3,14 @@
 export const LANDING_VIDEO = '/video2.mp4';
 export const STAYS_VIDEO = '/stays.mp4';
 
+/** Additional farm films (added alongside existing page videos). */
+export const VID1 = '/vid1.mp4';
+export const VID2 = '/vid2.mp4';
+export const FARM_FILMS = [
+  { src: VID1, label: 'Life on the farm' },
+  { src: VID2, label: 'Moments at Valley Croft' },
+];
+
 export const IMG_FARM_EXTERIOR = encodeURI('/WhatsApp Image 2026-06-16 at 10.45.03.jpeg');
 export const IMG_ACCOMMODATION = encodeURI('/house 3 living.jpeg');
 export const IMG_FARM_GROUNDS = '/PHOTO-2026-04-10-10-38-28.jpg';

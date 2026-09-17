@@ -125,6 +125,13 @@ function normalizeQuote(raw) {
   };
 }
 
+function quotationLogoUrl() {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/Valley_Croft_Farm-removebg-preview.png`;
+  }
+  return '/Valley_Croft_Farm-removebg-preview.png';
+}
+
 function buildQuotationHtml(quote) {
   const lineRows = quote.lineItems
     .map((line) => {
@@ -135,7 +142,17 @@ function buildQuotationHtml(quote) {
     })
     .join('\n');
 
+  const logoUrl = quotationLogoUrl();
+
   const detailsBlock = `
+<div class="q-brand">
+  <img class="q-logo" src="${escapeHtml(logoUrl)}" alt="ValleyCroft" />
+  <div>
+    <h1>ValleyCroft</h1>
+    <h2>Agro-Tourism Event Quotation</h2>
+  </div>
+</div>
+
 <div class="q-two-col">
   <section class="q-card">
     <h3>Client Details</h3>
@@ -169,9 +186,6 @@ function buildQuotationHtml(quote) {
 </div>`;
 
   const markdown = `
-# ValleyCroft
-## Agro-Tourism Event Quotation
-
 > **Quotation:** ${escapeMarkdown(quote.quotationNumber)}
 
 ${detailsBlock}
@@ -199,6 +213,10 @@ ${notesTermsBlock}
     <style>
       body { font-family: Arial, sans-serif; margin: 14px; color: #1f2937; background: #fafaf8; }
       .quotation-doc { max-width: 860px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; }
+      .q-brand { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; }
+      .q-logo { width: 72px; height: 72px; object-fit: contain; display: block; }
+      .q-brand h1 { color:#1e3610; margin: 0 0 2px; font-size: 26px; line-height: 1.15; }
+      .q-brand h2 { color:#4b5563; margin: 0; font-size: 14px; font-weight: 600; }
       h1 { color:#1e3610; margin: 0 0 2px; font-size: 26px; line-height: 1.15; }
       h2 { color:#4b5563; margin: 0 0 12px; font-size: 14px; font-weight: 600; }
       h3 { color:#111827; margin: 16px 0 8px; font-size: 14px; border-bottom: 1px solid #e5e7eb; padding-bottom: 3px; }
@@ -310,7 +328,8 @@ export default function QuotationsPage() {
   });
 
   const sendEmailMutation = useMutation({
-    mutationFn: ({ id, email }) => sendQuotationEmail(id, email ? { email } : {}),
+    mutationFn: ({ id, email }) =>
+      sendQuotationEmail(id, email ? { to: email, email } : {}),
   });
 
   const handleCreateQuotation = async (e) => {

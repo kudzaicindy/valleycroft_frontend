@@ -10,6 +10,7 @@ import {
   IMG_FARM_GROUNDS,
   IMG_GAZEBO,
   IMG_PICNIC_COUPLE,
+  FARM_FILMS,
   LANDING_VIDEO,
 } from '@/content/farmLifeMedia';
 import '@/pages/LandingPage.css';
@@ -66,6 +67,7 @@ const storySections = [
     img: IMG_BARN_VENUE,
     reverse: true,
     tone: 'cream',
+    compact: true,
   },
   {
     id: 'lifestyle',
@@ -79,6 +81,7 @@ const storySections = [
     img: IMG_PICNIC_COUPLE,
     reverse: false,
     tone: 'white',
+    compact: true,
   },
 ];
 
@@ -146,6 +149,91 @@ function StoryCta({ cta, onGallery }) {
   );
 }
 
+function FarmFilm({ src, label }) {
+  const videoRef = useRef(null);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const wrap = wrapRef.current;
+    if (!video || !wrap) return undefined;
+
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    const playSafe = () => {
+      if (mq.matches) return;
+      video.defaultMuted = true;
+      video.muted = true;
+      video.setAttribute('muted', '');
+      video.setAttribute('playsinline', '');
+      const p = video.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    };
+
+    const pauseSafe = () => {
+      try {
+        video.pause();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const onCanPlay = () => {
+      const rect = wrap.getBoundingClientRect();
+      const inView = rect.top < window.innerHeight && rect.bottom > 0;
+      if (inView) playSafe();
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) playSafe();
+        else pauseSafe();
+      },
+      { rootMargin: '20% 0px', threshold: 0.15 }
+    );
+    observer.observe(wrap);
+
+    video.addEventListener('loadeddata', onCanPlay);
+    video.addEventListener('canplay', onCanPlay);
+    mq.addEventListener('change', onCanPlay);
+
+    // Kick load — large films use metadata first, then play when ready/in view
+    try {
+      video.load();
+    } catch {
+      /* ignore */
+    }
+
+    return () => {
+      observer.disconnect();
+      video.removeEventListener('loadeddata', onCanPlay);
+      video.removeEventListener('canplay', onCanPlay);
+      mq.removeEventListener('change', onCanPlay);
+      pauseSafe();
+    };
+  }, [src]);
+
+  return (
+    <figure ref={wrapRef} className="vc-film">
+      <div className="vc-film-frame">
+        <video
+          ref={videoRef}
+          className="vc-film-video"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          aria-label={label}
+        >
+          <source src={src} type="video/mp4" />
+        </video>
+      </div>
+      <figcaption className="vc-film-caption">{label}</figcaption>
+    </figure>
+  );
+}
+
 function LandingContent() {
   const heroVideoRef = useRef(null);
   const { openFarmGallery } = useFarmGallery();
@@ -195,7 +283,7 @@ function LandingContent() {
         <section
           key={section.id}
           id={section.id}
-          className={`vc-story-row vc-story-row--${section.tone}${section.reverse ? ' vc-story-row--reverse' : ''} vc-reveal`}
+          className={`vc-story-row vc-story-row--${section.tone}${section.reverse ? ' vc-story-row--reverse' : ''}${section.compact ? ' vc-story-row--compact' : ''} vc-reveal`}
         >
           <div
             className={`vc-story-media-wrap vc-photo-reveal${section.reverse ? ' vc-photo-reveal--from-left' : ' vc-photo-reveal--from-right'}`}
@@ -219,6 +307,21 @@ function LandingContent() {
           </div>
         </section>
       ))}
+
+      <section className="vc-films vc-reveal" id="films" aria-label="Farm films">
+        <div className="vc-films-intro">
+          <p className="vc-story-eyebrow">On film</p>
+          <h2 className="vc-story-title">More of the farm</h2>
+          <p className="vc-story-body">
+            Two short glimpses of Valley Croft — the land, the light, and the pace of a day here.
+          </p>
+        </div>
+        <div className="vc-films-grid">
+          {FARM_FILMS.map((film) => (
+            <FarmFilm key={film.src} src={film.src} label={film.label} />
+          ))}
+        </div>
+      </section>
 
       <section className="vc-paths vc-reveal" id="glimpses">
         <p className="vc-paths-lead">Two ways to experience the farm</p>
