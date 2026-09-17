@@ -113,7 +113,7 @@ function normalizeQuote(raw) {
     eventType: raw?.eventType ?? raw?.event?.type ?? '',
     eventDate: raw?.eventDate ?? raw?.event?.date ?? '',
     venue: raw?.venue ?? raw?.event?.venue ?? '',
-    guests: raw?.guests ?? raw?.event?.guests ?? '',
+    guests: raw?.guestCount ?? raw?.guests ?? raw?.event?.guestCount ?? raw?.event?.guests ?? '',
     notes: raw?.notes ?? '',
     terms: raw?.terms ?? '',
     status: String(raw?.status || 'draft').toLowerCase(),
@@ -148,7 +148,9 @@ function buildQuotationHtml(quote) {
     <p><strong>Event:</strong> ${escapeHtml(quote.eventType || '—')}</p>
     <p><strong>Date:</strong> ${escapeHtml(toInputDate(quote.eventDate) || '—')}</p>
     <p><strong>Venue:</strong> ${escapeHtml(quote.venue || '—')}</p>
-    <p><strong>Guests:</strong> ${escapeHtml(quote.guests || '—')}</p>
+    <p><strong>Guests:</strong> ${escapeHtml(
+      quote.guests === '' || quote.guests == null ? '—' : String(quote.guests)
+    )}</p>
     <p><strong>Quoted on:</strong> ${escapeHtml(toInputDate(quote.quotationDate) || '—')}</p>
     <p><strong>Valid until:</strong> ${escapeHtml(toInputDate(quote.validUntil) || '—')}</p>
   </section>
@@ -338,6 +340,7 @@ export default function QuotationsPage() {
       eventType: form.eventType,
       eventDate: form.eventDate,
       venue: form.venue,
+      guestCount: Number(form.guests) || undefined,
       guests: Number(form.guests) || undefined,
       notes: form.notes || '',
       terms: form.terms || '',
@@ -421,6 +424,7 @@ export default function QuotationsPage() {
       eventType: form.eventType,
       eventDate: form.eventDate,
       venue: form.venue,
+      guestCount: Number(form.guests) || undefined,
       guests: Number(form.guests) || undefined,
       notes: form.notes || '',
       terms: form.terms || '',
