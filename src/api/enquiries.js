@@ -57,3 +57,8 @@ export async function closeEnquiry(id) {
   const res = await axiosInstance.patch(`/api/enquiries/${id}/close`, {});
   return res.data;
 }
+
+export async function deleteEnquiry(id) {
+  const res = await axiosInstance.delete(`/api/enquiries/${id}`);
+  return res.data;
+}

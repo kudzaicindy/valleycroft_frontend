@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getQuotations } from '@/api/quotations';
 import {
   closeEnquiry,
+  deleteEnquiry,
   extractEnquiriesListMeta,
   getEnquiries,
   getEnquiryById,
@@ -123,14 +124,16 @@ export default function EnquiriesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const role = String(user?.role || '').toLowerCase();
-  /** CEO dashboards are view-only: CEOs can view enquiries but not respond/close. */
+  /** CEO dashboards are view-only: CEOs can view enquiries but not respond/close/delete. */
   const canRespondOrClose = role === 'admin' || role === 'finance';
+  const canDelete = role === 'admin' || role === 'finance';
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
   const [detailId, setDetailId] = useState(null);
   const [closeTarget, setCloseTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const [respondOpen, setRespondOpen] = useState(false);
   const [responseMessage, setResponseMessage] = useState(
@@ -225,6 +228,16 @@ export default function EnquiriesPage() {
       invalidateList();
       setCloseTarget(null);
       setDetailId(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => deleteEnquiry(id),
+    onSuccess: () => {
+      invalidateList();
+      setDeleteTarget(null);
+      setDetailId(null);
+      setRespondOpen(false);
     },
   });
 
@@ -581,14 +594,28 @@ export default function EnquiriesPage() {
                     ) : null}
                   </div>
 
-                  {!respondOpen && canRespondOrClose && enquiry.status !== 'closed' ? (
+                  {!respondOpen && (canRespondOrClose || canDelete) ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
-                      <button type="button" className="btn btn-primary btn-sm" onClick={openRespond}>
-                        Respond with quotation
-                      </button>
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setCloseTarget({ id: enquiry.id, name: enquiry.name })}>
-                        Close enquiry
-                      </button>
+                      {canRespondOrClose && enquiry.status !== 'closed' ? (
+                        <>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={openRespond}>
+                            Respond with quotation
+                          </button>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => setCloseTarget({ id: enquiry.id, name: enquiry.name })}>
+                            Close enquiry
+                          </button>
+                        </>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ color: 'var(--danger, #b42318)', borderColor: 'rgba(180, 35, 24, 0.35)' }}
+                          onClick={() => setDeleteTarget({ id: enquiry.id, name: enquiry.name })}
+                        >
+                          Delete enquiry
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -884,6 +911,19 @@ export default function EnquiriesPage() {
         }}
         onCancel={() => setCloseTarget(null)}
         busy={closeMutation.isPending}
+      />
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete enquiry"
+        message={`Permanently delete the enquiry from "${deleteTarget?.name || 'guest'}"? This cannot be undone. Linked quotations are not deleted.`}
+        confirmLabel="Delete enquiry"
+        onConfirm={() => {
+          const id = deleteTarget?.id;
+          if (id) deleteMutation.mutate(id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleteMutation.isPending}
       />
     </div>
   );
