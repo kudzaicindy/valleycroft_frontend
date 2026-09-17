@@ -22,6 +22,35 @@ const STATUS_OPTIONS = [
   { value: 'closed', label: 'Closed' },
 ];
 
+const VENUE_OPTIONS = [
+  'ValleyCroft Farm',
+  'The Barn',
+  'Garden & Gazebo',
+  'Lawns & Pool',
+  'Full farm hire',
+];
+
+function dateInputToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toInputDate(value) {
+  const s = String(value || '').trim();
+  return s ? s.slice(0, 10) : '';
+}
+
+/** Add calendar days to YYYY-MM-DD in local time. */
+function addDaysToInputDate(value, days) {
+  const base = toInputDate(value) || dateInputToday();
+  const [y, m, d] = base.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + Number(days || 0));
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 function emptyLine() {
   return { description: '', quantity: 1, unitPrice: 0 };
 }
@@ -48,6 +77,7 @@ function normalizeEnquiry(raw) {
     phone: String(raw.guestPhone ?? raw.phone ?? raw.guest?.phone ?? '').trim(),
     eventType: String(raw.eventType ?? raw.event?.type ?? '').trim(),
     eventDate: String(raw.eventDate ?? raw.event?.date ?? '').trim(),
+    venue: String(raw.venue ?? raw.event?.venue ?? '').trim(),
     guestCount: raw.guestCount ?? raw.guests ?? raw.event?.guestCount ?? '',
     message: String(raw.message ?? raw.details ?? raw.body ?? '').trim(),
     quotationId: qRef.id,
@@ -113,6 +143,8 @@ export default function EnquiriesPage() {
   const [existingQuotationId, setExistingQuotationId] = useState('');
   const [qEventType, setQEventType] = useState('Wedding');
   const [qEventDate, setQEventDate] = useState('');
+  const [qValidUntil, setQValidUntil] = useState(() => addDaysToInputDate(dateInputToday(), 14));
+  const [qVenue, setQVenue] = useState(VENUE_OPTIONS[0]);
   const [qGuestCount, setQGuestCount] = useState('');
   const [qCurrency, setQCurrency] = useState('ZAR');
   const [qTax, setQTax] = useState('0');
@@ -120,6 +152,7 @@ export default function EnquiriesPage() {
   const [qTerms, setQTerms] = useState('50% deposit confirms the booking. Balance due before the event date.');
   const [lineItems, setLineItems] = useState([emptyLine(), emptyLine()]);
   const [respondError, setRespondError] = useState(null);
+  const venueIsCustom = Boolean(qVenue) && !VENUE_OPTIONS.includes(qVenue);
 
   const listQuery = useQuery({
     queryKey: ['enquiries', page, statusFilter, LIMIT],
@@ -159,7 +192,9 @@ export default function EnquiriesPage() {
     if (!respondOpen || !enquiry) return;
     setEmailTo(enquiry.email || '');
     setQEventType(enquiry.eventType || 'Wedding');
-    setQEventDate(String(enquiry.eventDate || '').slice(0, 10));
+    setQEventDate(toInputDate(enquiry.eventDate));
+    setQValidUntil(addDaysToInputDate(dateInputToday(), 14));
+    setQVenue(enquiry.venue || VENUE_OPTIONS[0]);
     setQGuestCount(enquiry.guestCount != null && enquiry.guestCount !== '' ? String(enquiry.guestCount) : '');
   }, [respondOpen, enquiry?.id]);
 
@@ -258,11 +293,16 @@ export default function EnquiriesPage() {
         unitPrice: Math.max(0, Number(l.unitPrice) || 0),
       }));
     if (!lines.length) throw new Error('Add at least one line item for the new quotation.');
+    const venue = String(qVenue || '').trim();
+    if (!venue) throw new Error('Select or enter a venue for the quotation.');
+    if (!qValidUntil.trim()) throw new Error('Set a Valid until date for the quotation.');
     return {
       ...base,
       quotation: {
         eventType: qEventType.trim() || 'Event',
         eventDate: qEventDate.trim() || undefined,
+        validUntil: qValidUntil.trim(),
+        venue,
         guestCount: qGuestCount.trim() ? Number(qGuestCount) : undefined,
         currency: qCurrency.trim() || 'ZAR',
         lineItems: lines,
@@ -493,6 +533,10 @@ export default function EnquiriesPage() {
                       <div>{enquiry.eventDate ? formatDate(enquiry.eventDate) : '—'}</div>
                     </div>
                     <div>
+                      <div className="enquiries-detail-label">Venue</div>
+                      <div>{enquiry.venue || '—'}</div>
+                    </div>
+                    <div>
                       <div className="enquiries-detail-label">Guests</div>
                       <div>{enquiry.guestCount !== '' && enquiry.guestCount != null ? String(enquiry.guestCount) : '—'}</div>
                     </div>
@@ -639,23 +683,70 @@ export default function EnquiriesPage() {
                         ) : (
                           <>
                             <div className="transactions-form-field">
-                              <label htmlFor="enq-q-et">Event type</label>
+                              <label htmlFor="enq-q-et">Event type *</label>
                               <input
                                 id="enq-q-et"
                                 className="form-control"
                                 value={qEventType}
                                 onChange={(e) => setQEventType(e.target.value)}
+                                required
                               />
                             </div>
                             <div className="transactions-form-field">
-                              <label htmlFor="enq-q-ed">Event date</label>
+                              <label htmlFor="enq-q-ed">Event date *</label>
                               <input
                                 id="enq-q-ed"
                                 type="date"
                                 className="form-control"
                                 value={qEventDate}
                                 onChange={(e) => setQEventDate(e.target.value)}
+                                required
                               />
+                            </div>
+                            <div className="transactions-form-field">
+                              <label htmlFor="enq-q-vu">Valid until *</label>
+                              <input
+                                id="enq-q-vu"
+                                type="date"
+                                className="form-control"
+                                value={qValidUntil}
+                                min={dateInputToday()}
+                                onChange={(e) => setQValidUntil(e.target.value)}
+                                required
+                              />
+                              <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)', fontSize: 11 }}>
+                                Defaults to 14 days from today.
+                              </small>
+                            </div>
+                            <div className="transactions-form-field">
+                              <label htmlFor="enq-q-venue">Venue *</label>
+                              <select
+                                id="enq-q-venue"
+                                className="form-control"
+                                value={venueIsCustom ? '__other__' : qVenue}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setQVenue(v === '__other__' ? '' : v);
+                                }}
+                                required={!venueIsCustom && !qVenue}
+                              >
+                                {VENUE_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                                <option value="__other__">Other (specify)</option>
+                              </select>
+                              {venueIsCustom || qVenue === '' ? (
+                                <input
+                                  className="form-control"
+                                  style={{ marginTop: 8 }}
+                                  placeholder="Enter venue name"
+                                  value={qVenue}
+                                  onChange={(e) => setQVenue(e.target.value)}
+                                  required
+                                />
+                              ) : null}
                             </div>
                             <div className="transactions-form-field">
                               <label htmlFor="enq-q-gc">Guest count</label>
