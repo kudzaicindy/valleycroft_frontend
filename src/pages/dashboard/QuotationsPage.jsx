@@ -30,6 +30,26 @@ function toInputDate(value) {
   return s ? s.slice(0, 10) : '';
 }
 
+/** Add calendar days to YYYY-MM-DD in local time. */
+function addDaysToInputDate(value, days) {
+  const base = toInputDate(value) || dateInputToday();
+  const [y, m, d] = base.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + Number(days || 0));
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+const VENUE_OPTIONS = [
+  'ValleyCroft Farm',
+  'The Barn',
+  'Garden & Gazebo',
+  'Lawns & Pool',
+  'Full farm hire',
+];
+
 function quotationNumber() {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -43,21 +63,22 @@ function emptyLineItem() {
 }
 
 function initialForm() {
+  const today = dateInputToday();
   return {
     quotationNumber: quotationNumber(),
-    quotationDate: dateInputToday(),
-    validUntil: '',
+    quotationDate: today,
+    validUntil: addDaysToInputDate(today, 14),
     clientName: '',
     clientEmail: '',
     clientPhone: '',
     eventType: 'Wedding',
     eventDate: '',
-    venue: 'ValleyCroft Farm',
+    venue: VENUE_OPTIONS[0],
     guests: '',
     otherCharges: 0,
     notes: '',
     terms:
-      '50% deposit confirms the booking. Balance due 7 days before the event date. This quotation is subject to venue and date availability.',
+      '50% deposit confirms the booking. Balance due 14 days before the event date. This quotation is subject to venue and date availability.',
     lineItems: [emptyLineItem()],
   };
 }
@@ -262,6 +283,13 @@ export default function QuotationsPage() {
   const [actionBusyId, setActionBusyId] = useState('');
   const [emailStatusBox, setEmailStatusBox] = useState({ type: '', message: '' });
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const venueIsCustom = Boolean(form.venue) && !VENUE_OPTIONS.includes(form.venue);
+
+  const openCreateQuotation = () => {
+    setForm(initialForm());
+    setCreateOpen(true);
+    setEditOpen(false);
+  };
 
   const quotationsQuery = useQuery({
     queryKey: ['quotations'],
@@ -358,7 +386,7 @@ export default function QuotationsPage() {
       clientPhone: form.clientPhone,
       eventType: form.eventType,
       eventDate: form.eventDate,
-      venue: form.venue,
+      venue: String(form.venue || '').trim(),
       guestCount: Number(form.guests) || undefined,
       guests: Number(form.guests) || undefined,
       notes: form.notes || '',
@@ -442,7 +470,7 @@ export default function QuotationsPage() {
       clientPhone: form.clientPhone,
       eventType: form.eventType,
       eventDate: form.eventDate,
-      venue: form.venue,
+      venue: String(form.venue || '').trim(),
       guestCount: Number(form.guests) || undefined,
       guests: Number(form.guests) || undefined,
       notes: form.notes || '',
@@ -601,7 +629,7 @@ export default function QuotationsPage() {
           <div className="page-subtitle">Create professional event quotations for admin, then download/print or send by email.</div>
         </div>
         {canEdit ? (
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={openCreateQuotation}>
             <i className="fas fa-plus" aria-hidden /> New quotation
           </button>
         ) : null}
@@ -767,11 +795,34 @@ export default function QuotationsPage() {
                   </div>
                   <div className="transactions-form-field">
                     <label>Quotation date *</label>
-                    <input type="date" className="form-control" value={form.quotationDate} onChange={(e) => setForm((f) => ({ ...f, quotationDate: e.target.value }))} required />
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={form.quotationDate}
+                      onChange={(e) => {
+                        const quotationDate = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          quotationDate,
+                          validUntil: addDaysToInputDate(quotationDate, 14),
+                        }));
+                      }}
+                      required
+                    />
                   </div>
                   <div className="transactions-form-field">
                     <label>Valid until *</label>
-                    <input type="date" className="form-control" value={form.validUntil} onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))} required />
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={form.validUntil}
+                      min={form.quotationDate || undefined}
+                      onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))}
+                      required
+                    />
+                    <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)', fontSize: 11 }}>
+                      Defaults to 14 days after the quotation date.
+                    </small>
                   </div>
                   <div className="transactions-form-field">
                     <label>Client name *</label>
@@ -795,7 +846,35 @@ export default function QuotationsPage() {
                   </div>
                   <div className="transactions-form-field">
                     <label>Venue *</label>
-                    <input className="form-control" value={form.venue} onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))} required />
+                    <select
+                      className="form-control"
+                      value={venueIsCustom ? '__other__' : form.venue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          venue: v === '__other__' ? '' : v,
+                        }));
+                      }}
+                      required={!venueIsCustom && !form.venue}
+                    >
+                      {VENUE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                      <option value="__other__">Other (specify)</option>
+                    </select>
+                    {venueIsCustom || form.venue === '' ? (
+                      <input
+                        className="form-control"
+                        style={{ marginTop: 8 }}
+                        placeholder="Enter venue name"
+                        value={form.venue}
+                        onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))}
+                        required
+                      />
+                    ) : null}
                   </div>
                   <div className="transactions-form-field">
                     <label>Guest count *</label>
@@ -904,11 +983,34 @@ export default function QuotationsPage() {
                   </div>
                   <div className="transactions-form-field">
                     <label>Quotation date *</label>
-                    <input type="date" className="form-control" value={form.quotationDate} onChange={(e) => setForm((f) => ({ ...f, quotationDate: e.target.value }))} required />
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={form.quotationDate}
+                      onChange={(e) => {
+                        const quotationDate = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          quotationDate,
+                          validUntil: addDaysToInputDate(quotationDate, 14),
+                        }));
+                      }}
+                      required
+                    />
                   </div>
                   <div className="transactions-form-field">
                     <label>Valid until *</label>
-                    <input type="date" className="form-control" value={form.validUntil} onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))} required />
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={form.validUntil}
+                      min={form.quotationDate || undefined}
+                      onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))}
+                      required
+                    />
+                    <small style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)', fontSize: 11 }}>
+                      Defaults to 14 days after the quotation date.
+                    </small>
                   </div>
                   <div className="transactions-form-field">
                     <label>Client name *</label>
@@ -932,7 +1034,35 @@ export default function QuotationsPage() {
                   </div>
                   <div className="transactions-form-field">
                     <label>Venue *</label>
-                    <input className="form-control" value={form.venue} onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))} required />
+                    <select
+                      className="form-control"
+                      value={venueIsCustom ? '__other__' : form.venue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          venue: v === '__other__' ? '' : v,
+                        }));
+                      }}
+                      required={!venueIsCustom && !form.venue}
+                    >
+                      {VENUE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                      <option value="__other__">Other (specify)</option>
+                    </select>
+                    {venueIsCustom || form.venue === '' ? (
+                      <input
+                        className="form-control"
+                        style={{ marginTop: 8 }}
+                        placeholder="Enter venue name"
+                        value={form.venue}
+                        onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))}
+                        required
+                      />
+                    ) : null}
                   </div>
                   <div className="transactions-form-field">
                     <label>Guest count *</label>
