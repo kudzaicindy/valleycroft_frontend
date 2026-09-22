@@ -27,6 +27,14 @@ export function updateGuestBooking(id, body) {
   return axiosInstance.put(`/api/guest-bookings/${id}`, body);
 }
 
+/**
+ * POST /api/guest-bookings/:id/mark-paid — admin/finance/ceo mark confirmed booking paid.
+ * Records remaining debtor balance when linked. Body optional: amount, method, reference, note, paidAt.
+ */
+export function markGuestBookingPaid(id, body = {}) {
+  return axiosInstance.post(`/api/guest-bookings/${id}/mark-paid`, body || {});
+}
+
 /** DELETE /api/guest-bookings/:id — remove (Admin) */
 export function deleteGuestBooking(id) {
   return axiosInstance.delete(`/api/guest-bookings/${id}`);

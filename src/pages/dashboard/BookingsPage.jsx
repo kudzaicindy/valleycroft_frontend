@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { getBookings, getBooking, updateBooking, createBooking, deleteBooking } from '@/api/bookings';
-import { getGuestBookings, updateGuestBooking, deleteGuestBooking } from '@/api/guestBookings';
+import { getGuestBookings, updateGuestBooking, deleteGuestBooking, markGuestBookingPaid } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
 import { listFromSuccessEnvelope, metaFromSuccessEnvelope, unwrapApiBody } from '@/utils/apiEnvelope';
@@ -95,6 +95,60 @@ function guestStatusBadgeClass(status) {
   if (s === 'cancelled') return 'guest-status--cancelled';
   if (s === 'waitlist') return 'guest-status--waitlist';
   return 'guest-status--pending';
+}
+
+function paymentStatusStr(booking) {
+  return String(booking?.paymentStatus || 'unpaid').toLowerCase();
+}
+
+function paymentStatusBadgeClass(paymentStatus) {
+  const s = String(paymentStatus || '').toLowerCase();
+  if (s === 'paid') return 'guest-payment--paid';
+  if (s === 'expired') return 'guest-payment--expired';
+  return 'guest-payment--unpaid';
+}
+
+function paymentStatusLabel(paymentStatus) {
+  const s = String(paymentStatus || '').toLowerCase();
+  if (s === 'paid') return 'Paid';
+  if (s === 'expired') return 'Expired (unpaid)';
+  return 'Unpaid';
+}
+
+/** Confirmed + unpaid hold still active (or overdue until cron clears it). */
+function guestBookingIsPaymentHold(booking) {
+  if (!booking) return false;
+  if (statusStr(booking.status).toLowerCase() !== 'confirmed') return false;
+  return paymentStatusStr(booking) === 'unpaid';
+}
+
+function guestBookingCanMarkPaid(booking) {
+  if (!booking) return false;
+  if (statusStr(booking.status).toLowerCase() !== 'confirmed') return false;
+  return paymentStatusStr(booking) !== 'paid';
+}
+
+function fmtDateTime(val) {
+  if (!val) return '—';
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return String(val).slice(0, 16);
+  return d.toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function paymentHoldSummary(booking) {
+  if (!guestBookingIsPaymentHold(booking)) return null;
+  const due = booking.paymentDueAt ? new Date(booking.paymentDueAt) : null;
+  if (!due || Number.isNaN(due.getTime())) {
+    return 'Reserved for 24 hours after confirm. Mark as paid to keep the dates.';
+  }
+  const msLeft = due.getTime() - Date.now();
+  if (msLeft <= 0) {
+    return `Payment was due ${fmtDateTime(due)}. Unpaid holds are revoked automatically and the room reopens.`;
+  }
+  const hours = Math.floor(msLeft / (60 * 60 * 1000));
+  const mins = Math.floor((msLeft % (60 * 60 * 1000)) / (60 * 1000));
+  const left = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  return `Reserved until ${fmtDateTime(due)} (${left} left). If unpaid after this, the booking is revoked.`;
 }
 
 function referenceDisplay(b) {
@@ -218,6 +272,7 @@ export default function BookingsPage() {
   const role = String(user?.role || '').toLowerCase();
   const isAdmin = role === 'admin';
   const readOnly = role === 'ceo';
+  const canMarkPaid = role === 'admin' || role === 'finance';
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = useMemo(() => {
@@ -514,17 +569,38 @@ export default function BookingsPage() {
 
   const guestUpdateMutation = useMutation({
     mutationFn: ({ id, body }) => updateGuestBooking(id, body),
-    onSuccess: (_resp, vars) => {
+    onSuccess: (resp, vars) => {
       queryClient.invalidateQueries({ queryKey: ['guest-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      const updated = normalizeBookingEntity(resp?.data ?? resp);
       if (vars?.id) {
+        setGuestSelectedSnapshot((prev) => {
+          if (!prev || String(prev._id) !== String(vars.id)) return prev;
+          if (updated && typeof updated === 'object') return { ...prev, ...updated };
+          return { ...prev, ...(vars?.body || {}) };
+        });
+      }
+    },
+  });
+
+  const markGuestPaidMutation = useMutation({
+    mutationFn: ({ id, body }) => markGuestBookingPaid(id, body),
+    onSuccess: (resp, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['guest-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      queryClient.invalidateQueries({ queryKey: ['debtors'] });
+      const updated = normalizeBookingEntity(resp?.data ?? resp);
+      if (vars?.id && updated) {
         setGuestSelectedSnapshot((prev) => (
-          prev && String(prev._id) === String(vars.id)
-            ? { ...prev, ...(vars?.body || {}) }
-            : prev
+          prev && String(prev._id) === String(vars.id) ? { ...prev, ...updated } : prev
         ));
       }
+      setConfirmAction(null);
+    },
+    onError: (err) => {
+      window.alert(formatBookingMutationMessage(err, 'Could not mark booking as paid.'));
     },
   });
 
@@ -699,6 +775,16 @@ export default function BookingsPage() {
     );
   }
 
+  function handleMarkGuestPaid() {
+    if (!guestSelected || !canMarkPaid || readOnly) return;
+    if (!guestBookingCanMarkPaid(guestSelected)) return;
+    setConfirmAction({
+      kind: 'markGuestPaid',
+      id: guestSelected._id,
+      message: `Mark booking ${guestSelected.trackingCode || guestSelected._id} as paid? This records payment against the debtor (if any) and keeps the reservation.`,
+    });
+  }
+
   async function handleGuestPostRevenue() {
     if (!guestSelected || readOnly) return;
     setGuestRevenuePosting(true);
@@ -747,6 +833,10 @@ export default function BookingsPage() {
     }
     if (action.kind === 'deleteGuest') {
       deleteGuestBookingMutation.mutate(action.id, { onSettled: () => setConfirmAction(null) });
+      return;
+    }
+    if (action.kind === 'markGuestPaid') {
+      markGuestPaidMutation.mutate({ id: action.id, body: {} });
     }
   }
 
@@ -879,7 +969,9 @@ export default function BookingsPage() {
               </>
             )}
             {activeTab === 'guest' && (
-              <>{guestTotalCount} request{guestTotalCount !== 1 ? 's' : ''} · tracking codes and status</>
+              <>
+                {guestTotalCount} request{guestTotalCount !== 1 ? 's' : ''} · confirm holds dates for 24 hours until paid
+              </>
             )}
             {activeTab === 'availability' && (
               <>By room and date · click a booked cell for guest details · room name opens month view</>
@@ -1200,18 +1292,19 @@ export default function BookingsPage() {
                         <th>Check-out</th>
                         <th className="statement-table-num">Total</th>
                         <th>Status</th>
+                        <th>Payment</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {guestLoading && (
                         <tr>
-                          <td colSpan={8}>Loading…</td>
+                          <td colSpan={9}>Loading…</td>
                         </tr>
                       )}
                       {!guestLoading && guestList.length === 0 && (
                         <tr>
-                          <td colSpan={8}>No requests</td>
+                          <td colSpan={9}>No requests</td>
                         </tr>
                       )}
                       {!guestLoading &&
@@ -1241,15 +1334,24 @@ export default function BookingsPage() {
                                 value={GUEST_STATUS_OPTIONS.includes(statusStr(b.status)) ? statusStr(b.status) : 'pending'}
                                 onChange={(e) => handleGuestStatusChange(b._id, e.target.value, e)}
                                 onClick={(e) => e.stopPropagation()}
-                                disabled={guestUpdateMutation.isPending}
+                                disabled={guestUpdateMutation.isPending || readOnly}
                               >
                                 {GUEST_STATUS_OPTIONS.map((opt) => (
                                   <option key={opt} value={opt}>{opt}</option>
                                 ))}
                               </select>
                             </td>
+                            <td>
+                              {statusStr(b.status).toLowerCase() === 'confirmed' || paymentStatusStr(b) !== 'unpaid' ? (
+                                <span className={`guest-payment-pill ${paymentStatusBadgeClass(paymentStatusStr(b))}`}>
+                                  {paymentStatusLabel(paymentStatusStr(b))}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                              )}
+                            </td>
                             <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                              {statusStr(b.status).toLowerCase() === 'pending' && (
+                              {statusStr(b.status).toLowerCase() === 'pending' && !readOnly && (
                                 <button
                                   type="button"
                                   className="btn btn-primary btn-sm"
@@ -1273,22 +1375,40 @@ export default function BookingsPage() {
                                     )
                                   }
                                   disabled={guestUpdateMutation.isPending}
+                                  title="Confirm and reserve dates for 24 hours pending payment"
                                 >
                                   Confirm
                                 </button>
                               )}
                               {statusStr(b.status).toLowerCase() === 'confirmed' && (
                                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                                  {/* Pay link button hidden — re-enable when PayFast is live */}
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline btn-sm"
-                                    style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
-                                    onClick={() => handleGuestStatusChange(b._id, 'cancelled', null)}
-                                    disabled={guestUpdateMutation.isPending}
-                                  >
-                                    Cancel
-                                  </button>
+                                  {canMarkPaid && guestBookingCanMarkPaid(b) ? (
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary btn-sm"
+                                      onClick={() =>
+                                        setConfirmAction({
+                                          kind: 'markGuestPaid',
+                                          id: b._id,
+                                          message: `Mark booking ${b.trackingCode || b._id} as paid? This keeps the reservation.`,
+                                        })
+                                      }
+                                      disabled={markGuestPaidMutation.isPending}
+                                    >
+                                      Mark paid
+                                    </button>
+                                  ) : null}
+                                  {!readOnly ? (
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                                      onClick={() => handleGuestStatusChange(b._id, 'cancelled', null)}
+                                      disabled={guestUpdateMutation.isPending}
+                                    >
+                                      Cancel
+                                    </button>
+                                  ) : null}
                                 </div>
                               )}
                             </td>
@@ -1328,6 +1448,11 @@ export default function BookingsPage() {
                 <div className="bookings-detail-header">
                   <h3>{guestSelected.trackingCode || guestSelected._id}</h3>
                   <span className={`guest-status-pill ${guestStatusBadgeClass(guestSelected.status)}`}>{statusStr(guestSelected.status) || 'pending'}</span>
+                  {statusStr(guestSelected.status).toLowerCase() === 'confirmed' || paymentStatusStr(guestSelected) !== 'unpaid' ? (
+                    <span className={`guest-payment-pill ${paymentStatusBadgeClass(paymentStatusStr(guestSelected))}`}>
+                      {paymentStatusLabel(paymentStatusStr(guestSelected))}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="review-block">
                   <div className="review-block-header">Guest</div>
@@ -1359,6 +1484,41 @@ export default function BookingsPage() {
                     <div className="review-row"><div className="rv-label">Notes</div><div className="rv-val">{guestSelected.notes}</div></div>
                   )}
                 </div>
+
+                {statusStr(guestSelected.status).toLowerCase() === 'confirmed' || paymentStatusStr(guestSelected) !== 'unpaid' ? (
+                  <div className="review-block">
+                    <div className="review-block-header">Payment hold</div>
+                    <div className="review-row">
+                      <div className="rv-label">Payment</div>
+                      <div className="rv-val">
+                        <span className={`guest-payment-pill ${paymentStatusBadgeClass(paymentStatusStr(guestSelected))}`}>
+                          {paymentStatusLabel(paymentStatusStr(guestSelected))}
+                        </span>
+                      </div>
+                    </div>
+                    {guestSelected.confirmedAt ? (
+                      <div className="review-row"><div className="rv-label">Confirmed</div><div className="rv-val">{fmtDateTime(guestSelected.confirmedAt)}</div></div>
+                    ) : null}
+                    {guestSelected.paymentDueAt ? (
+                      <div className="review-row"><div className="rv-label">Pay by</div><div className="rv-val">{fmtDateTime(guestSelected.paymentDueAt)}</div></div>
+                    ) : null}
+                    {guestSelected.paidAt ? (
+                      <div className="review-row"><div className="rv-label">Paid at</div><div className="rv-val">{fmtDateTime(guestSelected.paidAt)}</div></div>
+                    ) : null}
+                    {guestSelected.revokedAt ? (
+                      <div className="review-row">
+                        <div className="rv-label">Revoked</div>
+                        <div className="rv-val">
+                          {fmtDateTime(guestSelected.revokedAt)}
+                          {guestSelected.revocationReason ? ` (${guestSelected.revocationReason})` : ''}
+                        </div>
+                      </div>
+                    ) : null}
+                    {paymentHoldSummary(guestSelected) ? (
+                      <p className="guest-booking-payment-hint">{paymentHoldSummary(guestSelected)}</p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {guestRevenuePostError ? (
                   <div className="guest-booking-revenue-error" role="alert">
@@ -1425,15 +1585,27 @@ export default function BookingsPage() {
                       )}
                     </button>
                   ) : null}
+                  {canMarkPaid && guestBookingCanMarkPaid(guestSelected) ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleMarkGuestPaid}
+                      disabled={markGuestPaidMutation.isPending}
+                    >
+                      {markGuestPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
+                    </button>
+                  ) : null}
                   {statusStr(guestSelected.status).toLowerCase() === 'confirmed' ? (
-                    <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleGuestReject} disabled={guestUpdateMutation.isPending}>Cancel booking</button>
-                  ) : statusStr(guestSelected.status).toLowerCase() !== 'cancelled' && (
+                    !readOnly ? (
+                      <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleGuestReject} disabled={guestUpdateMutation.isPending}>Cancel booking</button>
+                    ) : null
+                  ) : statusStr(guestSelected.status).toLowerCase() !== 'cancelled' && !readOnly ? (
                     <>
-                      <button type="button" className="btn btn-primary btn-sm" onClick={handleGuestConfirm} disabled={guestUpdateMutation.isPending}>Confirm</button>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={handleGuestConfirm} disabled={guestUpdateMutation.isPending} title="Confirm and reserve dates for 24 hours pending payment">Confirm (24h hold)</button>
                       <button type="button" className="btn btn-outline btn-sm" onClick={handleGuestWaitlist} disabled={guestUpdateMutation.isPending}>Waitlist</button>
                       <button type="button" className="btn btn-outline btn-sm" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={handleGuestReject} disabled={guestUpdateMutation.isPending}>Reject</button>
                     </>
-                  )}
+                  ) : null}
                   {isAdmin && (
                     <button
                       type="button"
@@ -2076,17 +2248,30 @@ export default function BookingsPage() {
       )}
       <ConfirmModal
         open={Boolean(confirmAction)}
-        title="Confirm action"
+        title={
+          confirmAction?.kind === 'markGuestPaid'
+            ? 'Mark booking as paid'
+            : confirmAction?.kind === 'cancelInternal'
+              ? 'Cancel booking'
+              : 'Confirm action'
+        }
         message={confirmAction?.message || ''}
         confirmLabel={
-          confirmAction?.kind === 'cancelInternal'
-            ? 'Cancel booking'
-            : 'Delete'
+          confirmAction?.kind === 'markGuestPaid'
+            ? 'Mark as paid'
+            : confirmAction?.kind === 'cancelInternal'
+              ? 'Cancel booking'
+              : 'Delete'
         }
         onConfirm={confirmBookingAction}
         onCancel={() => setConfirmAction(null)}
-        busy={updateMutation.isPending || deleteBookingMutation.isPending || deleteGuestBookingMutation.isPending}
-        tone="danger"
+        busy={
+          updateMutation.isPending
+          || deleteBookingMutation.isPending
+          || deleteGuestBookingMutation.isPending
+          || markGuestPaidMutation.isPending
+        }
+        tone={confirmAction?.kind === 'markGuestPaid' ? 'primary' : 'danger'}
       />
     </div>
   );
