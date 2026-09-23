@@ -204,7 +204,14 @@ function buildQuotationHtml(quote) {
     <h3>Terms</h3>
     <p>${escapeHtml(quote.terms || '—')}</p>
   </section>
-</div>`;
+</div>
+<section class="q-card" style="margin-top:16px">
+  <h3>Banking details</h3>
+  <p><strong>Bank:</strong> FNB</p>
+  <p><strong>Branch code:</strong> 250655</p>
+  <p><strong>Account number:</strong> 63157115148</p>
+  <p><strong>Account name:</strong> Ngimu Agriculture</p>
+</section>`;
 
   const markdown = `
 > **Quotation:** ${escapeMarkdown(quote.quotationNumber)}
