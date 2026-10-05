@@ -1191,11 +1191,6 @@ export default function BookingsPage() {
                     ) : null;
                   })()}
                   <div className="review-row"><div className="rv-label">Total</div><div className="rv-val">R {fmtNum(getBookingRevenueSplit(booking).totalAmount)}</div></div>
-                  <div className="review-row"><div className="rv-label">Debtor</div><div className="rv-val">{booking.debtorId || '—'}</div></div>
-                  <div className="review-row"><div className="rv-label">Room revenue txn</div><div className="rv-val">{booking.revenueTransactionId || '—'}</div></div>
-                  {getBookingRevenueSplit(booking).foodAmount > 0 ? (
-                    <div className="review-row"><div className="rv-label">Food revenue txn</div><div className="rv-val">{booking.foodRevenueTransactionId || '—'}</div></div>
-                  ) : null}
                 </div>
                 <div className="review-block">
                   <div className="review-block-header">Guest contact</div>
@@ -1475,11 +1470,6 @@ export default function BookingsPage() {
                     ) : null;
                   })()}
                   <div className="review-row"><div className="rv-label">Total</div><div className="rv-val">R {Number(getBookingRevenueSplit(guestSelected).totalAmount).toLocaleString('en-ZA')}</div></div>
-                  <div className="review-row"><div className="rv-label">Debtor</div><div className="rv-val">{guestSelected.debtorId || '—'}</div></div>
-                  <div className="review-row"><div className="rv-label">Room revenue txn</div><div className="rv-val">{guestSelected.revenueTransactionId || '—'}</div></div>
-                  {getBookingRevenueSplit(guestSelected).foodAmount > 0 ? (
-                    <div className="review-row"><div className="rv-label">Food revenue txn</div><div className="rv-val">{guestSelected.foodRevenueTransactionId || '—'}</div></div>
-                  ) : null}
                   {guestSelected.notes && (
                     <div className="review-row"><div className="rv-label">Notes</div><div className="rv-val">{guestSelected.notes}</div></div>
                   )}

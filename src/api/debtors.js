@@ -26,6 +26,19 @@ async function postWithAliases(paths, body) {
   throw lastErr || new Error('No matching API route found.');
 }
 
+async function deleteWithAliases(paths, body) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.delete(path, body != null ? { data: body } : undefined);
+    } catch (err) {
+      if (err?.response?.status !== 404) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No matching API route found.');
+}
+
 function debtorPaths(suffix = '') {
   const s = suffix.startsWith('/') ? suffix : suffix ? `/${suffix}` : '';
   return [`/api/finance/debtors${s}`, `/api/debtors${s}`];
@@ -77,6 +90,11 @@ export function getDebtorPaymentPdf(debtorId, paymentId) {
 /** Email receipt PDF. Body optional: `{ to, subject, message }`. */
 export function sendDebtorPaymentEmail(debtorId, paymentId, body = {}) {
   return postWithAliases(debtorPaths(`${debtorId}/payments/${paymentId}/send-email`), body || {});
+}
+
+/** Delete a recorded payment (finance/admin). Reverses ledger + restores debtor balance. */
+export function deleteDebtorPayment(debtorId, paymentId, body = {}) {
+  return deleteWithAliases(debtorPaths(`${debtorId}/payments/${paymentId}`), body || {});
 }
 
 /** Prefer human code (DBT-…) over Mongo id. */

@@ -8,10 +8,12 @@ import {
   getDebtorPayments,
   getDebtorPaymentPdf,
   sendDebtorPaymentEmail,
+  deleteDebtorPayment,
   getDebtors,
   debtorCode,
   receiptCode,
 } from '@/api/debtors';
+import ConfirmModal from '@/components/ConfirmModal';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { parseLocalDate } from '@/utils/availability';
 import {
@@ -134,6 +136,7 @@ export default function BookingPaymentsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const canEmail = ['admin', 'finance'].includes(String(user?.role || '').toLowerCase());
+  const canDeletePayment = canEmail;
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -144,6 +147,7 @@ export default function BookingPaymentsPage() {
   const [lastReceipt, setLastReceipt] = useState(null);
   const [receiptBusyKey, setReceiptBusyKey] = useState('');
   const [receiptMsg, setReceiptMsg] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['debtors', 'pending-bookings', LIMIT],
@@ -343,6 +347,24 @@ export default function BookingPaymentsPage() {
     },
     onError: (err) => {
       setSaveError(err?.message || 'Could not record payment.');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ debtorId, paymentId }) => deleteDebtorPayment(debtorId, paymentId),
+    onSuccess: (_resp, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['debtors'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      setDeleteTarget(null);
+      if (lastReceipt?.paymentId && String(lastReceipt.paymentId) === String(vars?.paymentId)) {
+        setLastReceipt(null);
+      }
+      setReceiptMsg({ type: 'ok', text: 'Payment deleted. Debtor balance and ledger were updated.' });
+    },
+    onError: (err) => {
+      setReceiptMsg({ type: 'error', text: err?.message || 'Could not delete payment.' });
+      setDeleteTarget(null);
     },
   });
 
@@ -631,6 +653,25 @@ export default function BookingPaymentsPage() {
                                 Email
                               </button>
                             ) : null}
+                            {canDeletePayment ? (
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                style={{ marginLeft: 6, color: 'var(--danger, #b42318)', borderColor: 'rgba(180, 35, 24, 0.35)' }}
+                                disabled={deleteMutation.isPending}
+                                onClick={() =>
+                                  setDeleteTarget({
+                                    debtorId: p.debtorId,
+                                    paymentId,
+                                    receiptNumber: rcp,
+                                    amount: p.amount,
+                                    guestName: p.debtorName,
+                                  })
+                                }
+                              >
+                                Delete
+                              </button>
+                            ) : null}
                           </td>
                         </tr>
                       );
@@ -818,6 +859,23 @@ export default function BookingPaymentsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Delete payment"
+        message={`Delete receipt ${deleteTarget?.receiptNumber || ''} for ${deleteTarget?.guestName || 'guest'} (${fmtMoney(deleteTarget?.amount)})? This reverses the ledger entry and restores the debtor balance.`}
+        confirmLabel="Delete payment"
+        onConfirm={() => {
+          if (!deleteTarget?.debtorId || !deleteTarget?.paymentId) return;
+          deleteMutation.mutate({
+            debtorId: deleteTarget.debtorId,
+            paymentId: deleteTarget.paymentId,
+          });
+        }}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleteMutation.isPending}
+        tone="danger"
+      />
     </div>
   );
 }
