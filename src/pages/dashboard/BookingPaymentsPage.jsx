@@ -2,10 +2,16 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { getPendingBookingDebtors, recordDebtorPayment } from '@/api/debtors';
-import { getTransactions, FINANCE_TRANSACTIONS_MAX_LIMIT } from '@/api/finance';
-import { normalizeTransactionsFetchResult } from '@/utils/transactionsResponse';
-import { transactionCategoryLabel } from '@/constants/transactionCategories';
+import {
+  getPendingBookingDebtors,
+  recordDebtorPayment,
+  getDebtorPayments,
+  getDebtorPaymentPdf,
+  sendDebtorPaymentEmail,
+  getDebtors,
+  debtorCode,
+  receiptCode,
+} from '@/api/debtors';
 import { formatDateDayMonthYear } from '@/utils/formatDate';
 import { parseLocalDate } from '@/utils/availability';
 import {
@@ -40,21 +46,6 @@ function roomLabel(b) {
   return String(r);
 }
 
-function dateRangeLabel(b) {
-  const ci = b.checkIn || b.eventDate;
-  const co = b.checkOut;
-  if (ci && co) {
-    const a = parseLocalDate(String(ci).slice(0, 10));
-    const c = parseLocalDate(String(co).slice(0, 10));
-    if (a && c) return `${formatDateDayMonthYear(a)} → ${formatDateDayMonthYear(c)}`;
-  }
-  if (ci) {
-    const a = parseLocalDate(String(ci).slice(0, 10));
-    if (a) return formatDateDayMonthYear(a);
-  }
-  return '—';
-}
-
 function bookingDateLabel(value) {
   if (!value) return '—';
   const parsed = parseLocalDate(String(value).slice(0, 10));
@@ -81,6 +72,7 @@ function toPaymentRow(raw) {
     ...booking,
     _raw: raw,
     debtorId: debtorId != null ? String(debtorId) : '',
+    debtorNumber: String(raw.debtorNumber || raw.debtor_number || '').trim(),
     guestName: raw.name || raw.guestName || booking.guestName || raw.guest?.name || bookingGuestLabel(booking),
     guestEmail: raw.contactEmail || raw.guestEmail || booking.guestEmail || raw.guest?.email || '',
     guestPhone: raw.contactPhone || raw.guestPhone || booking.guestPhone || '',
@@ -111,49 +103,6 @@ function toPaymentRow(raw) {
   };
 }
 
-/** Rows posted from debtor / booking receipt flows (Payments page or equivalent). */
-function isGuestBookingPaymentRecord(t) {
-  if (!t || typeof t !== 'object') return false;
-  const src = String(t.source || t.paymentSource || '').toLowerCase();
-  if (src.includes('debtor_payment') || src === 'debtor') return true;
-  const cat = String(t.category || '').toLowerCase();
-  if (cat === 'booking_payment' || cat === 'guest_payment') return true;
-  if (/guest\s+payment/i.test(String(t.description || ''))) return true;
-  if (/^pay-book-/i.test(String(t.reference || ''))) return true;
-  return false;
-}
-
-function transactionBookingId(t) {
-  const b = t?.booking;
-  if (b == null || b === '') return '';
-  if (typeof b === 'object') return String(b._id ?? b.id ?? '');
-  return String(b);
-}
-
-function transactionGuestFromBooking(t) {
-  const b = t?.booking;
-  if (!b || typeof b !== 'object') return { name: '', email: '', phone: '' };
-  return {
-    name: String(b.guestName || b.guest?.name || '').trim(),
-    email: String(b.guestEmail || b.guest?.email || '').trim(),
-    phone: String(b.guestPhone || b.guest?.phone || '').trim(),
-  };
-}
-
-/** Primary guest label for history rows (populated booking, top-level field, or description). */
-function transactionGuestDisplay(t) {
-  const { name } = transactionGuestFromBooking(t);
-  if (name) return name;
-  const top = String(t?.guestName || '').trim();
-  if (top) return top;
-  const desc = String(t?.description || '');
-  const m =
-    desc.match(/Payment received —\s*([^([]]+)/i) ||
-    desc.match(/Guest payment —\s*([^([]]+)/i);
-  if (m) return m[1].trim();
-  return '—';
-}
-
 function defaultPaymentForm(booking) {
   const debtorId = booking?.debtorId || '';
   const ref = booking ? bookingReferenceDisplay(booking) : '';
@@ -164,17 +113,27 @@ function defaultPaymentForm(booking) {
     amount: outstanding > 0 ? String(outstanding) : '',
     date: today,
     reference: ref && ref !== '—' ? `PAY-BOOK-${String(ref).replace(/\s+/g, '').slice(0, 14)}` : '',
-    note: booking
-      ? `Guest payment — ${guest} (${ref})`
-      : '',
+    note: booking ? `Guest payment — ${guest} (${ref})` : '',
     debtorId,
   };
+}
+
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'receipt.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function BookingPaymentsPage() {
   const location = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const canEmail = ['admin', 'finance'].includes(String(user?.role || '').toLowerCase());
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -182,6 +141,9 @@ export default function BookingPaymentsPage() {
   const [form, setForm] = useState(() => defaultPaymentForm(null));
   const [saveError, setSaveError] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
+  const [lastReceipt, setLastReceipt] = useState(null);
+  const [receiptBusyKey, setReceiptBusyKey] = useState('');
+  const [receiptMsg, setReceiptMsg] = useState(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['debtors', 'pending-bookings', LIMIT],
@@ -192,80 +154,76 @@ export default function BookingPaymentsPage() {
   const eligible = useMemo(() => rawList.map(toPaymentRow).filter(Boolean), [rawList]);
 
   const list = useMemo(() => {
-    let rows = eligible;
+    let rows = eligible.filter((b) => (Number(b.balance) || 0) > 0);
     if (monthFilter) {
       rows = rows.filter((b) => {
-        const ci = b.checkIn || b.eventDate;
-        const m = ci != null && String(ci).length >= 7 ? String(ci).slice(0, 7) : '';
-        if (!m) return true;
-        return m === monthFilter;
+        const d = String(b.checkIn || b.eventDate || '').slice(0, 7);
+        return d === monthFilter;
       });
     }
     if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
-    return rows.filter(
-      (b) =>
-        bookingGuestLabel(b).toLowerCase().includes(q) ||
-        String(b.guestEmail || '')
-          .toLowerCase()
-          .includes(q) ||
-        String(b.guestPhone || '')
-          .toLowerCase()
-          .includes(q) ||
-        bookingReferenceDisplay(b).toLowerCase().includes(q) ||
-        roomLabel(b).toLowerCase().includes(q)
-    );
+    return rows.filter((b) => {
+      const hay = [
+        b.guestName,
+        b.guestEmail,
+        b.guestPhone,
+        b.reference,
+        b.debtorNumber,
+        roomLabel(b),
+        bookingReferenceDisplay(b),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
   }, [eligible, search, monthFilter]);
 
-  const historyLimit = Math.min(300, FINANCE_TRANSACTIONS_MAX_LIMIT);
-  const {
-    data: historyFetch,
-    isLoading: historyLoading,
-    error: historyError,
-  } = useQuery({
-    queryKey: ['finance', 'transactions', 'booking-payments-history', historyLimit],
+  const receiptsQuery = useQuery({
+    queryKey: ['debtors', 'receipts-history'],
     queryFn: async () => {
-      const res = await getTransactions({ page: 1, limit: historyLimit, includeByAccount: 0 });
-      return normalizeTransactionsFetchResult(res);
+      const debtorsRes = await getDebtors({ page: 1, limit: 200 });
+      const debtors = listFromSuccessEnvelope(debtorsRes);
+      const withPaid = debtors.filter((d) => (Number(d.amountPaid) || 0) > 0).slice(0, 50);
+      const batches = await Promise.all(
+        withPaid.map(async (d) => {
+          const id = String(d._id ?? d.id ?? '');
+          if (!id) return [];
+          try {
+            const payRes = await getDebtorPayments(id);
+            const payments = listFromSuccessEnvelope(payRes);
+            return payments.map((p) => ({
+              ...p,
+              debtorId: id,
+              debtorNumber: d.debtorNumber || '',
+              debtorName: d.name || '',
+              contactEmail: d.contactEmail || '',
+            }));
+          } catch {
+            return [];
+          }
+        })
+      );
+      return batches
+        .flat()
+        .sort((a, b) => new Date(b.paidAt || b.createdAt || 0) - new Date(a.paidAt || a.createdAt || 0));
     },
     enabled: activeTab === 'history',
-    staleTime: 30 * 1000,
   });
 
-  const historyEligible = useMemo(() => {
-    const rows = historyFetch?.list ?? [];
-    return rows.filter(isGuestBookingPaymentRecord);
-  }, [historyFetch]);
-
+  const historyEligible = receiptsQuery.data || [];
   const historyList = useMemo(() => {
     let rows = historyEligible;
     if (monthFilter) {
-      rows = rows.filter((t) => {
-        const d = t.date ?? t.paidAt ?? t.createdAt;
-        const m = d != null && String(d).length >= 7 ? String(d).slice(0, 7) : '';
-        if (!m) return true;
-        return m === monthFilter;
-      });
+      rows = rows.filter((p) => String(p.paidAt || p.createdAt || '').slice(0, 7) === monthFilter);
     }
     if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
-    return rows.filter((t) => {
-      const g = transactionGuestFromBooking(t);
-      const guestLine = `${transactionGuestDisplay(t)} ${g.email} ${g.phone}`.toLowerCase();
-      const bid = transactionBookingId(t).toLowerCase();
-      return (
-        guestLine.includes(q) ||
-        bid.includes(q) ||
-        String(t.description || '')
-          .toLowerCase()
-          .includes(q) ||
-        String(t.reference || '')
-          .toLowerCase()
-          .includes(q) ||
-        String(transactionCategoryLabel(t.category))
-          .toLowerCase()
-          .includes(q)
-      );
+    return rows.filter((p) => {
+      const hay = [p.debtorName, p.contactEmail, p.receiptNumber, p.debtorNumber, p.reference, p.note, p.method]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
     });
   }, [historyEligible, search, monthFilter]);
 
@@ -277,7 +235,6 @@ export default function BookingPaymentsPage() {
   }, [eligible]);
 
   const bookingSelectOptions = useMemo(() => {
-    // Primary picker should prioritize bookings that still owe money.
     const fromOutstanding = outstandingBookings.map((x) => x.booking);
     const base = fromOutstanding.length > 0 ? fromOutstanding : eligible;
     const ids = new Set(base.map((b) => String(b._id ?? b.id)));
@@ -316,16 +273,73 @@ export default function BookingPaymentsPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [paymentModalOpen, closePayment]);
 
+  const downloadReceipt = useCallback(async ({ debtorId, paymentId, receiptNumber }) => {
+    if (!debtorId || !paymentId) return;
+    const key = `pdf:${paymentId}`;
+    setReceiptBusyKey(key);
+    setReceiptMsg(null);
+    try {
+      const res = await getDebtorPaymentPdf(debtorId, paymentId);
+      const blob = res?.data ?? res;
+      if (!(blob instanceof Blob)) throw new Error('Receipt PDF was not returned as a file.');
+      if (blob.type && blob.type.includes('json')) {
+        const text = await blob.text();
+        let msg = 'Could not download receipt PDF.';
+        try {
+          msg = JSON.parse(text)?.message || msg;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(msg);
+      }
+      triggerBlobDownload(blob, `${receiptNumber || paymentId}.pdf`);
+    } catch (err) {
+      setReceiptMsg({ type: 'error', text: err?.message || 'Could not download receipt PDF.' });
+    } finally {
+      setReceiptBusyKey('');
+    }
+  }, []);
+
+  const emailReceipt = useCallback(async ({ debtorId, paymentId, to, receiptNumber }) => {
+    if (!debtorId || !paymentId) return;
+    const key = `email:${paymentId}`;
+    setReceiptBusyKey(key);
+    setReceiptMsg(null);
+    try {
+      await sendDebtorPaymentEmail(debtorId, paymentId, to ? { to } : {});
+      setReceiptMsg({
+        type: 'ok',
+        text: `Receipt ${receiptNumber || ''} emailed${to ? ` to ${to}` : ''}.`.trim(),
+      });
+    } catch (err) {
+      setReceiptMsg({ type: 'error', text: err?.message || 'Could not email receipt.' });
+    } finally {
+      setReceiptBusyKey('');
+    }
+  }, []);
+
   const createMutation = useMutation({
-    mutationFn: async ({ debtorId, body }) => {
-      return recordDebtorPayment(debtorId, body);
-    },
-    onSuccess: () => {
+    mutationFn: async ({ debtorId, body }) => recordDebtorPayment(debtorId, body),
+    onSuccess: (resp, vars) => {
       queryClient.invalidateQueries({ queryKey: ['debtors'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['finance', 'transactions', 'booking-payments-history'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      const meta = resp?.meta || {};
+      const relatedPayment = resp?.related?.payment || {};
+      const paymentId = String(meta.paymentId || relatedPayment._id || '');
+      const debtorId = String(vars?.debtorId || resp?.data?._id || resp?.data?.id || '');
+      setLastReceipt({
+        debtorId,
+        paymentId,
+        receiptNumber: receiptCode(meta) || receiptCode(relatedPayment) || '',
+        debtorNumber: debtorCode(meta) || debtorCode(resp?.data) || '',
+        guestEmail: vars?.booking?.guestEmail || paymentBooking?.guestEmail || '',
+        guestName: vars?.booking?.guestName || paymentBooking?.guestName || '',
+        amount: relatedPayment.amount ?? vars?.body?.amount,
+      });
+      setReceiptMsg(null);
       closePayment();
+      setActiveTab('history');
     },
     onError: (err) => {
       setSaveError(err?.message || 'Could not record payment.');
@@ -348,6 +362,7 @@ export default function BookingPaymentsPage() {
       const body = {
         amount,
         note: form.note || '',
+        ...(form.reference?.trim() ? { reference: form.reference.trim() } : {}),
         ...(form.date ? { paidAt: new Date(`${form.date}T12:00:00`).toISOString() } : {}),
       };
       createMutation.mutate({ debtorId: form.debtorId, body, booking: paymentBooking });
@@ -363,22 +378,9 @@ export default function BookingPaymentsPage() {
           <div className="page-title">{location.pathname.includes('/payments') ? 'Payments' : 'Booking payments'}</div>
           <div className="page-subtitle">
             {activeTab === 'pending' ? (
-              <>
-                Record receipts against booking debtors with outstanding balances
-                {String(user?.role || '').toLowerCase() === 'finance' ? (
-                  <>
-                    {' '}
-                    — pending list is sourced from <code>/api/debtors/pending-bookings</code>.
-                  </>
-                ) : (
-                  <> — Finance can review and settle outstanding booking debtors.</>
-                )}
-              </>
+              <>Record receipts against booking debtors. Confirmations hold rooms for 24 hours until paid.</>
             ) : (
-              <>
-                Receipts already posted from this flow (matched from finance transactions: debtor payments, guest
-                payment notes, or <code>PAY-BOOK-</code> references).
-              </>
+              <>Payment receipts (RCP-…) — download PDF or email to the guest.</>
             )}
           </div>
         </div>
@@ -387,9 +389,60 @@ export default function BookingPaymentsPage() {
         </button>
       </div>
 
-      {((activeTab === 'pending' && error) || (activeTab === 'history' && historyError)) && (
+      {lastReceipt?.paymentId ? (
+        <div className="card" style={{ borderColor: 'rgba(26, 107, 90, 0.35)' }}>
+          <div className="card-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <div style={{ flex: '1 1 220px' }}>
+              <div style={{ fontWeight: 700 }}>
+                Receipt {lastReceipt.receiptNumber || lastReceipt.paymentId} recorded
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                {lastReceipt.debtorNumber ? `${lastReceipt.debtorNumber} · ` : ''}
+                {lastReceipt.guestName || 'Guest'}
+                {lastReceipt.amount != null ? ` · ${fmtMoney(lastReceipt.amount)}` : ''}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              disabled={receiptBusyKey === `pdf:${lastReceipt.paymentId}`}
+              onClick={() => downloadReceipt(lastReceipt)}
+            >
+              {receiptBusyKey === `pdf:${lastReceipt.paymentId}` ? 'Downloading…' : 'Download PDF'}
+            </button>
+            {canEmail ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={receiptBusyKey === `email:${lastReceipt.paymentId}`}
+                onClick={() =>
+                  emailReceipt({
+                    ...lastReceipt,
+                    to: lastReceipt.guestEmail || undefined,
+                  })
+                }
+              >
+                {receiptBusyKey === `email:${lastReceipt.paymentId}` ? 'Sending…' : 'Email receipt'}
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLastReceipt(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {receiptMsg ? (
+        <div className={`card ${receiptMsg.type === 'error' ? 'card--error' : ''}`}>
+          <div className="card-body" style={{ fontSize: 13 }}>{receiptMsg.text}</div>
+        </div>
+      ) : null}
+
+      {((activeTab === 'pending' && error) || (activeTab === 'history' && receiptsQuery.error)) && (
         <div className="card card--error">
-          <div className="card-body">{(activeTab === 'history' ? historyError : error)?.message}</div>
+          <div className="card-body">
+            {(activeTab === 'history' ? receiptsQuery.error : error)?.message}
+          </div>
         </div>
       )}
 
@@ -434,22 +487,17 @@ export default function BookingPaymentsPage() {
               onSearchChange={setSearch}
               searchPlaceholder={
                 activeTab === 'pending'
-                  ? 'Guest name, email, phone, reference, room…'
-                  : 'Guest, email, phone, description, reference, booking id…'
+                  ? 'Guest, email, phone, booking ref, debtor code…'
+                  : 'Guest, receipt (RCP-), debtor (DBT-), reference…'
               }
               month={monthFilter}
               onMonthChange={setMonthFilter}
             />
             <p className="booking-payments-hint">
               {activeTab === 'pending' ? (
-                <>
-                  Showing {list.length} of {eligible.length} booking debtors with balances pending.
-                </>
+                <>Showing {list.length} of {eligible.length} booking debtors with balances pending.</>
               ) : (
-                <>
-                  Showing {historyList.length} of {historyEligible.length} matched payment
-                  {historyEligible.length === 1 ? '' : 's'} (from last {historyLimit} finance transactions).
-                </>
+                <>Showing {historyList.length} receipt{historyList.length === 1 ? '' : 's'}.</>
               )}
             </p>
           </div>
@@ -460,56 +508,44 @@ export default function BookingPaymentsPage() {
               <table className="statement-table booking-payments-table">
                 <thead>
                   <tr>
+                    <th>Debtor</th>
                     <th>Reference</th>
                     <th>Guest</th>
                     <th>Status</th>
-                    <th>Platform</th>
                     <th>Check-in</th>
                     <th>Check-out</th>
-                    <th>Room / type</th>
+                    <th>Room</th>
                     <th className="statement-table-num">Amount owed</th>
                     <th className="statement-table-num">Balance</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={10}>Loading bookings…</td>
-                    </tr>
-                  ) : null}
+                  {isLoading ? <tr><td colSpan={10}>Loading bookings…</td></tr> : null}
                   {!isLoading && list.length === 0 ? (
-                    <tr>
-                      <td colSpan={10}>No pending booking debtors found.</td>
-                    </tr>
+                    <tr><td colSpan={10}>No pending booking debtors found.</td></tr>
                   ) : null}
                   {!isLoading &&
                     list.map((b) => {
-                      const id = b._id ?? b.id;
+                      const id = b._id ?? b.id ?? b.debtorId;
                       return (
                         <tr key={id || JSON.stringify(b)}>
+                          <td><strong>{b.debtorNumber || '—'}</strong></td>
                           <td className="booking-payments-ref">{bookingReferenceDisplay(b)}</td>
                           <td>
                             <div className="booking-payments-guest">
                               {String(b.guestName || '').trim() || bookingGuestLabel(b)}
                             </div>
                             {b.guestEmail ? <div className="booking-payments-email">{b.guestEmail}</div> : null}
-                            {b.guestPhone ? <div className="booking-payments-email">{b.guestPhone}</div> : null}
                           </td>
                           <td>
                             <span className={'badge ' + statusBadgeClass(b.status)}>{statusStr(b.status) || '—'}</span>
                           </td>
-                          <td>{String(b.platform || 'direct')}</td>
                           <td>{bookingDateLabel(b.checkIn || b.eventDate)}</td>
                           <td>{bookingDateLabel(b.checkOut)}</td>
-                          <td className="booking-payments-room">
-                            {roomLabel(b)}
-                            {b.type ? <span className="booking-payments-type">{String(b.type)}</span> : null}
-                          </td>
+                          <td className="booking-payments-room">{roomLabel(b)}</td>
                           <td className="statement-table-num">{fmtMoney(b.amountOwed)}</td>
-                          <td className="statement-table-num">
-                            <strong>{fmtMoney(b.balance)}</strong>
-                          </td>
+                          <td className="statement-table-num"><strong>{fmtMoney(b.balance)}</strong></td>
                           <td className="booking-payments-actions">
                             <button type="button" className="btn btn-primary btn-sm" onClick={() => openPayment(b)}>
                               Record payment
@@ -525,50 +561,76 @@ export default function BookingPaymentsPage() {
                 <thead>
                   <tr>
                     <th>Date</th>
+                    <th>Receipt</th>
+                    <th>Debtor</th>
                     <th>Guest</th>
-                    <th>Description</th>
-                    <th>Category</th>
+                    <th>Method</th>
                     <th>Reference</th>
-                    <th>Booking</th>
                     <th className="statement-table-num">Amount</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {historyLoading ? (
+                  {receiptsQuery.isLoading ? <tr><td colSpan={8}>Loading receipts…</td></tr> : null}
+                  {!receiptsQuery.isLoading && historyList.length === 0 ? (
                     <tr>
-                      <td colSpan={7}>Loading payments…</td>
-                    </tr>
-                  ) : null}
-                  {!historyLoading && historyList.length === 0 ? (
-                    <tr>
-                      <td colSpan={7}>
-                        {historyEligible.length === 0
-                          ? 'No matching guest payment transactions in this window. After you record a receipt, it should appear here.'
-                          : 'No rows match the current search or month filter.'}
+                      <td colSpan={8}>
+                        No receipts yet. Record a payment on the Outstanding tab to create an RCP-… receipt.
                       </td>
                     </tr>
                   ) : null}
-                  {!historyLoading &&
-                    historyList.map((t) => {
-                      const id = t._id ?? t.id;
-                      const d = t.date ?? t.paidAt ?? t.createdAt;
-                      const g = transactionGuestFromBooking(t);
-                      const guestLabel = transactionGuestDisplay(t);
-                      const bookingId = transactionBookingId(t);
+                  {!receiptsQuery.isLoading &&
+                    historyList.map((p) => {
+                      const paymentId = String(p._id ?? p.id ?? '');
+                      const rcp = receiptCode(p) || paymentId.slice(-8);
+                      const dbt = debtorCode(p) || '—';
                       return (
-                        <tr key={id || JSON.stringify(t)}>
-                          <td>{d ? String(d).slice(0, 10) : '—'}</td>
+                        <tr key={paymentId || JSON.stringify(p)}>
+                          <td>{p.paidAt ? String(p.paidAt).slice(0, 10) : '—'}</td>
+                          <td><strong>{rcp}</strong></td>
+                          <td>{dbt}</td>
                           <td>
-                            <div className="booking-payments-guest">{guestLabel}</div>
-                            {g.email ? <div className="booking-payments-email">{g.email}</div> : null}
-                            {g.phone ? <div className="booking-payments-email">{g.phone}</div> : null}
+                            <div className="booking-payments-guest">{p.debtorName || '—'}</div>
+                            {p.contactEmail ? <div className="booking-payments-email">{p.contactEmail}</div> : null}
                           </td>
-                          <td>{t.description || '—'}</td>
-                          <td>{transactionCategoryLabel(t.category)}</td>
-                          <td className="booking-payments-ref">{t.reference || '—'}</td>
-                          <td className="booking-payments-email">{bookingId || '—'}</td>
+                          <td>{p.method || '—'}</td>
+                          <td className="booking-payments-ref">{p.reference || '—'}</td>
                           <td className="statement-table-num pl-pos">
-                            <strong>{fmtMoney(t.amount)}</strong>
+                            <strong>{fmtMoney(p.amount)}</strong>
+                          </td>
+                          <td className="booking-payments-actions" style={{ whiteSpace: 'nowrap' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              disabled={receiptBusyKey === `pdf:${paymentId}`}
+                              onClick={() =>
+                                downloadReceipt({
+                                  debtorId: p.debtorId,
+                                  paymentId,
+                                  receiptNumber: rcp,
+                                })
+                              }
+                            >
+                              PDF
+                            </button>
+                            {canEmail ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                style={{ marginLeft: 6 }}
+                                disabled={receiptBusyKey === `email:${paymentId}`}
+                                onClick={() =>
+                                  emailReceipt({
+                                    debtorId: p.debtorId,
+                                    paymentId,
+                                    receiptNumber: rcp,
+                                    to: p.contactEmail || undefined,
+                                  })
+                                }
+                              >
+                                Email
+                              </button>
+                            ) : null}
                           </td>
                         </tr>
                       );
@@ -619,32 +681,25 @@ export default function BookingPaymentsPage() {
                 >
                   <option value="">Choose a booking…</option>
                   {bookingSelectOptions.map((b) => {
-                    const bid = b._id ?? b.id;
+                    const bid = b._id ?? b.id ?? b.debtorId;
                     const nm = String(b.guestName || '').trim() || bookingGuestLabel(b);
-                    const em = String(b.guestEmail || '').trim();
-                    const ph = String(b.guestPhone || '').trim();
-                    const guestLine = [nm, em || null, ph || null].filter(Boolean).join(' · ');
+                    const code = b.debtorNumber ? `${b.debtorNumber} · ` : '';
                     return (
                       <option key={bid} value={String(b.debtorId || bid)}>
-                        {guestLine}
+                        {code}{nm}
                         {bookingReferenceDisplay(b) !== '—' ? ` (${bookingReferenceDisplay(b)})` : ''}
                         {statusStr(b.status) ? ` — ${statusStr(b.status)}` : ''}
                       </option>
                     );
                   })}
                 </select>
-                {bookingSelectOptions.length === 0 && (
-                  <p className="booking-payments-hint" style={{ marginTop: 8 }}>
-                    No eligible bookings with balances found in the current list.
-                  </p>
-                )}
               </div>
               {outstandingBookings.length > 0 ? (
                 <div className="form-group" style={{ marginBottom: 14 }}>
                   <div className="form-label">Unpaid / outstanding booking guests</div>
                   <div style={{ display: 'grid', gap: 8, maxHeight: 180, overflowY: 'auto', paddingRight: 2 }}>
                     {outstandingBookings.map(({ booking: b, outstanding }) => {
-                      const bid = String(b._id ?? b.id ?? '');
+                      const bid = String(b._id ?? b.id ?? b.debtorId ?? '');
                       return (
                         <button
                           key={`out-${bid}`}
@@ -658,43 +713,38 @@ export default function BookingPaymentsPage() {
                           }}
                         >
                           <span style={{ textAlign: 'left' }}>
-                            <div>{String(b.guestName || '').trim() || bookingGuestLabel(b)}</div>
+                            <div>
+                              {b.debtorNumber ? `${b.debtorNumber} · ` : ''}
+                              {String(b.guestName || '').trim() || bookingGuestLabel(b)}
+                            </div>
                             {b.guestEmail ? <div className="text-muted">{b.guestEmail}</div> : null}
-                            {b.guestPhone ? <div className="text-muted">{b.guestPhone}</div> : null}
                           </span>
                           <strong>{fmtMoney(outstanding)}</strong>
                         </button>
                       );
                     })}
                   </div>
-                  <p className="booking-payments-hint" style={{ marginTop: 8 }}>
-                    Quick-pick guests with outstanding balances. The amount field auto-fills with the selected balance.
-                  </p>
                 </div>
               ) : null}
               {paymentBooking ? (
                 <div className="booking-payments-modal-summary">
                   <div>
                     <strong>
+                      {paymentBooking.debtorNumber ? `${paymentBooking.debtorNumber} · ` : ''}
                       {String(paymentBooking.guestName || '').trim() || bookingGuestLabel(paymentBooking)}
                     </strong>
                   </div>
                   {paymentBooking.guestEmail ? (
                     <div className="booking-payments-email">{paymentBooking.guestEmail}</div>
                   ) : null}
-                  {paymentBooking.guestPhone ? (
-                    <div className="booking-payments-email">{paymentBooking.guestPhone}</div>
-                  ) : null}
                   <div className="booking-payments-modal-meta">
                     Ref {bookingReferenceDisplay(paymentBooking)} · Amount owed {fmtMoney(paymentBooking.amountOwed)} ·
                     Balance {fmtMoney(paymentBooking.balance)}
-                    {paymentBooking.invoiceStatus ? ` · Invoice ${paymentBooking.invoiceStatus}` : ''}
-                    {paymentBooking.invoiceDueDate ? ` · Due ${String(paymentBooking.invoiceDueDate).slice(0, 10)}` : ''}
                   </div>
                 </div>
               ) : (
                 <p className="text-muted" style={{ fontSize: 13, marginBottom: 14 }}>
-                  Pick which guest stay this receipt applies to. Amount and accounts can be adjusted after you select.
+                  Pick which guest stay this receipt applies to.
                 </p>
               )}
               <form onSubmit={handleSubmit}>
@@ -743,10 +793,6 @@ export default function BookingPaymentsPage() {
                     />
                   </div>
                 </div>
-                <p className="chart-of-accounts-api-note">
-                  Saves via <code>POST /api/debtors/:id/payments</code> and relies on backend journal posting for the
-                  double-entry transaction.
-                </p>
                 {saveError && (
                   <div className="card card--error" style={{ marginTop: 12 }}>
                     <div className="card-body" style={{ whiteSpace: 'pre-line', fontSize: 13 }}>

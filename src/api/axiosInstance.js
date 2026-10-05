@@ -38,13 +38,26 @@ axiosInstance.interceptors.request.use((config) => {
 axiosInstance.interceptors.response.use(
   (response) => {
     const body = response.data;
-    if (body && body.success === false) {
+    // Blob/arraybuffer downloads (PDFs) — pass through unchanged
+    if (typeof Blob !== 'undefined' && body instanceof Blob) {
+      return response;
+    }
+    if (body && typeof body === 'object' && body.success === false) {
       const msg = body.message || response.statusText || 'Request failed';
       const err = new Error(msg);
       err.response = response;
       return Promise.reject(err);
     }
-    return { ...response, data: body?.data !== undefined ? body.data : body };
+    if (body && typeof body === 'object' && body.data !== undefined) {
+      return {
+        ...response,
+        data: body.data,
+        meta: body.meta,
+        related: body.related,
+        message: body.message,
+      };
+    }
+    return response;
   },
   (err) => {
     const status = err.response?.status;
