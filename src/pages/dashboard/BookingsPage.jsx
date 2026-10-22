@@ -822,7 +822,13 @@ export default function BookingsPage() {
   }
 
   function openMarkPaid(kind, booking) {
-    const amount = suggestedMarkPaidAmount(booking, kind === 'markGuestPaid' ? 'guest' : 'internal');
+    const guest = kind === 'markGuestPaid';
+    const already = paymentStatusStr(booking) === 'paid';
+    const amount = already
+      ? (guest
+        ? Number(getBookingRevenueSplit(booking).totalAmount ?? booking?.totalAmount) || ''
+        : Number(booking?.amount ?? booking?.totalAmount) || '')
+      : suggestedMarkPaidAmount(booking, guest ? 'guest' : 'internal');
     setPaidDraft({
       amount: amount === '' ? '' : String(Math.round(Number(amount) * 100) / 100),
       method: 'eft',
@@ -832,7 +838,11 @@ export default function BookingsPage() {
     setConfirmAction({
       kind,
       id: booking._id,
-      message: `How much did ${who} pay? A receipt is created for that amount.`,
+      title: already ? 'Add payment receipt' : 'Mark booking as paid',
+      confirmLabel: already ? 'Create receipt' : 'Record payment',
+      message: already
+        ? `${who} is already marked paid, and there is no receipt yet. Enter the amount they paid.`
+        : `How much did ${who} pay? A receipt is created for that amount.`,
     });
   }
 
@@ -1228,6 +1238,16 @@ export default function BookingsPage() {
                                   Mark paid
                                 </button>
                               ) : null}
+                              {canMarkPaid && ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(b.status).toLowerCase()) && paymentStatusStr(b) === 'paid' ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  onClick={() => openMarkPaid('markInternalPaid', b)}
+                                  disabled={markInternalPaidMutation.isPending}
+                                >
+                                  Add receipt
+                                </button>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -1300,6 +1320,16 @@ export default function BookingsPage() {
                       disabled={markInternalPaidMutation.isPending}
                     >
                       {markInternalPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
+                    </button>
+                  ) : null}
+                  {canMarkPaid && ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(booking.status).toLowerCase()) && paymentStatusStr(booking) === 'paid' ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => openMarkPaid('markInternalPaid', booking)}
+                      disabled={markInternalPaidMutation.isPending}
+                    >
+                      Add receipt
                     </button>
                   ) : null}
                   {!readOnly && statusStr(booking.status).toLowerCase() === 'pending' && (
@@ -1488,6 +1518,16 @@ export default function BookingsPage() {
                                       disabled={markGuestPaidMutation.isPending}
                                     >
                                       Mark paid
+                                    </button>
+                                  ) : null}
+                                  {canMarkPaid && statusStr(b.status).toLowerCase() === 'confirmed' && paymentStatusStr(b) === 'paid' ? (
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline btn-sm"
+                                      onClick={() => openMarkPaid('markGuestPaid', b)}
+                                      disabled={markGuestPaidMutation.isPending}
+                                    >
+                                      Add receipt
                                     </button>
                                   ) : null}
                                   {!readOnly ? (
@@ -1680,6 +1720,16 @@ export default function BookingsPage() {
                       disabled={markGuestPaidMutation.isPending}
                     >
                       {markGuestPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
+                    </button>
+                  ) : null}
+                  {canMarkPaid && statusStr(guestSelected.status).toLowerCase() === 'confirmed' && paymentStatusStr(guestSelected) === 'paid' ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => openMarkPaid('markGuestPaid', guestSelected)}
+                      disabled={markGuestPaidMutation.isPending}
+                    >
+                      Add receipt
                     </button>
                   ) : null}
                   {statusStr(guestSelected.status).toLowerCase() === 'confirmed' ? (
@@ -2336,19 +2386,21 @@ export default function BookingsPage() {
       <ConfirmModal
         open={Boolean(confirmAction)}
         title={
-          confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
-            ? 'Mark booking as paid'
-            : confirmAction?.kind === 'cancelInternal'
-              ? 'Cancel booking'
-              : 'Confirm action'
+          confirmAction?.title
+            || (confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
+              ? 'Mark booking as paid'
+              : confirmAction?.kind === 'cancelInternal'
+                ? 'Cancel booking'
+                : 'Confirm action')
         }
         message={confirmAction?.message || ''}
         confirmLabel={
-          confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
-            ? 'Record payment'
-            : confirmAction?.kind === 'cancelInternal'
-              ? 'Cancel booking'
-              : 'Delete'
+          confirmAction?.confirmLabel
+            || (confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
+              ? 'Record payment'
+              : confirmAction?.kind === 'cancelInternal'
+                ? 'Cancel booking'
+                : 'Delete')
         }
         onConfirm={confirmBookingAction}
         onCancel={() => setConfirmAction(null)}
