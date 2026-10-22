@@ -150,6 +150,13 @@ function guestBookingIsPaymentHold(booking) {
   return paymentStatusStr(booking) === 'unpaid';
 }
 
+function bookingCanAddReceipt(booking, kind) {
+  if (!booking || booking.hasPaymentRecord) return false;
+  if (paymentStatusStr(booking) !== 'paid') return false;
+  if (kind === 'guest') return statusStr(booking.status).toLowerCase() === 'confirmed';
+  return ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(booking.status).toLowerCase());
+}
+
 function guestBookingCanMarkPaid(booking) {
   if (!booking) return false;
   if (statusStr(booking.status).toLowerCase() !== 'confirmed') return false;
@@ -1238,7 +1245,7 @@ export default function BookingsPage() {
                                   Mark paid
                                 </button>
                               ) : null}
-                              {canMarkPaid && ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(b.status).toLowerCase()) && paymentStatusStr(b) === 'paid' ? (
+                              {canMarkPaid && bookingCanAddReceipt(b, 'internal') ? (
                                 <button
                                   type="button"
                                   className="btn btn-outline btn-sm"
@@ -1322,7 +1329,7 @@ export default function BookingsPage() {
                       {markInternalPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
                     </button>
                   ) : null}
-                  {canMarkPaid && ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(booking.status).toLowerCase()) && paymentStatusStr(booking) === 'paid' ? (
+                  {canMarkPaid && bookingCanAddReceipt(booking, 'internal') ? (
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
@@ -1520,7 +1527,7 @@ export default function BookingsPage() {
                                       Mark paid
                                     </button>
                                   ) : null}
-                                  {canMarkPaid && statusStr(b.status).toLowerCase() === 'confirmed' && paymentStatusStr(b) === 'paid' ? (
+                                  {canMarkPaid && bookingCanAddReceipt(b, 'guest') ? (
                                     <button
                                       type="button"
                                       className="btn btn-outline btn-sm"
@@ -1722,7 +1729,7 @@ export default function BookingsPage() {
                       {markGuestPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
                     </button>
                   ) : null}
-                  {canMarkPaid && statusStr(guestSelected.status).toLowerCase() === 'confirmed' && paymentStatusStr(guestSelected) === 'paid' ? (
+                  {canMarkPaid && bookingCanAddReceipt(guestSelected, 'guest') ? (
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
