@@ -97,6 +97,34 @@ function guestStatusBadgeClass(status) {
   return 'guest-status--pending';
 }
 
+function suggestedMarkPaidAmount(booking, kind) {
+  if (kind === 'guest') {
+    const total = Number(getBookingRevenueSplit(booking).totalAmount ?? booking?.totalAmount) || 0;
+    return total > 0 ? total : '';
+  }
+  const total = Number(booking?.amount ?? booking?.totalAmount) || 0;
+  const deposit = Number(booking?.deposit) || 0;
+  const due = Math.max(0, total - Math.min(deposit, total));
+  const value = due > 0.009 ? due : total;
+  return value > 0 ? value : '';
+}
+
+function markPaidSuccessMessage(resp) {
+  const receipt = resp?.meta?.receiptNumber;
+  const depositReceipt = resp?.meta?.depositReceiptNumber;
+  const partial = Boolean(resp?.meta?.partial);
+  const amount = Number(resp?.meta?.amount);
+  const amountText = Number.isFinite(amount) && amount > 0
+    ? ` of R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '';
+  const receipts = [depositReceipt, receipt].filter((code, index, all) => code && all.indexOf(code) === index);
+  const receiptText = receipts.length ? ` Receipt ${receipts.join(' and ')}.` : '';
+  if (resp?.meta?.alreadyPaid) return 'This booking is already paid.';
+  if (!receipt && !depositReceipt && !partial) return 'Booking marked as paid. The balance was already settled.';
+  if (partial) return `Payment${amountText} recorded.${receiptText} The booking stays unpaid until the balance is cleared.`;
+  return `Payment${amountText} recorded.${receiptText} Booking marked as paid.`;
+}
+
 function paymentStatusStr(booking) {
   return String(booking?.paymentStatus || 'unpaid').toLowerCase();
 }
@@ -349,6 +377,7 @@ export default function BookingsPage() {
   const [policySettingsOpen, setPolicySettingsOpen] = useState(false);
   const [policyDraft, setPolicyDraft] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [paidDraft, setPaidDraft] = useState({ amount: '', method: 'eft', reference: '' });
   const internalSubmitRef = useRef({ ts: 0, signature: '' });
 
   const { data, isLoading, error } = useQuery({
@@ -550,13 +579,14 @@ export default function BookingsPage() {
 
   const markInternalPaidMutation = useMutation({
     mutationFn: ({ id, body }) => markBookingPaid(id, body),
-    onSuccess: () => {
+    onSuccess: (resp) => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', selectedId] });
       queryClient.invalidateQueries({ queryKey: ['debtors'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounting'] });
       setConfirmAction(null);
+      window.alert(markPaidSuccessMessage(resp));
     },
     onError: (err) => {
       window.alert(formatBookingMutationMessage(err, 'Could not mark booking as paid.'));
@@ -613,6 +643,7 @@ export default function BookingsPage() {
         ));
       }
       setConfirmAction(null);
+      window.alert(markPaidSuccessMessage(resp));
     },
     onError: (err) => {
       window.alert(formatBookingMutationMessage(err, 'Could not mark booking as paid.'));
@@ -790,14 +821,25 @@ export default function BookingsPage() {
     );
   }
 
+  function openMarkPaid(kind, booking) {
+    const amount = suggestedMarkPaidAmount(booking, kind === 'markGuestPaid' ? 'guest' : 'internal');
+    setPaidDraft({
+      amount: amount === '' ? '' : String(Math.round(Number(amount) * 100) / 100),
+      method: 'eft',
+      reference: '',
+    });
+    const who = booking?.guestName || booking?.trackingCode || 'this guest';
+    setConfirmAction({
+      kind,
+      id: booking._id,
+      message: `How much did ${who} pay? A receipt is created for that amount.`,
+    });
+  }
+
   function handleMarkGuestPaid() {
     if (!guestSelected || !canMarkPaid || readOnly) return;
     if (!guestBookingCanMarkPaid(guestSelected)) return;
-    setConfirmAction({
-      kind: 'markGuestPaid',
-      id: guestSelected._id,
-      message: `Mark booking ${guestSelected.trackingCode || guestSelected._id} as paid? This records payment against the debtor (if any) and keeps the reservation.`,
-    });
+    openMarkPaid('markGuestPaid', guestSelected);
   }
 
   async function handleGuestPostRevenue() {
@@ -850,12 +892,19 @@ export default function BookingsPage() {
       deleteGuestBookingMutation.mutate(action.id, { onSettled: () => setConfirmAction(null) });
       return;
     }
-    if (action.kind === 'markGuestPaid') {
-      markGuestPaidMutation.mutate({ id: action.id, body: {} });
-      return;
-    }
-    if (action.kind === 'markInternalPaid') {
-      markInternalPaidMutation.mutate({ id: action.id, body: {} });
+    if (action.kind === 'markGuestPaid' || action.kind === 'markInternalPaid') {
+      const amount = Number(paidDraft.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        window.alert('Enter how much was paid.');
+        return;
+      }
+      const body = {
+        amount,
+        method: paidDraft.method || 'eft',
+        reference: String(paidDraft.reference || '').trim() || undefined,
+      };
+      if (action.kind === 'markGuestPaid') markGuestPaidMutation.mutate({ id: action.id, body });
+      else markInternalPaidMutation.mutate({ id: action.id, body });
     }
   }
 
@@ -1173,13 +1222,7 @@ export default function BookingsPage() {
                                 <button
                                   type="button"
                                   className="btn btn-primary btn-sm"
-                                  onClick={() =>
-                                    setConfirmAction({
-                                      kind: 'markInternalPaid',
-                                      id: b._id,
-                                      message: `Mark booking for ${b.guestName || 'guest'} as paid?`,
-                                    })
-                                  }
+                                  onClick={() => openMarkPaid('markInternalPaid', b)}
                                   disabled={markInternalPaidMutation.isPending}
                                 >
                                   Mark paid
@@ -1253,13 +1296,7 @@ export default function BookingsPage() {
                     <button
                       type="button"
                       className="btn btn-primary btn-sm"
-                      onClick={() =>
-                        setConfirmAction({
-                          kind: 'markInternalPaid',
-                          id: booking._id,
-                          message: `Mark booking for ${booking.guestName || 'guest'} as paid? This records the remaining balance.`,
-                        })
-                      }
+                      onClick={() => openMarkPaid('markInternalPaid', booking)}
                       disabled={markInternalPaidMutation.isPending}
                     >
                       {markInternalPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
@@ -1447,13 +1484,7 @@ export default function BookingsPage() {
                                     <button
                                       type="button"
                                       className="btn btn-primary btn-sm"
-                                      onClick={() =>
-                                        setConfirmAction({
-                                          kind: 'markGuestPaid',
-                                          id: b._id,
-                                          message: `Mark booking ${b.trackingCode || b._id} as paid? This keeps the reservation.`,
-                                        })
-                                      }
+                                      onClick={() => openMarkPaid('markGuestPaid', b)}
                                       disabled={markGuestPaidMutation.isPending}
                                     >
                                       Mark paid
@@ -2314,7 +2345,7 @@ export default function BookingsPage() {
         message={confirmAction?.message || ''}
         confirmLabel={
           confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
-            ? 'Mark as paid'
+            ? 'Record payment'
             : confirmAction?.kind === 'cancelInternal'
               ? 'Cancel booking'
               : 'Delete'
@@ -2329,7 +2360,45 @@ export default function BookingsPage() {
           || markInternalPaidMutation.isPending
         }
         tone={confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid' ? 'primary' : 'danger'}
-      />
+      >
+        {confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid' ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <label className="form-group" style={{ margin: 0 }}>
+              <span className="form-label">Amount paid (R)</span>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                className="form-control"
+                value={paidDraft.amount}
+                onChange={(e) => setPaidDraft((prev) => ({ ...prev, amount: e.target.value }))}
+              />
+            </label>
+            <label className="form-group" style={{ margin: 0 }}>
+              <span className="form-label">Method</span>
+              <select
+                className="form-control"
+                value={paidDraft.method}
+                onChange={(e) => setPaidDraft((prev) => ({ ...prev, method: e.target.value }))}
+              >
+                <option value="eft">EFT</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+              </select>
+            </label>
+            <label className="form-group" style={{ margin: 0 }}>
+              <span className="form-label">Reference</span>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Optional"
+                value={paidDraft.reference}
+                onChange={(e) => setPaidDraft((prev) => ({ ...prev, reference: e.target.value }))}
+              />
+            </label>
+          </div>
+        ) : null}
+      </ConfirmModal>
     </div>
   );
 }

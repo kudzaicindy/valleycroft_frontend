@@ -8,6 +8,7 @@ export default function ConfirmModal({
   onCancel,
   busy = false,
   tone = 'danger',
+  children = null,
 }) {
   if (!open) return null;
 
@@ -50,7 +51,8 @@ export default function ConfirmModal({
           <strong style={{ color: '#183515' }}>{title}</strong>
         </div>
         <div style={{ padding: 18 }}>
-          <p style={{ margin: 0, color: 'var(--text-dark)' }}>{message}</p>
+          {message ? <p style={{ margin: children ? '0 0 14px' : 0, color: 'var(--text-dark)' }}>{message}</p> : null}
+          {children}
         </div>
         <div
           style={{
