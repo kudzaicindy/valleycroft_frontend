@@ -31,6 +31,11 @@ export function updateBooking(id, body) {
   return axiosInstance.put(`/api/bookings/${id}`, body);
 }
 
+/** POST /api/bookings/:id/mark-paid — admin/finance mark internal booking paid. */
+export function markBookingPaid(id, body = {}) {
+  return axiosInstance.post(`/api/bookings/${id}/mark-paid`, body || {});
+}
+
 /** DELETE /api/bookings/:id — remove (Admin) */
 export function deleteBooking(id) {
   return axiosInstance.delete(`/api/bookings/${id}`);

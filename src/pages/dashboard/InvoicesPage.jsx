@@ -69,18 +69,7 @@ export default function InvoicesPage() {
   const resolveInvoicePdfUrl = useCallback(async (invoice) => {
     const direct = invoice?.pdfUrl || invoice?.downloadUrl || invoice?.shareUrl;
     if (looksLikeHttpUrl(direct)) return direct;
-    const id = invoice?._id ?? invoice?.id;
-    if (!id) return '';
-    const pdfRes = await getInvoicePdf(id).catch(() => null);
-    const payload = pdfRes?.data ?? pdfRes;
-    const inlineUrl =
-      (typeof payload === 'string' ? payload : '') ||
-      payload?.url ||
-      payload?.pdfUrl ||
-      payload?.downloadUrl ||
-      payload?.shareUrl;
-    if (looksLikeHttpUrl(inlineUrl)) return inlineUrl;
-    return `${window.location.origin}/api/invoices/${encodeURIComponent(String(id))}/pdf`;
+    return '';
   }, []);
 
   const handleDownload = useCallback(async (invoice) => {
@@ -88,20 +77,37 @@ export default function InvoicesPage() {
     if (!id) return;
     setActionBusyId(String(id));
     try {
-      const url = await resolveInvoicePdfUrl(invoice);
-      if (!url) return;
+      const res = await getInvoicePdf(id);
+      const blob = res?.data ?? res;
+      if (!(blob instanceof Blob)) {
+        window.alert('Invoice PDF was not returned.');
+        return;
+      }
+      if (blob.type && blob.type.includes('json')) {
+        const text = await blob.text();
+        let msg = 'Could not download invoice.';
+        try {
+          msg = JSON.parse(text)?.message || msg;
+        } catch {
+          /* ignore */
+        }
+        window.alert(msg);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
       a.download = `${invoice.invoiceNumber || id}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err?.message || 'Could not download invoice.');
     } finally {
       setActionBusyId('');
     }
-  }, [resolveInvoicePdfUrl]);
+  }, []);
 
   const handleShareEmail = useCallback(async (invoice) => {
     const id = invoice?._id ?? invoice?.id ?? '';
@@ -111,7 +117,8 @@ export default function InvoicesPage() {
       const url = await resolveInvoicePdfUrl(invoice);
       const to = invoiceEmail(invoice);
       const ref = invoice.invoiceNumber || id;
-      const mail = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Invoice ${ref}`)}&body=${encodeURIComponent(`Hello,\n\nPlease find your invoice here:\n${url}\n\nRegards,\nValleyCroft`)}`;
+      const linkLine = url ? `\n${url}\n` : '\n';
+      const mail = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Invoice ${ref}`)}&body=${encodeURIComponent(`Hello,\n\nPlease find your invoice ${ref}.${linkLine}\nRegards,\nValleyCroft`)}`;
       window.location.href = mail;
     } finally {
       setActionBusyId('');
@@ -125,7 +132,7 @@ export default function InvoicesPage() {
     try {
       const url = await resolveInvoicePdfUrl(invoice);
       const ref = invoice.invoiceNumber || id;
-      const text = `Invoice ${ref}: ${url}`;
+      const text = url ? `Invoice ${ref}: ${url}` : `Invoice ${ref}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
     } finally {
       setActionBusyId('');

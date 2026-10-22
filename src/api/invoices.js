@@ -13,5 +13,5 @@ export function updateInvoice(id, body) {
 }
 
 export function getInvoicePdf(id) {
-  return axiosInstance.get(`/api/invoices/${id}/pdf`);
+  return axiosInstance.get(`/api/invoices/${id}/pdf`, { responseType: 'blob' });
 }

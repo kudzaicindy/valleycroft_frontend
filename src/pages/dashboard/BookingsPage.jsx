@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { getBookings, getBooking, updateBooking, createBooking, deleteBooking } from '@/api/bookings';
+import { getBookings, getBooking, updateBooking, createBooking, deleteBooking, markBookingPaid } from '@/api/bookings';
 import { getGuestBookings, updateGuestBooking, deleteGuestBooking, markGuestBookingPaid } from '@/api/guestBookings';
 import { getRooms } from '@/api/rooms';
 import { createTransaction } from '@/api/finance';
@@ -548,6 +548,21 @@ export default function BookingsPage() {
     },
   });
 
+  const markInternalPaidMutation = useMutation({
+    mutationFn: ({ id, body }) => markBookingPaid(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', selectedId] });
+      queryClient.invalidateQueries({ queryKey: ['debtors'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      setConfirmAction(null);
+    },
+    onError: (err) => {
+      window.alert(formatBookingMutationMessage(err, 'Could not mark booking as paid.'));
+    },
+  });
+
   const createBookingMutation = useMutation({
     mutationFn: (body) => createBooking(body),
     onSuccess: () => {
@@ -837,6 +852,10 @@ export default function BookingsPage() {
     }
     if (action.kind === 'markGuestPaid') {
       markGuestPaidMutation.mutate({ id: action.id, body: {} });
+      return;
+    }
+    if (action.kind === 'markInternalPaid') {
+      markInternalPaidMutation.mutate({ id: action.id, body: {} });
     }
   }
 
@@ -1102,18 +1121,19 @@ export default function BookingsPage() {
                         <th>Check-out</th>
                         <th className="statement-table-num">Total</th>
                         <th>Status</th>
+                        <th>Payment</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {isLoading && (
                         <tr>
-                          <td colSpan={7}>Loading…</td>
+                          <td colSpan={8}>Loading…</td>
                         </tr>
                       )}
                       {!isLoading && list.length === 0 && (
                         <tr>
-                          <td colSpan={7}>No bookings</td>
+                          <td colSpan={8}>No bookings</td>
                         </tr>
                       )}
                       {!isLoading &&
@@ -1134,12 +1154,37 @@ export default function BookingsPage() {
                             <td>
                               <span className={`badge ${statusBadge(b.status)}`}>{statusStr(b.status) || 'pending'}</span>
                             </td>
-                            <td onClick={(e) => e.stopPropagation()}>
-                              {statusStr(b.status).toLowerCase() === 'pending' && (
+                            <td>
+                              {['confirmed', 'checked-in', 'checked-out'].includes(statusStr(b.status).toLowerCase()) || paymentStatusStr(b) === 'paid' ? (
+                                <span className={`guest-payment-pill ${paymentStatusBadgeClass(paymentStatusStr(b))}`}>
+                                  {paymentStatusLabel(paymentStatusStr(b))}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                              )}
+                            </td>
+                            <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                              {statusStr(b.status).toLowerCase() === 'pending' && !readOnly && (
                                 <button type="button" className="btn btn-primary btn-sm" onClick={() => handleConfirm(b._id)} disabled={updateMutation.isPending}>
                                   Confirm
                                 </button>
                               )}
+                              {canMarkPaid && ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(b.status).toLowerCase()) && paymentStatusStr(b) !== 'paid' ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() =>
+                                    setConfirmAction({
+                                      kind: 'markInternalPaid',
+                                      id: b._id,
+                                      message: `Mark booking for ${b.guestName || 'guest'} as paid?`,
+                                    })
+                                  }
+                                  disabled={markInternalPaidMutation.isPending}
+                                >
+                                  Mark paid
+                                </button>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -1172,6 +1217,11 @@ export default function BookingsPage() {
                 <div className="bookings-detail-header">
                   <h3>Booking — {referenceDisplay(booking)}</h3>
                   <span className={`badge ${statusBadge(booking.status)}`}>{statusStr(booking.status) || 'pending'}</span>
+                  {['confirmed', 'checked-in', 'checked-out'].includes(statusStr(booking.status).toLowerCase()) || paymentStatusStr(booking) === 'paid' ? (
+                    <span className={`guest-payment-pill ${paymentStatusBadgeClass(paymentStatusStr(booking))}`}>
+                      {paymentStatusLabel(paymentStatusStr(booking))}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="review-block">
                   <div className="review-block-header">Booking</div>
@@ -1199,6 +1249,22 @@ export default function BookingsPage() {
                   <div className="review-row"><div className="rv-label">Phone</div><div className="rv-val">{booking.guestPhone || '—'}</div></div>
                 </div>
                 <div className="bookings-detail-actions">
+                  {canMarkPaid && ['confirmed', 'checked-in', 'checked-out'].includes(statusStr(booking.status).toLowerCase()) && paymentStatusStr(booking) !== 'paid' ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() =>
+                        setConfirmAction({
+                          kind: 'markInternalPaid',
+                          id: booking._id,
+                          message: `Mark booking for ${booking.guestName || 'guest'} as paid? This records the remaining balance.`,
+                        })
+                      }
+                      disabled={markInternalPaidMutation.isPending}
+                    >
+                      {markInternalPaidMutation.isPending ? 'Marking paid…' : 'Mark as paid'}
+                    </button>
+                  ) : null}
                   {!readOnly && statusStr(booking.status).toLowerCase() === 'pending' && (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => handleConfirm(booking._id)} disabled={updateMutation.isPending}>Confirm booking</button>
                   )}
@@ -2239,7 +2305,7 @@ export default function BookingsPage() {
       <ConfirmModal
         open={Boolean(confirmAction)}
         title={
-          confirmAction?.kind === 'markGuestPaid'
+          confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
             ? 'Mark booking as paid'
             : confirmAction?.kind === 'cancelInternal'
               ? 'Cancel booking'
@@ -2247,7 +2313,7 @@ export default function BookingsPage() {
         }
         message={confirmAction?.message || ''}
         confirmLabel={
-          confirmAction?.kind === 'markGuestPaid'
+          confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid'
             ? 'Mark as paid'
             : confirmAction?.kind === 'cancelInternal'
               ? 'Cancel booking'
@@ -2260,8 +2326,9 @@ export default function BookingsPage() {
           || deleteBookingMutation.isPending
           || deleteGuestBookingMutation.isPending
           || markGuestPaidMutation.isPending
+          || markInternalPaidMutation.isPending
         }
-        tone={confirmAction?.kind === 'markGuestPaid' ? 'primary' : 'danger'}
+        tone={confirmAction?.kind === 'markGuestPaid' || confirmAction?.kind === 'markInternalPaid' ? 'primary' : 'danger'}
       />
     </div>
   );
