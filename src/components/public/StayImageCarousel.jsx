@@ -56,10 +56,16 @@ export default function StayImageCarousel({ images, label, className = '', varia
             <div
               key={`${src}-${i}`}
               className="stay-carousel-slide"
-              style={{ backgroundImage: `url("${src}")` }}
               role="img"
               aria-label={`${label} — photo ${i + 1} of ${slides.length}`}
-            />
+            >
+              <img
+                src={src}
+                alt=""
+                loading={i === 0 ? 'eager' : 'lazy'}
+                decoding="async"
+              />
+            </div>
           )
         ))}
       </div>

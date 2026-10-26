@@ -91,7 +91,9 @@ function RoomCardImageCarouselEmbed({ images, roomName, overlay }) {
     <div className="room-img room-img--carousel">
       <div className="room-img-track">
         {slides.map((src, i) => (
-          <div key={src} className="room-img-slide" style={{ backgroundImage: `url("${src}")` }} role="img" aria-label={`${roomName} — photo ${i + 1}`} />
+          <div key={src} className="room-img-slide" role="img" aria-label={`${roomName} — photo ${i + 1}`}>
+            <img src={src} alt="" loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+          </div>
         ))}
       </div>
       <div className="room-img-floating">{overlay}</div>
@@ -123,7 +125,9 @@ function RoomCardImageCarouselInteractive({ images, roomName, overlay }) {
     <div className="room-img room-img--carousel">
       <div className="room-img-track" ref={trackRef}>
         {slides.map((src, i) => (
-          <div key={src} className="room-img-slide" style={{ backgroundImage: `url("${src}")` }} role="img" aria-label={`${roomName} — photo ${i + 1}`} />
+          <div key={src} className="room-img-slide" role="img" aria-label={`${roomName} — photo ${i + 1}`}>
+            <img src={src} alt="" loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+          </div>
         ))}
       </div>
       <div className="room-img-floating">{overlay}</div>

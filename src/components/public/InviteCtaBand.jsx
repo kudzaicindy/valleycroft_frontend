@@ -25,7 +25,9 @@ export default function InviteCtaBand({
   return (
     <section className="invite-cta-band">
       {image ? (
-        <div className="invite-cta-band-bg" style={{ backgroundImage: `url("${image}")` }} aria-hidden="true" />
+        <div className="invite-cta-band-bg" aria-hidden="true">
+          <img src={image} alt="" loading="lazy" decoding="async" />
+        </div>
       ) : null}
       <div className="invite-cta-band-overlay" aria-hidden="true" />
       <div className="invite-cta-band-inner">

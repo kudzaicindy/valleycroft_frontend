@@ -86,7 +86,7 @@ function EventEditorial({ reverse, image, imageAlt, title, meta, children }) {
       <div
         className={`vc-stay-editorial-media vc-event-editorial-media vc-photo-reveal${reverse ? ' vc-photo-reveal--from-left' : ' vc-photo-reveal--from-right'}`}
       >
-        <img src={image} alt={imageAlt} loading="lazy" />
+        <img src={image} alt={imageAlt} loading="lazy" decoding="async" />
       </div>
     </article>
   );
@@ -119,7 +119,7 @@ export default function EventsPage() {
     <PublicSiteShell animateKey="events">
       <main className="landing-main landing-main--venues vc-event-page">
         <div className="vc-event-hero vc-photo-reveal vc-photo-reveal--hero">
-          <img src={IMG_GARDEN_TABLE} alt="Long table set for a celebration on the farm" />
+          <img src={IMG_GARDEN_TABLE} alt="Long table set for a celebration on the farm" loading="eager" decoding="async" />
         </div>
 
         <nav className="vc-stay-subnav vc-event-subnav" aria-label="Event categories">
@@ -336,7 +336,7 @@ export default function EventsPage() {
           </header>
 
           <div className="vc-event-food-hero vc-photo-reveal">
-            <img src={IMG_GRAZING_BOARD} alt="Farm grazing board" loading="lazy" />
+            <img src={IMG_GRAZING_BOARD} alt="Farm grazing board" loading="lazy" decoding="async" />
           </div>
 
           <div className="vc-event-food-cols">
@@ -364,7 +364,7 @@ export default function EventsPage() {
           </div>
 
           <div className="vc-event-food-cta">
-            <img src={IMG_TABLE_CLOSEUP} alt="" className="vc-event-food-thumb" loading="lazy" />
+            <img src={IMG_TABLE_CLOSEUP} alt="" className="vc-event-food-thumb" loading="lazy" decoding="async" />
             <div>
               <p>Every menu is built around your date, guest count, and the season on the farm.</p>
               <Link to="/event-enquiry" className="vc-event-text-link">

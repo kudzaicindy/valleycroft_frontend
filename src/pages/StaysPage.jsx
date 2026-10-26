@@ -139,7 +139,7 @@ export default function StaysPage() {
         <section className="vc-stay-addons-wrap" id="food-addons">
           <header className="vc-stay-addons-head">
             <div className="vc-stay-addons-head-bg" aria-hidden="true">
-              <img src={IMG_PICNIC_WIDE} alt="" loading="lazy" />
+              <img src={IMG_PICNIC_WIDE} alt="" loading="lazy" decoding="async" />
             </div>
             <div className="vc-stay-addons-head-inner">
               <p className="vc-stay-page-label">Optional extras</p>

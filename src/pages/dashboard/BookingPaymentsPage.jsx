@@ -9,6 +9,7 @@ import {
   getDebtorPaymentPdf,
   sendDebtorPaymentEmail,
   deleteDebtorPayment,
+  removeOutstandingDebtor,
   getDebtors,
   debtorCode,
   receiptCode,
@@ -148,6 +149,9 @@ export default function BookingPaymentsPage() {
   const [receiptBusyKey, setReceiptBusyKey] = useState('');
   const [receiptMsg, setReceiptMsg] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [outstandingTarget, setOutstandingTarget] = useState(null);
+  const [outstandingReason, setOutstandingReason] = useState('');
+  const [outstandingError, setOutstandingError] = useState('');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['debtors', 'pending-bookings', LIMIT],
@@ -347,6 +351,21 @@ export default function BookingPaymentsPage() {
     },
     onError: (err) => {
       setSaveError(err?.message || 'Could not record payment.');
+    },
+  });
+
+  const removeOutstandingMutation = useMutation({
+    mutationFn: ({ debtorId, reason }) => removeOutstandingDebtor(debtorId, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debtors'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+      setOutstandingTarget(null);
+      setOutstandingReason('');
+      setReceiptMsg({ type: 'ok', text: 'Outstanding balance removed.' });
+    },
+    onError: (err) => {
+      setOutstandingError(err?.message || 'Could not remove the outstanding balance.');
     },
   });
 
@@ -572,6 +591,21 @@ export default function BookingPaymentsPage() {
                             <button type="button" className="btn btn-primary btn-sm" onClick={() => openPayment(b)}>
                               Record payment
                             </button>
+                            {canDeletePayment ? (
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                style={{ marginLeft: 6, color: 'var(--danger, #b42318)', borderColor: 'rgba(180, 35, 24, 0.35)' }}
+                                disabled={removeOutstandingMutation.isPending}
+                                onClick={() => {
+                                  setOutstandingReason('');
+                                  setOutstandingError('');
+                                  setOutstandingTarget(b);
+                                }}
+                              >
+                                Delete
+                              </button>
+                            ) : null}
                           </td>
                         </tr>
                       );
@@ -859,6 +893,47 @@ export default function BookingPaymentsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(outstandingTarget)}
+        title="Remove outstanding balance"
+        message={`${outstandingTarget?.guestName || 'This guest'} (${outstandingTarget?.debtorNumber || 'debtor'}) has ${fmtMoney(outstandingTarget?.balance)} outstanding. It will leave this list. Receipts already recorded stay under Payments made.`}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          const reason = outstandingReason.trim();
+          if (reason.length < 3) {
+            setOutstandingError('Enter a reason for removing this outstanding balance.');
+            return;
+          }
+          setOutstandingError('');
+          if (!outstandingTarget?.debtorId) return;
+          removeOutstandingMutation.mutate({ debtorId: outstandingTarget.debtorId, reason });
+        }}
+        onCancel={() => {
+          setOutstandingTarget(null);
+          setOutstandingReason('');
+          setOutstandingError('');
+        }}
+        busy={removeOutstandingMutation.isPending}
+        tone="danger"
+      >
+        <label className="form-group" style={{ margin: 0 }}>
+          <span className="form-label">Reason for deletion</span>
+          <textarea
+            className="form-control"
+            rows={3}
+            value={outstandingReason}
+            placeholder="Why is this balance being removed?"
+            onChange={(e) => {
+              setOutstandingReason(e.target.value);
+              if (outstandingError) setOutstandingError('');
+            }}
+          />
+          {outstandingError ? (
+            <p style={{ margin: '8px 0 0', color: '#b42318', fontSize: 13 }}>{outstandingError}</p>
+          ) : null}
+        </label>
+      </ConfirmModal>
 
       <ConfirmModal
         open={Boolean(deleteTarget)}

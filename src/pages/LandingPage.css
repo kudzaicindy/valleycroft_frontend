@@ -419,18 +419,15 @@ body.landing-nav-open {
 .lifestyle-video,
 .public-page-hero-video {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  min-width: 100%;
-  min-height: 100%;
-  width: auto;
-  height: auto;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: center center;
   display: block;
   border: none;
-  background: transparent;
+  background: #1a2e1f;
+  transform: none;
 }
 
 .hero-overlay {
@@ -1455,11 +1452,23 @@ body.landing-nav-open {
 }
 
 .farm-gallery-modal-cell {
+  position: relative;
   aspect-ratio: 4 / 3;
   border-radius: 10px;
+  overflow: hidden;
   background-size: cover;
   background-position: center;
+  background-color: #c8d8a0;
   box-shadow: var(--shadow);
+}
+
+.farm-gallery-modal-cell > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 /* QUICK ACTIONS #book */
@@ -1607,14 +1616,35 @@ body.landing-nav-open {
 }
 
 .room-img-slide {
+  position: relative;
   flex: 0 0 100%;
   width: 100%;
   height: 100%;
   min-height: 138px;
   scroll-snap-align: start;
+  overflow: hidden;
   background-size: cover;
   background-position: center;
   background-color: #c8d8a0;
+}
+
+.room-img-slide > img,
+.farm-gallery-modal-cell > img,
+.event-venue-carousel-slide > img,
+.invite-cta-band-bg > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stay-carousel-slide > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .room-img-floating {
@@ -6264,8 +6294,10 @@ html.vc-remotion-ad .btn-hero-secondary {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center center;
   border: 0;
-  pointer-events: none;
+  background: #1a2e1f;
+  transform: none;
 }
 
 .vc-film-caption {
@@ -6277,7 +6309,23 @@ html.vc-remotion-ad .btn-hero-secondary {
   text-align: center;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
+  .landing-main .vc-films.vc-reveal,
+  .landing-main .vc-films.vc-reveal.is-inview {
+    opacity: 1;
+    transform: none;
+  }
+
+  .hero-video,
+  .vc-film-video,
+  .vc-pub-hero-video,
+  .public-page-hero-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: none;
+  }
+
   .vc-films-grid {
     grid-template-columns: 1fr;
     max-width: 420px;
@@ -6326,16 +6374,27 @@ html.vc-remotion-ad .btn-hero-secondary {
   box-shadow: 0 16px 40px rgba(45, 80, 22, 0.18);
 }
 
+.vc-path-card-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .vc-path-card::before {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 1;
   background: linear-gradient(180deg, rgba(20, 40, 10, 0.15) 0%, rgba(20, 40, 10, 0.78) 100%);
 }
 
 .vc-path-card-inner {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   padding: 28px;
   height: 100%;
   display: flex;
@@ -6421,6 +6480,13 @@ html.vc-remotion-ad .btn-hero-secondary {
   inset: 0;
   background-size: cover;
   background-position: center;
+}
+
+.vc-home-close-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .vc-home-close-bg::after {
@@ -7557,15 +7623,12 @@ html.vc-remotion-ad .btn-hero-secondary {
 
 .vc-pub-hero-video {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  min-width: 100%;
-  min-height: 100%;
-  width: auto;
-  height: auto;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: center;
+  transform: none;
 }
 
 .vc-pub-hero-content {
@@ -7921,6 +7984,7 @@ html.vc-remotion-ad .btn-hero-secondary {
 }
 
 .stay-carousel-slide {
+  position: relative;
   flex: 0 0 100%;
   width: 100%;
   height: 100%;
@@ -7929,6 +7993,11 @@ html.vc-remotion-ad .btn-hero-secondary {
   background-position: center;
   background-repeat: no-repeat;
   background-color: var(--linen);
+}
+
+.stay-carousel-slide > img {
+  position: absolute;
+  inset: 0;
 }
 
 .stay-carousel-dots {

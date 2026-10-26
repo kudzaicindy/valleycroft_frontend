@@ -133,9 +133,11 @@ function VenuePhotoCarousel({ images, venueName, onOpenGallery }) {
             <div
               key={`${src}-${i}`}
               className="event-venue-carousel-slide"
-              style={{ flex: `0 0 ${slidePct}%`, backgroundImage: `url(${src})` }}
+              style={{ flex: `0 0 ${slidePct}%` }}
               aria-hidden={i !== index}
-            />
+            >
+              <img src={src} alt="" loading={i === index ? 'eager' : 'lazy'} decoding="async" />
+            </div>
           ))}
         </div>
       </div>

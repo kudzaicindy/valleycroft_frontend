@@ -181,10 +181,11 @@ export default function PublicSiteShell({ children, animateKey = 0 }) {
                 <div
                   key={src}
                   className="farm-gallery-modal-cell"
-                  style={{ backgroundImage: `url("${src}")` }}
                   role="img"
                   aria-label={`Outdoors, photo ${i + 1}`}
-                />
+                >
+                  {farmGalleryOpen ? <img src={src} alt="" loading="lazy" decoding="async" /> : null}
+                </div>
               ))}
             </div>
             <h4 className="farm-gallery-modal-subhead farm-gallery-modal-subhead--barn">Barn interior</h4>
@@ -193,10 +194,11 @@ export default function PublicSiteShell({ children, animateKey = 0 }) {
                 <div
                   key={src}
                   className="farm-gallery-modal-cell"
-                  style={{ backgroundImage: `url("${src}")` }}
                   role="img"
                   aria-label={`Barn interior, photo ${i + 1}`}
-                />
+                >
+                  {farmGalleryOpen ? <img src={src} alt="" loading="lazy" decoding="async" /> : null}
+                </div>
               ))}
             </div>
           </div>
@@ -207,7 +209,7 @@ export default function PublicSiteShell({ children, animateKey = 0 }) {
         <div className="footer-inner">
           <div className="footer-top">
             <div className="footer-brand-col">
-              <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="footer-logo-img" />
+              <img src="/Valley_Croft_Farm-removebg-preview.png" alt="ValleyCroft" className="footer-logo-img" loading="lazy" decoding="async" />
               <p className="footer-brand-desc">
                 A working farm in Hekpoort where mornings slow down, evenings gather around the fire,
                 and every guest is welcomed like family.

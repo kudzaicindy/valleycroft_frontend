@@ -92,6 +92,11 @@ export function sendDebtorPaymentEmail(debtorId, paymentId, body = {}) {
   return postWithAliases(debtorPaths(`${debtorId}/payments/${paymentId}/send-email`), body || {});
 }
 
+/** Remove a booking from Outstanding. Body: `{ reason }`. */
+export function removeOutstandingDebtor(debtorId, body) {
+  return postWithAliases(debtorPaths(`${debtorId}/remove-outstanding`), body || {});
+}
+
 /** Delete a recorded payment (finance/admin). Reverses ledger + restores debtor balance. */
 export function deleteDebtorPayment(debtorId, paymentId, body = {}) {
   return deleteWithAliases(debtorPaths(`${debtorId}/payments/${paymentId}`), body || {});

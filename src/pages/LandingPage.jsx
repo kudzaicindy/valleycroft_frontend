@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PublicSiteShell, { useFarmGallery } from '@/components/public/PublicSiteShell';
 import useScrollReveal from '@/hooks/useScrollReveal';
+import useInlineVideo, { playInlineVideo } from '@/hooks/useInlineVideo';
 import {
   IMG_ACCOMMODATION,
   IMG_BARN_VENUE,
@@ -152,24 +153,33 @@ function StoryCta({ cta, onGallery }) {
 function FarmFilm({ src, label }) {
   const videoRef = useRef(null);
   const wrapRef = useRef(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setShouldLoad(true);
+      },
+      { rootMargin: '30% 0px', threshold: 0.05 }
+    );
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
     const wrap = wrapRef.current;
-    if (!video || !wrap) return undefined;
+    if (!video || !wrap || !shouldLoad) return undefined;
 
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-
     const playSafe = () => {
       if (mq.matches) return;
-      video.defaultMuted = true;
-      video.muted = true;
-      video.setAttribute('muted', '');
-      video.setAttribute('playsinline', '');
-      const p = video.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+      const rect = wrap.getBoundingClientRect();
+      const inView = rect.top < window.innerHeight * 1.15 && rect.bottom > 0;
+      if (inView) playInlineVideo(video);
     };
-
     const pauseSafe = () => {
       try {
         video.pause();
@@ -178,40 +188,30 @@ function FarmFilm({ src, label }) {
       }
     };
 
-    const onCanPlay = () => {
-      const rect = wrap.getBoundingClientRect();
-      const inView = rect.top < window.innerHeight && rect.bottom > 0;
-      if (inView) playSafe();
-    };
-
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) playSafe();
         else pauseSafe();
       },
-      { rootMargin: '20% 0px', threshold: 0.15 }
+      { rootMargin: '15% 0px', threshold: 0.2 }
     );
     observer.observe(wrap);
-
-    video.addEventListener('loadeddata', onCanPlay);
-    video.addEventListener('canplay', onCanPlay);
-    mq.addEventListener('change', onCanPlay);
-
-    // Kick load — large films use metadata first, then play when ready/in view
+    video.addEventListener('loadeddata', playSafe);
+    video.addEventListener('canplay', playSafe);
     try {
       video.load();
     } catch {
       /* ignore */
     }
+    playSafe();
 
     return () => {
       observer.disconnect();
-      video.removeEventListener('loadeddata', onCanPlay);
-      video.removeEventListener('canplay', onCanPlay);
-      mq.removeEventListener('change', onCanPlay);
+      video.removeEventListener('loadeddata', playSafe);
+      video.removeEventListener('canplay', playSafe);
       pauseSafe();
     };
-  }, [src]);
+  }, [shouldLoad, src]);
 
   return (
     <figure ref={wrapRef} className="vc-film">
@@ -223,10 +223,10 @@ function FarmFilm({ src, label }) {
           muted
           loop
           playsInline
-          preload="auto"
+          preload={shouldLoad ? 'auto' : 'none'}
           aria-label={label}
         >
-          <source src={src} type="video/mp4" />
+          {shouldLoad ? <source src={src} type="video/mp4" /> : null}
         </video>
       </div>
       <figcaption className="vc-film-caption">{label}</figcaption>
@@ -238,24 +238,7 @@ function LandingContent() {
   const heroVideoRef = useRef(null);
   const { openFarmGallery } = useFarmGallery();
   useScrollReveal();
-
-  useEffect(() => {
-    const video = heroVideoRef.current;
-    if (!video) return;
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => {
-      if (mq.matches) {
-        video.pause();
-        video.removeAttribute('autoplay');
-      } else {
-        video.setAttribute('autoplay', '');
-        video.play().catch(() => {});
-      }
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, []);
+  useInlineVideo(heroVideoRef, { active: true });
 
   return (
     <main className="landing-main landing-main--home">
@@ -293,6 +276,7 @@ function LandingContent() {
               src={section.img}
               alt={section.title}
               loading="lazy"
+              decoding="async"
             />
           </div>
           <div className="vc-story-copy">
@@ -329,8 +313,8 @@ function LandingContent() {
           <Link
             to="/stays"
             className="vc-path-card"
-            style={{ backgroundImage: `url("${IMG_FARM_EXTERIOR}")` }}
           >
+            <img className="vc-path-card-bg" src={IMG_FARM_EXTERIOR} alt="" loading="lazy" decoding="async" />
             <div className="vc-path-card-inner">
               <span className="vc-path-tag">Stay</span>
               <h3>Farm houses</h3>
@@ -340,8 +324,8 @@ function LandingContent() {
           <Link
             to="/events"
             className="vc-path-card"
-            style={{ backgroundImage: `url("${IMG_GAZEBO}")` }}
           >
+            <img className="vc-path-card-bg" src={IMG_GAZEBO} alt="" loading="lazy" decoding="async" />
             <div className="vc-path-card-inner">
               <span className="vc-path-tag">Celebrate</span>
               <h3>Events &amp; weddings</h3>
@@ -354,7 +338,7 @@ function LandingContent() {
       <section className="vc-guest-note vc-reveal" id="stories">
         <div className="vc-guest-note-inner">
           <div className="vc-guest-note-mark" aria-hidden="true">
-            <img src="/Valley_Croft_Farm-removebg-preview.png" alt="" className="vc-guest-note-logo" />
+            <img src="/Valley_Croft_Farm-removebg-preview.png" alt="" className="vc-guest-note-logo" loading="lazy" decoding="async" />
           </div>
           <blockquote className="vc-guest-note-text">
             It felt like the world slowed down — birdsong, open skies, and evenings we still talk about.
@@ -366,9 +350,10 @@ function LandingContent() {
       <section className="vc-home-close vc-reveal">
         <div
           className="vc-home-close-bg"
-          style={{ backgroundImage: `url("${IMG_ENTRANCE_WALKWAY}")` }}
           aria-hidden="true"
-        />
+        >
+          <img src={IMG_ENTRANCE_WALKWAY} alt="" loading="lazy" decoding="async" />
+        </div>
         <div className="vc-home-close-inner">
           <h2>We would love to welcome you</h2>
           <p>Stays, celebrations, and quiet escapes — about forty-five minutes from Johannesburg.</p>

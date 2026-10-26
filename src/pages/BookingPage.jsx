@@ -735,15 +735,14 @@ export default function BookingPage() {
                         <button
                           type="button"
                           className="room-thumb room-thumb-img room-thumb-open-gallery"
-                          style={{
-                            backgroundImage: imgUrl ? 'url(' + imgUrl + ')' : undefined,
-                          }}
                           aria-label={r.images?.length > 1 ? `View ${r.name} photo gallery` : `View ${r.name} photo`}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (r.images?.length) openRoomPreview(r);
                           }}
-                        />
+                        >
+                          {imgUrl ? <img src={imgUrl} alt="" loading="lazy" decoding="async" /> : null}
+                        </button>
                         {r.images?.length > 1 ? (
                           <span className="room-gallery-hint" aria-hidden>
                             <i className="fas fa-images" /> Gallery
