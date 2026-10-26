@@ -13,6 +13,19 @@ async function getWithAliases(paths, params, config = {}) {
   throw lastErr || new Error('No matching API route found.');
 }
 
+async function putWithAliases(paths, body) {
+  let lastErr;
+  for (const path of paths) {
+    try {
+      return await axiosInstance.put(path, body);
+    } catch (err) {
+      if (err?.response?.status !== 404) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No matching API route found.');
+}
+
 async function postWithAliases(paths, body) {
   let lastErr;
   for (const path of paths) {
@@ -92,9 +105,25 @@ export function sendDebtorPaymentEmail(debtorId, paymentId, body = {}) {
   return postWithAliases(debtorPaths(`${debtorId}/payments/${paymentId}/send-email`), body || {});
 }
 
-/** Remove a booking from Outstanding. Body: `{ reason }`. */
-export function removeOutstandingDebtor(debtorId, body) {
-  return postWithAliases(debtorPaths(`${debtorId}/remove-outstanding`), body || {});
+/** Remove a booking from Outstanding. Body: `{ reason, amountPaid, notes }`. */
+export async function removeOutstandingDebtor(debtorId, body) {
+  const payload = body || {};
+  const reason = String(payload.reason || '').trim();
+  try {
+    return await postWithAliases(debtorPaths(`${debtorId}/remove-outstanding`), { reason });
+  } catch (err) {
+    const msg = String(err?.message || '');
+    const missingRoute = err?.response?.status === 404 && /Cannot POST/i.test(msg);
+    if (!missingRoute) throw err;
+    const paid = Number(payload.amountPaid) || 0;
+    const prev = String(payload.notes || '').trim();
+    const line = `[removed from outstanding ${new Date().toISOString()}] ${reason}`;
+    return putWithAliases(debtorPaths(debtorId), {
+      status: paid > 0.009 ? 'paid' : 'written-off',
+      amountOwed: paid,
+      notes: prev ? `${prev}\n${line}` : line,
+    });
+  }
 }
 
 /** Delete a recorded payment (finance/admin). Reverses ledger + restores debtor balance. */

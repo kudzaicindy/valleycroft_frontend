@@ -355,7 +355,8 @@ export default function BookingPaymentsPage() {
   });
 
   const removeOutstandingMutation = useMutation({
-    mutationFn: ({ debtorId, reason }) => removeOutstandingDebtor(debtorId, { reason }),
+    mutationFn: ({ debtorId, reason, amountPaid, notes }) =>
+      removeOutstandingDebtor(debtorId, { reason, amountPaid, notes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['debtors'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
@@ -907,7 +908,12 @@ export default function BookingPaymentsPage() {
           }
           setOutstandingError('');
           if (!outstandingTarget?.debtorId) return;
-          removeOutstandingMutation.mutate({ debtorId: outstandingTarget.debtorId, reason });
+          removeOutstandingMutation.mutate({
+            debtorId: outstandingTarget.debtorId,
+            reason,
+            amountPaid: Number(outstandingTarget.amountPaid) || 0,
+            notes: outstandingTarget._raw?.notes || '',
+          });
         }}
         onCancel={() => {
           setOutstandingTarget(null);
